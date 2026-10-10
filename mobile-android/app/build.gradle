@@ -4,12 +4,10 @@ android {
     namespace 'com.pokegrid.mobile'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.pokegrid.mobile'
+        applicationId 'com.pokegrid.mobile24'
         minSdk 24
         targetSdk 35
-        versionCode 24
-        versionName '2.4'
+        versionCode 2401
+        versionName '2.4.1'
     }
 }
-
-// release 2.4 final
