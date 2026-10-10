@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Intent.ACTION_VIEW,u)); return true;
             }
         });
-        setContentView(web); web.loadUrl(RELAY+"/app/");
+        setContentView(web); web.loadUrl("file:///android_asset/index.html");
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},501);
     }
