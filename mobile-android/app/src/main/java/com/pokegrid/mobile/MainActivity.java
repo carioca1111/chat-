@@ -23,6 +23,11 @@ public class MainActivity extends Activity {
                 Uri u=r.getUrl(); if("https".equals(u.getScheme()) && "pokegrid-relay-209e4eb1d9.onrender.com".equals(u.getHost())) return false;
                 startActivity(new Intent(Intent.ACTION_VIEW,u)); return true;
             }
+            @Override public void onPageFinished(WebView v,String url){
+                super.onPageFinished(v,url);
+                String js="(function(){try{if(window.__pgCapturePatch)return;window.__pgCapturePatch=1;var old=window.renderPokemon;window.renderPokemon=async function(){await old();try{var raw=Android.getDetectedCaptures();var arr=JSON.parse(raw||'[]');var box=document.getElementById('pokemonList');if(!box||!arr.length)return;if(box.querySelector('.empty'))box.innerHTML='';arr.slice(0,50).forEach(function(e){var d=document.createElement('div');d.className='poke';d.innerHTML='<div style=\"width:64px;height:64px;border-radius:16px;background:#081421;display:grid;place-items:center;font-size:28px\">?</div><div><b>Pokémon não identificado</b><small class=\"muted\">'+(e.account||'Conta')+' · '+(e.count||1)+((e.count||1)==1?' captura':' capturas')+'</small><div><span class=\"tag\">Detectado pelo contador</span><span class=\"tag muted\">Qualidade: sem dados</span></div></div><small class=\"muted\">'+(typeof ago==='function'?ago(e.at):'')+'</small>';box.appendChild(d);});}catch(e){}};var p=document.querySelector('#sec-pokemon p');if(p)p.textContent='Detecta capturas pelo contador de cada conta. O nome do Pokémon aparece quando essa informação existir nos dados do PC.';}catch(e){}})();";
+                v.evaluateJavascript(js,null);
+            }
         });
         setContentView(web); web.loadUrl("file:///android_asset/index.html");
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
@@ -39,6 +44,7 @@ public class MainActivity extends Activity {
             else stopService(i);
         }
         @JavascriptInterface public boolean notificationsEnabled(){ return getSharedPreferences("pg",MODE_PRIVATE).getBoolean("enabled",true); }
-        @JavascriptInterface public void testNotification(){ CaptureMonitorService.showCaptureNotification(MainActivity.this,"Pikachu","",true); }
+        @JavascriptInterface public String getDetectedCaptures(){ return getSharedPreferences("pg",MODE_PRIVATE).getString("detectedCaptures","[]"); }
+        @JavascriptInterface public void testNotification(){ CaptureMonitorService.showCaptureNotification(MainActivity.this,"Notificações funcionando","",true); }
     }
 }
