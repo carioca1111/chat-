@@ -19,8 +19,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - run: gradle assembleDebug
+      - run: gradle assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: PokeGrid-Mobile-2.4
-          path: mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          name: PokeGrid-Mobile-2.4-unsigned
+          path: mobile-android/app/build/outputs/apk/release/app-release-unsigned.apk
