@@ -11,3 +11,5 @@ android {
         versionName '2.4.1'
     }
 }
+
+// separate install build
