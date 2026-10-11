@@ -1,0 +1,62 @@
+name: Build Gridium Windows
+
+on:
+  push:
+    branches:
+      - gridium-next
+    paths:
+      - 'gridium-ci/**'
+      - '.github/workflows/build-gridium-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rebuild Gridium source archive
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem "gridium-ci/source.*.b64" | Sort-Object Name
+          if ($parts.Count -ne 10) { throw "Expected 10 source chunks, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes("Gridium-source.zip", [Convert]::FromBase64String($b64))
+          New-Item -ItemType Directory -Force -Path "gridium-build" | Out-Null
+          Expand-Archive -Path "Gridium-source.zip" -DestinationPath "gridium-build" -Force
+          if (-not (Test-Path "gridium-build/package.json")) { throw "package.json not found after extraction" }
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: gridium-build
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        working-directory: gridium-build
+        shell: pwsh
+        run: npm test
+
+      - name: Build Windows installer
+        working-directory: gridium-build
+        shell: pwsh
+        run: npm run dist:win
+
+      - name: Show build output
+        shell: pwsh
+        run: Get-ChildItem -Path "gridium-build/dist" -Recurse | Select-Object FullName, Length
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Setup-3.0.0-alpha.1
+          path: gridium-build/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
