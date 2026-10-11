@@ -1,7 +1,7 @@
 {
   "name": "gridium-desktop",
   "productName": "Gridium",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-alpha.2",
   "description": "Gridium Desktop: central de contas, Hunt Intelligence e Alpha Terminal para PokéIdle.io",
   "main": "main.js",
   "private": true,
@@ -30,7 +30,9 @@
       "!*.bat"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "assets/gridium.ico",
       "artifactName": "Gridium-Setup-${version}.${ext}"
     },
