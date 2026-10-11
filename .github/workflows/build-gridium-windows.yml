@@ -18,7 +18,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rebuild Gridium source archive
+      - name: Rebuild Gridium Alpha 1 source archive
         shell: pwsh
         run: |
           $parts = Get-ChildItem "gridium-ci/source.*.b64" | Sort-Object Name
@@ -28,6 +28,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path "gridium-build" | Out-Null
           Expand-Archive -Path "Gridium-source.zip" -DestinationPath "gridium-build" -Force
           if (-not (Test-Path "gridium-build/package.json")) { throw "package.json not found after extraction" }
+
+      - name: Apply Gridium Alpha 2 inspector patch
+        shell: pwsh
+        run: |
+          $patchB64 = Get-Content "gridium-ci/alpha2-patch.b64" -Raw
+          [IO.File]::WriteAllBytes("Gridium-alpha2-patch.zip", [Convert]::FromBase64String($patchB64))
+          Expand-Archive -Path "Gridium-alpha2-patch.zip" -DestinationPath "gridium-build" -Force
+          $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.2') { throw "Alpha 2 patch was not applied" }
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -56,7 +65,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.1
+          name: Gridium-Setup-3.0.0-alpha.2
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
