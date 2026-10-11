@@ -39,6 +39,18 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha4.js gridium-build
 
+      - name: Pack exact Alpha 4 CI source
+        shell: pwsh
+        run: Compress-Archive -Path "gridium-build/*" -DestinationPath "Gridium-Alpha4-CI-Source.zip" -Force
+
+      - name: Upload exact Alpha 4 CI source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha4-CI-Source-Debug
+          path: Gridium-Alpha4-CI-Source.zip
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Apply Gridium Alpha 5 Operations overlay
         shell: pwsh
         run: node gridium-desktop/apply-alpha5.js gridium-build
