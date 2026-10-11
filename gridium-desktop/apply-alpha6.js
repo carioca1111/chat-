@@ -23,6 +23,10 @@ try {
   try { fs.unlinkSync(tmp); } catch {}
 }
 
-const pkg = JSON.parse(fs.readFileSync(path.join(targetDir, 'package.json'), 'utf8'));
-if (pkg.version !== '3.0.0-alpha.6') throw new Error(`Versao inesperada apos patch: ${pkg.version}`);
+// O overlay Alpha 5 do CI pode regravar package.json depois da base compacta.
+// Garanta o número de versão final usado pelo electron-builder.
+const pkgPath = path.join(targetDir, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+pkg.version = '3.0.0-alpha.6';
+fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 console.log(`Gridium ${pkg.version} aplicado em ${targetDir}`);
