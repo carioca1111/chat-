@@ -32,9 +32,10 @@ jobs:
       - name: Apply Gridium Alpha 2 inspector patch
         shell: pwsh
         run: |
-          $patchB64 = Get-Content "gridium-ci/alpha2-patch.b64" -Raw
+          $patchB64 = (Get-Content "gridium-ci/alpha2-patch.b64" -Raw).Trim()
           [IO.File]::WriteAllBytes("Gridium-alpha2-patch.zip", [Convert]::FromBase64String($patchB64))
-          Expand-Archive -Path "Gridium-alpha2-patch.zip" -DestinationPath "gridium-build" -Force
+          tar -xf "Gridium-alpha2-patch.zip" -C "gridium-build"
+          if ($LASTEXITCODE -ne 0) { throw "Could not extract Alpha 2 patch" }
           $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
           if ($pkg.version -ne '3.0.0-alpha.2') { throw "Alpha 2 patch was not applied" }
 
