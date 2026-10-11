@@ -6,6 +6,7 @@ on:
       - gridium-next
     paths:
       - 'gridium-ci/**'
+      - 'gridium-desktop/**'
       - '.github/workflows/build-gridium-windows.yml'
   workflow_dispatch:
 
@@ -29,20 +30,14 @@ jobs:
           Expand-Archive -Path "Gridium-source.zip" -DestinationPath "gridium-build" -Force
           if (-not (Test-Path "gridium-build/package.json")) { throw "package.json not found after extraction" }
 
-      - name: Apply Gridium Alpha 2 inspector patch
-        shell: pwsh
-        run: |
-          $patchB64 = (Get-Content "gridium-ci/alpha2-patch.b64" -Raw).Trim()
-          [IO.File]::WriteAllBytes("Gridium-alpha2-patch.zip", [Convert]::FromBase64String($patchB64))
-          tar -xf "Gridium-alpha2-patch.zip" -C "gridium-build"
-          if ($LASTEXITCODE -ne 0) { throw "Could not extract Alpha 2 patch" }
-          $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
-          if ($pkg.version -ne '3.0.0-alpha.2') { throw "Alpha 2 patch was not applied" }
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Apply Gridium Alpha 2 inspector patch
+        shell: pwsh
+        run: node gridium-desktop/apply-alpha2.js gridium-build
 
       - name: Install dependencies
         working-directory: gridium-build
