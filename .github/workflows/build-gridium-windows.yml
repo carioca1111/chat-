@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rebuild Gridium Alpha 1 source archive
+      - name: Rebuild Gridium base source archive
         shell: pwsh
         run: |
           $parts = Get-ChildItem "gridium-ci/source.*.b64" | Sort-Object Name
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Apply Gridium Alpha 2 inspector patch
+      - name: Apply Gridium Alpha 3 inspector patch
         shell: pwsh
         run: node gridium-desktop/apply-alpha2.js gridium-build
 
@@ -61,7 +61,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.2
+          name: Gridium-Setup-3.0.0-alpha.3
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
