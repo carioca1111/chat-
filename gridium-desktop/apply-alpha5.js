@@ -9,9 +9,11 @@ if (!target) throw new Error('Uso: node apply-alpha5.js <diretorio-alvo>');
 const targetDir = path.resolve(process.cwd(), target);
 if (!fs.existsSync(targetDir)) throw new Error(`Diretorio alvo nao existe: ${targetDir}`);
 
-function applyPackedPatch(folder, expectedParts, label) {
+function applyPackedPatch(folder, expectedParts, label, explicitNames=null) {
   const dir = path.join(__dirname, folder);
-  const parts = fs.readdirSync(dir).filter(x => /^part\d+\.b64$/.test(x)).sort();
+  const parts = explicitNames
+    ? explicitNames
+    : fs.readdirSync(dir).filter(x => /^part\d+\.b64$/.test(x)).sort();
   if (parts.length !== expectedParts) throw new Error(`${label}: esperado ${expectedParts} chunks, achou ${parts.length}`);
   const b64 = parts.map(x => fs.readFileSync(path.join(dir, x), 'utf8').trim()).join('');
   const patch = zlib.gunzipSync(Buffer.from(b64, 'base64'));
@@ -28,7 +30,7 @@ function applyPackedPatch(folder, expectedParts, label) {
 
 // O Alpha 4 publicado pelo CI usa uma base compacta. Estes dois patches
 // alinham somente os arquivos que o overlay Alpha 5 precisa modificar.
-applyPackedPatch('alpha4-normalize', 5, 'Normalizacao Alpha 4');
+applyPackedPatch('alpha4-normalize', 3, 'Normalizacao Alpha 4', ['part00.b64','part01.b64','part02.b64']);
 applyPackedPatch('alpha4-normalize-extra', 1, 'Normalizacao extra Alpha 4');
 applyPackedPatch('alpha5-patch', 9, 'Overlay Alpha 5');
 
