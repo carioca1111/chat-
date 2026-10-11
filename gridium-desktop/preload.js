@@ -1,0 +1,33 @@
+'use strict';
+const {contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('gridAPI',{
+  state:()=>ipcRenderer.invoke('grid:state'),
+  settings:value=>ipcRenderer.invoke('grid:settings',value),
+  goals:(scope,values)=>ipcRenderer.invoke('grid:goals',scope,values),
+  stock:(slot,values)=>ipcRenderer.invoke('grid:stock',slot,values),
+  zoom:(slot,value)=>ipcRenderer.invoke('grid:zoom',slot,value),
+  remote:value=>ipcRenderer.invoke('grid:remote',value),
+  pair:()=>ipcRenderer.invoke('grid:pair'),
+  reconnect:()=>ipcRenderer.invoke('grid:reconnect'),
+  analytics:value=>ipcRenderer.invoke('grid:analytics',value),
+  events:limit=>ipcRenderer.invoke('grid:events',limit),
+  sessions:limit=>ipcRenderer.invoke('grid:sessions',limit),
+  reset:slot=>ipcRenderer.invoke('grid:reset',slot),
+  pause:value=>ipcRenderer.invoke('grid:pause',value),
+  export:()=>ipcRenderer.invoke('grid:export'),
+  minimize:()=>ipcRenderer.invoke('grid:minimize'),
+  browser:()=>ipcRenderer.invoke('grid:browser'),
+  alphaState:()=>ipcRenderer.invoke('grid:alpha-state'),
+  alphaConfig:value=>ipcRenderer.invoke('grid:alpha-config',value),
+  alphaBankroll:(slot,currency,amount)=>ipcRenderer.invoke('grid:alpha-bankroll',slot,currency,amount),
+  alphaKill:on=>ipcRenderer.invoke('grid:alpha-kill',on),
+  alphaStrategy:value=>ipcRenderer.invoke('grid:alpha-strategy',value),
+  alphaEvaluate:(listing,strategy)=>ipcRenderer.invoke('grid:alpha-evaluate',listing,strategy),
+  alphaPaperOpen:value=>ipcRenderer.invoke('grid:alpha-paper-open',value),
+  alphaPaperClose:(id,exit)=>ipcRenderer.invoke('grid:alpha-paper-close',id,exit),
+  marketScan:()=>ipcRenderer.invoke('grid:market-scan'),
+  huntState:()=>ipcRenderer.invoke('grid:hunt-state'),
+  huntObjective:(slot,objective)=>ipcRenderer.invoke('grid:hunt-objective',slot,objective),
+  huntScan:()=>ipcRenderer.invoke('grid:hunt-scan'),
+  onState:callback=>{ipcRenderer.on('grid:update',(_event,data)=>callback(data));}
+});
