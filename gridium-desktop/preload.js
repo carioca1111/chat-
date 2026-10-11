@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('gridAPI',{
   alphaPaperOpen:value=>ipcRenderer.invoke('grid:alpha-paper-open',value),
   alphaPaperClose:(id,exit)=>ipcRenderer.invoke('grid:alpha-paper-close',id,exit),
   marketScan:()=>ipcRenderer.invoke('grid:market-scan'),
+  clearMarketNetwork:()=>ipcRenderer.invoke('grid:market-network-clear'),
   huntState:()=>ipcRenderer.invoke('grid:hunt-state'),
   huntObjective:(slot,objective)=>ipcRenderer.invoke('grid:hunt-objective',slot,objective),
   huntScan:()=>ipcRenderer.invoke('grid:hunt-scan'),
