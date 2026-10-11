@@ -28,7 +28,7 @@ function applyPackedPatch(folder, expectedParts, label) {
 
 // O Alpha 4 publicado pelo CI usa uma base compacta. Estes dois patches
 // alinham somente os arquivos que o overlay Alpha 5 precisa modificar.
-applyPackedPatch('alpha4-normalize', 3, 'Normalizacao Alpha 4');
+applyPackedPatch('alpha4-normalize', 5, 'Normalizacao Alpha 4');
 applyPackedPatch('alpha4-normalize-extra', 1, 'Normalizacao extra Alpha 4');
 applyPackedPatch('alpha5-patch', 9, 'Overlay Alpha 5');
 
