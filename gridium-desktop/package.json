@@ -1,0 +1,46 @@
+{
+  "name": "gridium-desktop",
+  "productName": "Gridium",
+  "version": "3.0.0-alpha.1",
+  "description": "Gridium Desktop: central de contas, Hunt Intelligence e Alpha Terminal para PokéIdle.io",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.gridium.desktop",
+    "productName": "Gridium",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!test/**",
+      "!remote-server/**",
+      "!*.bat"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/gridium.ico",
+      "artifactName": "Gridium-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Gridium",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
