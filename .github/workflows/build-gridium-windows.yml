@@ -39,6 +39,10 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha4.js gridium-build
 
+      - name: Apply Gridium Alpha 5 Operations overlay
+        shell: pwsh
+        run: node gridium-desktop/apply-alpha5.js gridium-build
+
       - name: Install dependencies
         working-directory: gridium-build
         shell: pwsh
@@ -61,7 +65,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.4
+          name: Gridium-Setup-3.0.0-alpha.5
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
