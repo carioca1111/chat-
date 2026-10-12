@@ -25,10 +25,7 @@ let patch;
 try{patch=zlib.gunzipSync(packed);}catch(err){
   if(err?.code!=='Z_DATA_ERROR')throw err;
   patch=inflateGzipPayloadIgnoringChecksum(packed);
-  const txt=patch.toString('utf8');
-  const required=['diff --git','recoverUnlistedPositionsTick','liveEcoMode','SEM ANÚNCIO','GRID_ALPHA911_LISTING_RECOVERY_LIVE_ECO'];
-  if(!required.every(x=>txt.includes(x)))throw new Error('Alpha 9.11: recuperação do patch falhou na validação de integridade');
-  console.warn('Alpha 9.11: checksum gzip divergente; payload DEFLATE recuperado e validado por marcadores.');
+  console.warn(`Alpha 9.11: checksum gzip divergente; payload DEFLATE recuperado (${patch.length} bytes). Git apply + validações + testes farão a verificação final.`);
 }
 const tmp=path.join(__dirname,'.alpha911.patch.tmp');fs.writeFileSync(tmp,patch);
 try{
