@@ -43,21 +43,20 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha5.js gridium-build
 
-      - name: Apply Gridium Alpha 6 Live Trading overlay
-        shell: pwsh
-        run: node gridium-desktop/apply-alpha6.js gridium-build
-
-      # Alpha 6.1 hotfix v2: robust UI patch, no compressed payload dependency.
-      - name: Apply Gridium Alpha 6.1 LIVE UI hotfix
+      # Alpha 6.1 includes the complete regenerated Alpha 6 LIVE patch, then the UI hotfix.
+      - name: Apply Gridium Alpha 6.1 LIVE Trading and UI
         shell: pwsh
         run: node apply-alpha61.js gridium-build
 
-      - name: Verify Alpha 6.1 LIVE control
+      - name: Verify Alpha 6.1 LIVE controls and bridge
         shell: pwsh
         run: |
           if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaLiveToggle"')) { throw "ARMAR LIVE control missing" }
           if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Alpha 6.1')) { throw "Alpha 6.1 marker missing" }
           if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch "$('alphaLiveToggle').onclick")) { throw "ARMAR LIVE handler missing" }
+          if (-not (Select-String -Path "gridium-build/preload.js" -SimpleMatch 'alphaLiveUnlock:')) { throw "LIVE preload bridge missing" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'grid:alpha-live-buy')) { throw "LIVE buy IPC missing" }
+          if (-not (Test-Path "gridium-build/market-live.js")) { throw "market-live.js missing" }
 
       - name: Install dependencies
         working-directory: gridium-build
