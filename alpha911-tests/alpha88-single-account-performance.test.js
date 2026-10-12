@@ -1,0 +1,8 @@
+'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('fs');const path=require('path');
+const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8'),net=fs.readFileSync(path.join(__dirname,'..','network-inspector.js'),'utf8');
+test('captura de rede tem foco em uma conta',()=>{assert.match(net,/setFocusSlot\(slot=null\)/);assert.match(net,/inactive&&\['Network\.requestWillBeSent'/);});
+test('market health respeita o grupo ativo de contas',()=>{const a=main.indexOf('function marketRuntimeHealth(){'),b=main.indexOf('function setAutopilotSafeStop',a),s=main.slice(a,b);assert.match(s,/targets=ensureMarketActiveSlots\(\)/);assert.doesNotMatch(s,/for\(let slot=0;slot<4;slot\+\+\)/);});
+test('auto trader opera somente a conta ativa',()=>{const a=main.indexOf('async function autoTradingTick(){'),b=main.indexOf('function installHandlers(){',a),s=main.slice(a,b);assert.match(s,/slot=ensureMarketFocus\(\)/);assert.doesNotMatch(s,/for\(let slot=0;slot<4;slot\+\+\)/);});
+test('snapshot não envia lista completa de anúncios para renderer',()=>{const a=main.indexOf('function snapshot(){'),b=main.indexOf('function publish(){',a),s=main.slice(a,b);assert.match(s,/marketView=\{at:latestMarketProtocol\.at/);assert.doesNotMatch(s,/marketProtocol:latestMarketProtocol/);});
+test('timers pesados foram desacelerados',()=>{assert.match(main,/timer=setInterval\(poll,5000\)/);assert.match(main,/autoInspectionTimer=setInterval\(\(\)=>void autoMarketInspectionTick\(\),12000\)/);assert.match(main,/autoTradingTimer=setInterval\(\(\)=>void autoTradingTick\(\),6000\)/);});

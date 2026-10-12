@@ -1,0 +1,6 @@
+'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('fs');const path=require('path');
+const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');const core=fs.readFileSync(path.join(__dirname,'..','alpha-core-process.js'),'utf8');
+test('bloqueia anúncios das próprias contas no core e antes da compra',()=>{assert.match(core,/function isOwnListing/);assert.match(core,/selfListingsBlocked/);assert.match(main,/function isOwnAccountListing/);assert.match(main,/Compra entre contas deste Gridium bloqueada/);assert.match(main,/ownMarketIdentity\(\)/);});
+test('banca é recalculada e clonada por conta ao iniciar automático',()=>{assert.match(main,/smartBankrolls\(\{force=false\}=\{\}\)/);assert.match(main,/smartBankrolls\(\{force:true\}\)/);assert.match(main,/bankrolls:banks\.map\(x=>\(\{\.\.\.x\}\)\)/);});
+test('falha transitória do core mantém automático habilitado para recuperação',()=>{assert.match(main,/function setAutopilotRecovering/);const seg=main.slice(main.indexOf('function setAutopilotRecovering'),main.indexOf('function smartBankrolls'));assert.match(seg,/enabled:true/);assert.match(main,/Reiniciando Auto Trader Core/);});
