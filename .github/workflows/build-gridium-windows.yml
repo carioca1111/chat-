@@ -11,6 +11,7 @@ on:
       - 'apply-alpha61.js'
       - 'apply-alpha62.js'
       - 'apply-alpha7.js'
+      - 'apply-alpha71.js'
   workflow_dispatch:
 
 jobs:
@@ -58,33 +59,38 @@ jobs:
         shell: pwsh
         run: node apply-alpha7.js gridium-build
 
-      - name: Verify Alpha 7 LIVE and automatic inspection
+      - name: Apply Gridium Alpha 7.1 Auto Trader feed fix
+        shell: pwsh
+        run: node apply-alpha71.js gridium-build
+
+      - name: Verify Alpha 7.1 automatic inspection feeds Auto Trader
         shell: pwsh
         run: |
           if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaLiveToggle"')) { throw "ARMAR LIVE control missing" }
           if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaAutoInspectorBadge"')) { throw "Automatic Inspector badge missing" }
-          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Alpha 7:')) { throw "Alpha 7 UI marker missing" }
-          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'GRID_ALPHA62_TEXT_PROMPT')) { throw "Electron-safe confirmation dialog missing" }
-          if (Select-String -Path "gridium-build/renderer.js" -SimpleMatch '=prompt(') { throw "Unsupported window.prompt call still present" }
-          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'GRID_ALPHA7_AUTO_INSPECTOR')) { throw "Automatic Inspector renderer missing" }
-          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'autoMarketInspectionTick')) { throw "Automatic Inspector loop missing" }
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaAutoTraderBadge"')) { throw "Auto Trader status badge missing" }
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Alpha 7.1:')) { throw "Alpha 7.1 UI marker missing" }
+          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'GRID_ALPHA71_AUTO_TRADER_STATUS')) { throw "Auto Trader status renderer missing" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch "const retained=(latestMarketProtocol.listings||[])")) { throw "DOM listings are not retained across network refresh" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch "executionMode==='auto'?4000:15000")) { throw "AUTO DOM scan cadence missing" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'autoTraderStatus=')) { throw "Auto Trader runtime status missing" }
           if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'setInterval(()=>void autoMarketInspectionTick(),4000)')) { throw "Automatic Inspector timer missing" }
           if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'grid:alpha-live-buy')) { throw "LIVE buy IPC missing" }
-          if (-not (Select-String -Path "gridium-build/alpha-engine.js" -SimpleMatch "autoMarketInspection:'background-read-only'")) { throw "Automatic Inspector feature flag missing" }
+          if (Select-String -Path "gridium-build/renderer.js" -SimpleMatch '=prompt(') { throw "Unsupported window.prompt call still present" }
           node --check gridium-build/main.js
           node --check gridium-build/renderer.js
           node --check gridium-build/alpha-engine.js
           $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
-          if ($pkg.version -ne '3.0.0-alpha.7') { throw "Unexpected Gridium version: $($pkg.version)" }
+          if ($pkg.version -ne '3.0.0-alpha.7.1') { throw "Unexpected Gridium version: $($pkg.version)" }
 
       - name: Smoke test AlphaEngine LIVE lock
         shell: pwsh
-        run: node -e "const os=require('os'),path=require('path'),fs=require('fs');const {AlphaEngine}=require('./gridium-build/alpha-engine.js');const p=path.join(os.tmpdir(),'gridium-live-smoke-'+process.pid+'.sqlite');const e=new AlphaEngine(p);const v=e.view().validation;for(const k of Object.keys(v))v[k]=true;e.setValidation(v);if(e.unlockLive(true).settings.liveExecutionUnlocked!==true)throw new Error('LIVE did not unlock');if(e.unlockLive(false).settings.liveExecutionUnlocked!==false)throw new Error('LIVE did not lock');if(e.view().features.autoMarketInspection!=='background-read-only')throw new Error('Auto Inspector feature unavailable');e.close();for(const x of [p,p+'-wal',p+'-shm',p+'.json'])try{fs.unlinkSync(x)}catch{};console.log('AlphaEngine Alpha 7 smoke OK')"
+        run: node -e "const os=require('os'),path=require('path'),fs=require('fs');const {AlphaEngine}=require('./gridium-build/alpha-engine.js');const p=path.join(os.tmpdir(),'gridium-live-smoke-'+process.pid+'.sqlite');const e=new AlphaEngine(p);const v=e.view().validation;for(const k of Object.keys(v))v[k]=true;e.setValidation(v);if(e.unlockLive(true).settings.liveExecutionUnlocked!==true)throw new Error('LIVE did not unlock');if(e.unlockLive(false).settings.liveExecutionUnlocked!==false)throw new Error('LIVE did not lock');if(e.view().features.autoMarketInspection!=='background-read-only')throw new Error('Auto Inspector feature unavailable');e.close();for(const x of [p,p+'-wal',p+'-shm',p+'.json'])try{fs.unlinkSync(x)}catch{};console.log('AlphaEngine Alpha 7.1 smoke OK')"
 
-      - name: Upload assembled Alpha 7 runtime source
+      - name: Upload assembled Alpha 7.1 runtime source
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-LIVE-runtime-source-7
+          name: Gridium-LIVE-runtime-source-7.1
           path: |
             gridium-build/renderer.js
             gridium-build/preload.js
@@ -118,7 +124,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.7
+          name: Gridium-Setup-3.0.0-alpha.7.1
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
