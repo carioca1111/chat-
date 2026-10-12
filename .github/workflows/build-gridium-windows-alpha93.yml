@@ -8,6 +8,7 @@ on:
       - '.github/workflows/build-gridium-windows-alpha93.yml'
       - 'apply-alpha93.js'
       - 'alpha-core-process-93.js'
+      - 'alpha93-repair-crlf.js'
       - 'build-alpha93.ps1'
   workflow_dispatch:
 
@@ -17,6 +18,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
