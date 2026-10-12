@@ -32,8 +32,13 @@ pkg.version = '3.0.0-alpha.6.1';
 write('package.json', JSON.stringify(pkg,null,2)+'\n');
 
 let html = read('index.html');
+html = html.replace(/Alpha 5:[^<]*/g,'Alpha 6.1: execução real protegida · ARMAR LIVE visível · Confirm/Semi/Auto · relógio do servidor.');
 html = html.replace(/Alpha 6:[^<]*/g,'Alpha 6.1: execução real protegida · ARMAR LIVE visível · Confirm/Semi/Auto · relógio do servidor.');
-if (!html.includes('id="alphaLiveToggle"')) throw new Error('Alpha 6.1: ARMAR LIVE ausente após patch completo');
+if (!html.includes('id="alphaLiveToggle"')) {
+  const badge = /(<span id="alphaStatusBadge"[^>]*>[^<]*<\/span>)/;
+  if (!badge.test(html)) throw new Error('Alpha 6.1: alphaStatusBadge não encontrado');
+  html = html.replace(badge,'<button id="alphaLiveToggle" class="secondary-action live-arm-action">🔒 ARMAR LIVE</button>$1');
+}
 html = html.replace(/<button id="alphaLiveToggle"([^>]*)>[^<]*<\/button>/,'<button id="alphaLiveToggle"$1>🔒 ARMAR LIVE</button>');
 html = html.replace(/id="alphaLiveToggle" class="([^"]*)"/, (m,c) => `id="alphaLiveToggle" class="${c.includes('live-arm-action')?c:c+' live-arm-action'}"`);
 write('index.html',html);
