@@ -47,6 +47,17 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha6.js gridium-build
 
+      - name: Apply Gridium Alpha 6.1 LIVE UI hotfix
+        shell: pwsh
+        run: node apply-alpha61.js gridium-build
+
+      - name: Verify Alpha 6.1 LIVE control
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaLiveToggle"')) { throw "ARMAR LIVE control missing" }
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Alpha 6.1')) { throw "Alpha 6.1 marker missing" }
+          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch "$('alphaLiveToggle').onclick")) { throw "ARMAR LIVE handler missing" }
+
       - name: Install dependencies
         working-directory: gridium-build
         shell: pwsh
@@ -69,7 +80,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.6
+          name: Gridium-Setup-3.0.0-alpha.6.1
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
