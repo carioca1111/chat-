@@ -1,0 +1,148 @@
+name: Build Gridium Windows Alpha 8.8
+
+on:
+  push:
+    branches:
+      - gridium-next
+    paths:
+      - '.github/workflows/build-gridium-windows-alpha88.yml'
+      - 'apply-alpha88.js'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rebuild Gridium base source archive
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem "gridium-ci/source.*.b64" | Sort-Object Name
+          if ($parts.Count -ne 10) { throw "Expected 10 source chunks, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes("Gridium-source.zip", [Convert]::FromBase64String($b64))
+          New-Item -ItemType Directory -Force -Path "gridium-build" | Out-Null
+          Expand-Archive -Path "Gridium-source.zip" -DestinationPath "gridium-build" -Force
+          if (-not (Test-Path "gridium-build/package.json")) { throw "package.json not found after extraction" }
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply Alpha 4
+        shell: pwsh
+        run: node gridium-desktop/apply-alpha4.js gridium-build
+      - name: Apply Alpha 5
+        shell: pwsh
+        run: node gridium-desktop/apply-alpha5.js gridium-build
+      - name: Apply Alpha 6.1
+        shell: pwsh
+        run: node apply-alpha61.js gridium-build
+      - name: Apply Alpha 6.2
+        shell: pwsh
+        run: node apply-alpha62.js gridium-build
+      - name: Apply Alpha 7
+        shell: pwsh
+        run: node apply-alpha7.js gridium-build
+      - name: Apply Alpha 7.1
+        shell: pwsh
+        run: node apply-alpha71-fixed.js gridium-build
+      - name: Apply Alpha 8
+        shell: pwsh
+        run: node apply-alpha8.js gridium-build
+      - name: Apply Alpha 8.1
+        shell: pwsh
+        run: node apply-alpha81.js gridium-build
+      - name: Apply Alpha 8.2
+        shell: pwsh
+        run: node apply-alpha82.js gridium-build
+      - name: Apply Alpha 8.3
+        shell: pwsh
+        run: node apply-alpha83.js gridium-build
+      - name: Apply Alpha 8.4
+        shell: pwsh
+        run: node apply-alpha84.js gridium-build
+      - name: Apply Alpha 8.5
+        shell: pwsh
+        run: node apply-alpha85.js gridium-build
+      - name: Apply Alpha 8.6 client protocol discovery
+        shell: pwsh
+        run: node apply-alpha86.js gridium-build
+      - name: Apply Alpha 8.7 performance mode
+        shell: pwsh
+        run: node apply-alpha87.js gridium-build
+      - name: Apply Alpha 8.8 single-account ultra performance mode
+        shell: pwsh
+        run: node apply-alpha88.js gridium-build
+
+      - name: Verify Alpha 8.8
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Alpha 8.8: otimização total')) { throw "Alpha 8.8 header missing" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'MARKET_FOCUS_ROTATE_MS=60000')) { throw "Single-account rotation missing" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'slot=ensureMarketFocus()')) { throw "Focused trader missing" }
+          if (-not (Select-String -Path "gridium-build/network-inspector.js" -SimpleMatch 'setFocusSlot(slot=null)')) { throw "Focused network capture missing" }
+          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'somente 1 por vez')) { throw "Focused UI status missing" }
+          node --check gridium-build/main.js
+          node --check gridium-build/renderer.js
+          node --check gridium-build/network-inspector.js
+          node --check gridium-build/market-protocol.js
+          node --test gridium-build/test/alpha84-detail-probe.test.js
+          node --test gridium-build/test/alpha85-numeric-probe.test.js
+          node --test gridium-build/test/alpha86-client-list.test.js
+          node --test gridium-build/test/alpha87-performance.test.js
+          node --test gridium-build/test/alpha88-single-account-performance.test.js
+          $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.8.8') { throw "Unexpected Gridium version: $($pkg.version)" }
+
+      - name: Install dependencies
+        working-directory: gridium-build
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Run full tests
+        working-directory: gridium-build
+        shell: pwsh
+        run: npm test
+
+      - name: Upload assembled Alpha 8.8 runtime source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-LIVE-runtime-source-8.8
+          path: |
+            gridium-build/renderer.js
+            gridium-build/preload.js
+            gridium-build/main.js
+            gridium-build/alpha-engine.js
+            gridium-build/market-live.js
+            gridium-build/market-inspector.js
+            gridium-build/network-inspector.js
+            gridium-build/market-protocol.js
+            gridium-build/index.html
+            gridium-build/styles.css
+            gridium-build/package.json
+            gridium-build/test/alpha84-detail-probe.test.js
+            gridium-build/test/alpha85-numeric-probe.test.js
+            gridium-build/test/alpha86-client-list.test.js
+            gridium-build/test/alpha87-performance.test.js
+            gridium-build/test/alpha88-single-account-performance.test.js
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build Windows installer
+        working-directory: gridium-build
+        shell: pwsh
+        run: npm run dist:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Setup-3.0.0-alpha.8.8
+          path: gridium-build/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
