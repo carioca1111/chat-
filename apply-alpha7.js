@@ -75,7 +75,7 @@ main=replaceOnce(main,
 'startup audit');
 main=replaceOnce(main,
 "timer=setInterval(poll,2000);savingTimer=setInterval(persist,10000);historySavingTimer=setInterval(()=>persistHistory(),60000);autoTradingTimer=setInterval(()=>void autoTradingTick(),5000);",
-"timer=setInterval(poll,2000);savingTimer=setInterval(persist,10000);historySavingTimer=setInterval(()=>persistHistory(),60000);autoInspectionTimer=setInterval(()=>void autoMarketInspectionTick(),4000);autoTradingTimer=setInterval(()=>void autoTradingTick(),5000);setTimeout(()=>void autoMarketInspectionTick(),1500);",
+"timer=setInterval(poll,2000);savingTimer=setInterval(persist,10000);historySavingTimer=setInterval(()=>persistHistory(),60000);autoInspectionTimer=setInterval(()=>void autoMarketInspectionTick(),4000);autoTradingTimer=setInterval(()=>void autoTradingTick(),5000);",
 'timer start');
 main=replaceOnce(main,
 "clearInterval(timer);clearInterval(savingTimer);clearInterval(historySavingTimer);clearInterval(autoTradingTimer);",
