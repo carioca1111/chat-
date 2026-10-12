@@ -1,0 +1,33 @@
+'use strict';
+const fs=require('fs'),path=require('path'),zlib=require('zlib');
+const {spawnSync}=require('child_process');
+const target=process.argv[2];
+if(!target)throw new Error('Uso: node apply-alpha910.js <diretorio-alvo>');
+const root=path.resolve(process.cwd(),target);
+if(!fs.existsSync(root))throw new Error('Diretorio alvo nao existe: '+root);
+const partsDir=path.join(__dirname,'alpha910-parts');
+const parts=fs.readdirSync(partsDir).filter(x=>/^part\d+\.b64$/.test(x)).sort();
+if(!parts.length)throw new Error('Alpha 9.10: partes do patch ausentes');
+const b64=parts.map(n=>fs.readFileSync(path.join(partsDir,n),'utf8').trim()).join('');
+const patch=zlib.gunzipSync(Buffer.from(b64,'base64'));
+const tmp=path.join(__dirname,'.alpha910.patch.tmp');fs.writeFileSync(tmp,patch);
+try{
+  const rel=path.relative(process.cwd(),root).replace(/\\/g,'/');
+  if(!rel||rel.startsWith('..'))throw new Error('Diretorio alvo invalido: '+rel);
+  const r=spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${rel}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
+  if(r.error)throw r.error;if(r.status!==0)throw new Error('Alpha 9.10: git apply falhou com codigo '+r.status);
+}finally{try{fs.unlinkSync(tmp)}catch{}}
+const pkgPath=path.join(root,'package.json'),pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));
+if(pkg.version!=='3.0.0-alpha.9.9')throw new Error('Alpha 9.10: base 9.9 esperada, atual '+pkg.version);
+pkg.version='3.0.0-alpha.9.10';fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+'\n');
+const testDir=path.join(root,'test');fs.mkdirSync(testDir,{recursive:true});
+fs.writeFileSync(path.join(testDir,'alpha910-simple-result.test.js'),`'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+const renderer=fs.readFileSync(path.join(__dirname,'..','renderer.js'),'utf8'),html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8'),css=fs.readFileSync(path.join(__dirname,'..','styles.css'),'utf8');
+test('mantém métricas técnicas e adiciona resumo simples',()=>{assert.match(renderer,/Realizado/);assert.match(renderer,/Em aberto/);assert.match(renderer,/GANHOU/);assert.match(renderer,/PERDEU/);assert.match(renderer,/AINDA NÃO VENDEU/);});
+test('resumo simples aparece no geral e em cada conta',()=>{assert.match(html,/id="alphaSimpleOverall"/);assert.match(renderer,/fillAlphaSimpleSummary\(\$\('alphaSimpleOverall'\)/);assert.match(renderer,/alpha-simple-account/);});
+test('ganhou e perdeu usam apenas resultado já vendido',()=>{assert.match(renderer,/sold>0\?sold:0/);assert.match(renderer,/sold<0\?Math\.abs\(sold\):0/);assert.match(renderer,/já vendido/);});
+test('ainda não vendeu mostra resultado em aberto e quantidade de posições',()=>{assert.match(renderer,/AINDA NÃO VENDEU/);assert.match(renderer,/tone==='open'/);assert.match(renderer,/posição/);});
+test('cores deixam leitura fácil sem remover o painel atual',()=>{assert.match(css,/GRID_ALPHA910_SIMPLE_RESULT_LABELS/);assert.match(css,/alpha-simple-chip\.gain/);assert.match(css,/alpha-simple-chip\.loss/);assert.match(css,/alpha-simple-chip\.open/);});
+`,'utf8');
+console.log('Gridium 3.0.0-alpha.9.10 aplicado: resumo simples GANHOU / PERDEU / AINDA NÃO VENDEU.');
