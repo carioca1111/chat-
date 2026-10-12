@@ -18,7 +18,7 @@ fs.writeFileSync(tmp, patch);
 try {
   const relTarget = path.relative(process.cwd(), root).replace(/\\/g,'/');
   if (!relTarget || relTarget.startsWith('..')) throw new Error(`Diretorio alvo invalido: ${relTarget}`);
-  const r = spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${relTarget}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
+  const r = spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn','--exclude=package.json',`--directory=${relTarget}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(`Alpha 6.1: git apply falhou com codigo ${r.status}`);
 } finally { try { fs.unlinkSync(tmp); } catch {} }
