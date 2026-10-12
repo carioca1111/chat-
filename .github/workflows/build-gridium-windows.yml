@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha6.js gridium-build
 
-      # Deterministic 6.1 UI restore: guarantees ARMAR LIVE + renderer/preload wiring.
+      # Alpha 6.1 hotfix v2: robust UI patch, no compressed payload dependency.
       - name: Apply Gridium Alpha 6.1 LIVE UI hotfix
         shell: pwsh
         run: node apply-alpha61.js gridium-build
