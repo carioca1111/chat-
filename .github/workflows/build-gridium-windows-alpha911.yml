@@ -46,8 +46,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add alpha911-apply.log
-          git commit -m "Add Alpha 9.11 apply diagnostics" || exit 0
+          git add -f alpha911-apply.log
+          git commit -m "Add Alpha 9.11 apply diagnostics"
           git push origin HEAD:gridium-next
 
       - name: Stop after apply failure
