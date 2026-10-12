@@ -1,0 +1,14 @@
+'use strict';
+const fs=require('fs'),z=require('zlib');
+const input=process.argv[2],output=process.argv[3];
+if(!input||!output)throw new Error('uso: node alpha93-repair-crlf.js <packed> <output>');
+const packed=fs.readFileSync(input,'utf8');
+const match=packed.match(/Buffer\.from\('([^']+)'\s*,\s*'base64'\)/);
+if(!match)throw new Error('payload Alpha 9.3 válido não encontrado');
+let src=z.gunzipSync(Buffer.from(match[1],'base64')).toString('utf8');
+if(!src.includes("let r=read('renderer.js');"))throw new Error('renderer anchor ausente');
+if(!src.includes("let h=read('index.html');"))throw new Error('html anchor ausente');
+src=src.replace("let r=read('renderer.js');","let r=read('renderer.js').replace(/\\r\\n/g,'\\n');");
+src=src.replace("let h=read('index.html');","let h=read('index.html').replace(/\\r\\n/g,'\\n');");
+fs.writeFileSync(output,src);
+console.log('Alpha 9.3 Windows CRLF repair ready');
