@@ -6,6 +6,7 @@ on:
       - gridium-next
     paths:
       - '.github/workflows/export-alpha96-runtime.yml'
+      - 'export-alpha96-runtime.ps1'
   workflow_dispatch:
 
 jobs:
