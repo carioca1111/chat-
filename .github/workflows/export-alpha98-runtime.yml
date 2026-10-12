@@ -1,0 +1,23 @@
+name: Export Alpha98 Runtime
+on:
+  push:
+    branches: [gridium-next]
+    paths:
+      - '.github/workflows/export-alpha98-runtime.yml'
+  workflow_dispatch:
+jobs:
+  export:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - shell: pwsh
+        run: ./export-alpha98-runtime.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha98-Runtime
+          path: alpha98-runtime.zip
