@@ -9,6 +9,7 @@ on:
       - 'gridium-desktop/**'
       - '.github/workflows/build-gridium-windows.yml'
       - 'apply-alpha61.js'
+      - 'apply-alpha62.js'
   workflow_dispatch:
 
 jobs:
@@ -48,21 +49,32 @@ jobs:
         shell: pwsh
         run: node apply-alpha61.js gridium-build
 
-      - name: Verify Alpha 6.1 LIVE controls and bridge
+      - name: Apply Gridium Alpha 6.2 Electron prompt hotfix
+        shell: pwsh
+        run: node apply-alpha62.js gridium-build
+
+      - name: Verify Alpha 6.2 LIVE controls and bridge
         shell: pwsh
         run: |
           if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaLiveToggle"')) { throw "ARMAR LIVE control missing" }
-          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Alpha 6.1')) { throw "Alpha 6.1 marker missing" }
-          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'alphaLiveToggle')) { throw "ARMAR LIVE handler missing" }
-          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'onclick')) { throw "ARMAR LIVE onclick missing" }
+          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'GRID_ALPHA62_TEXT_PROMPT')) { throw "Alpha 6.2 custom confirmation dialog missing" }
+          if (Select-String -Path "gridium-build/renderer.js" -SimpleMatch '=prompt(') { throw "Unsupported window.prompt call still present in runtime handler" }
+          if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'gridiumTextPrompt')) { throw "ARMAR LIVE custom text confirmation missing" }
           if (-not (Select-String -Path "gridium-build/preload.js" -SimpleMatch 'alphaLiveUnlock:')) { throw "LIVE preload bridge missing" }
+          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'grid:alpha-live-unlock')) { throw "LIVE unlock IPC missing" }
           if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'grid:alpha-live-buy')) { throw "LIVE buy IPC missing" }
           if (-not (Test-Path "gridium-build/market-live.js")) { throw "market-live.js missing" }
+          $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.6.2') { throw "Unexpected Gridium version: $($pkg.version)" }
+
+      - name: Smoke test AlphaEngine LIVE lock
+        shell: pwsh
+        run: node -e "const os=require('os'),path=require('path'),fs=require('fs');const {AlphaEngine}=require('./gridium-build/alpha-engine.js');const p=path.join(os.tmpdir(),'gridium-live-smoke-'+process.pid+'.sqlite');const e=new AlphaEngine(p);const v=e.view().validation;for(const k of Object.keys(v))v[k]=true;e.setValidation(v);if(e.unlockLive(true).settings.liveExecutionUnlocked!==true)throw new Error('LIVE did not unlock');if(e.unlockLive(false).settings.liveExecutionUnlocked!==false)throw new Error('LIVE did not lock');e.close();for(const x of [p,p+'-wal',p+'-shm',p+'.json'])try{fs.unlinkSync(x)}catch{};console.log('AlphaEngine LIVE smoke OK')"
 
       - name: Upload assembled LIVE source for runtime contract verification
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-LIVE-runtime-source
+          name: Gridium-LIVE-runtime-source-6.2
           path: |
             gridium-build/renderer.js
             gridium-build/preload.js
@@ -96,7 +108,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.6.1
+          name: Gridium-Setup-3.0.0-alpha.6.2
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
