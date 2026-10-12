@@ -13,6 +13,7 @@ on:
       - 'apply-alpha7.js'
       - 'apply-alpha71-fixed.js'
       - 'apply-alpha8.js'
+      - 'apply-alpha81.js'
       - 'alpha8-parts/**'
   workflow_dispatch:
 
@@ -65,40 +66,43 @@ jobs:
         shell: pwsh
         run: node apply-alpha71-fixed.js gridium-build
 
-      - name: Apply Gridium Alpha 8 Full Autopilot and vertical accounts
+      - name: Apply Gridium Alpha 8 Full Autopilot
         shell: pwsh
         run: node apply-alpha8.js gridium-build
 
-      - name: Verify Alpha 8 Autopilot and account layout
+      - name: Apply Gridium Alpha 8.1 stable four-account UI
+        shell: pwsh
+        run: node apply-alpha81.js gridium-build
+
+      - name: Verify Alpha 8.1 UI and controls
         shell: pwsh
         run: |
           if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'id="alphaAutopilot"')) { throw "Autopilot button missing" }
-          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'data-layout="vertical"')) { throw "Vertical account layout control missing" }
-          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'layout-vertical')) { throw "Vertical account layout is not default" }
-          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'autoNavigateMarketTick')) { throw "Automatic Market/RMT navigator missing" }
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'data-layout="grid"')) { throw "2x2 account layout control missing" }
+          if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'game-grid layout-grid')) { throw "2x2 layout is not default" }
+          if (Select-String -Path "gridium-build/index.html" -SimpleMatch 'data-layout="vertical"') { throw "Vertical account layout still exposed" }
+          if (Select-String -Path "gridium-build/main.js" -SimpleMatch 'setInterval(()=>void autoNavigateMarketTick(),2500)') { throw "Aggressive tab navigator still active" }
           if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch "handler('grid:alpha-autopilot'")) { throw "Autopilot IPC missing" }
-          if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'setInterval(()=>void autoNavigateMarketTick(),2500)')) { throw "Autopilot navigation timer missing" }
           if (-not (Select-String -Path "gridium-build/preload.js" -SimpleMatch 'alphaAutopilot:')) { throw "Autopilot preload bridge missing" }
           if (-not (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'GRID_ALPHA8_AUTOPILOT_UI')) { throw "Autopilot renderer missing" }
-          if (-not (Select-String -Path "gridium-build/styles.css" -SimpleMatch 'GRID_ALPHA8_VERTICAL_ACCOUNTS_AND_AUTOPILOT')) { throw "Vertical account CSS missing" }
-          if (-not (Select-String -Path "gridium-build/alpha-engine.js" -SimpleMatch 'fullAutopilot:true')) { throw "AlphaEngine fullAutopilot feature missing" }
-          if (-not (Select-String -Path "gridium-build/alpha-engine.js" -SimpleMatch 'smartBankroll:true')) { throw "AlphaEngine smartBankroll feature missing" }
+          if (-not (Select-String -Path "gridium-build/styles.css" -SimpleMatch 'GRID_ALPHA81_STABLE_4_ACCOUNT_GRID')) { throw "Stable four-account CSS missing" }
+          if (Select-String -Path "gridium-build/renderer.js" -SimpleMatch 'renderAutoTrader(data.autoTrader);r);') { throw "Alpha 8 renderer corruption still present" }
           if (Select-String -Path "gridium-build/renderer.js" -SimpleMatch '=prompt(') { throw "Unsupported window.prompt call still present" }
           node --check gridium-build/main.js
           node --check gridium-build/renderer.js
           node --check gridium-build/preload.js
           node --check gridium-build/alpha-engine.js
           $pkg = Get-Content "gridium-build/package.json" -Raw | ConvertFrom-Json
-          if ($pkg.version -ne '3.0.0-alpha.8') { throw "Unexpected Gridium version: $($pkg.version)" }
+          if ($pkg.version -ne '3.0.0-alpha.8.1') { throw "Unexpected Gridium version: $($pkg.version)" }
 
-      - name: Smoke test AlphaEngine Alpha 8 safeguards
+      - name: Smoke test AlphaEngine safeguards
         shell: pwsh
-        run: node -e "const os=require('os'),path=require('path'),fs=require('fs');const {AlphaEngine}=require('./gridium-build/alpha-engine.js');const p=path.join(os.tmpdir(),'gridium-alpha8-smoke-'+process.pid+'.sqlite');const e=new AlphaEngine(p);const v=e.view().validation;for(const k of Object.keys(v))v[k]=true;e.setValidation(v);if(e.unlockLive(true).settings.liveExecutionUnlocked!==true)throw new Error('LIVE did not unlock');if(e.unlockLive(false).settings.liveExecutionUnlocked!==false)throw new Error('LIVE did not lock');const f=e.view().features;if(f.fullAutopilot!==true||f.autoMarketNavigation!==true||f.smartBankroll!==true)throw new Error('Alpha 8 feature flags unavailable');e.close();for(const x of [p,p+'-wal',p+'-shm',p+'.json'])try{fs.unlinkSync(x)}catch{};console.log('AlphaEngine Alpha 8 smoke OK')"
+        run: node -e "const os=require('os'),path=require('path'),fs=require('fs');const {AlphaEngine}=require('./gridium-build/alpha-engine.js');const p=path.join(os.tmpdir(),'gridium-alpha81-smoke-'+process.pid+'.sqlite');const e=new AlphaEngine(p);const v=e.view().validation;for(const k of Object.keys(v))v[k]=true;e.setValidation(v);if(e.unlockLive(true).settings.liveExecutionUnlocked!==true)throw new Error('LIVE did not unlock');if(e.unlockLive(false).settings.liveExecutionUnlocked!==false)throw new Error('LIVE did not lock');e.close();for(const x of [p,p+'-wal',p+'-shm',p+'.json'])try{fs.unlinkSync(x)}catch{};console.log('AlphaEngine Alpha 8.1 smoke OK')"
 
-      - name: Upload assembled Alpha 8 runtime source
+      - name: Upload assembled Alpha 8.1 runtime source
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-LIVE-runtime-source-8
+          name: Gridium-LIVE-runtime-source-8.1
           path: |
             gridium-build/renderer.js
             gridium-build/preload.js
@@ -134,7 +138,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Setup-3.0.0-alpha.8
+          name: Gridium-Setup-3.0.0-alpha.8.1
           path: gridium-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
