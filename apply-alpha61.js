@@ -1,9 +1,17 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const target = process.argv[2];
 if (!target) throw new Error('Uso: node apply-alpha61.js <diretorio-alvo>');
 const root = path.resolve(process.cwd(), target);
+
+// O workflow entrega o baseline Alpha 5. Reaplica a Alpha 6 funcional antes do hotfix visual 6.1.
+const alpha6 = path.join(__dirname,'gridium-desktop','apply-alpha6.js');
+const ar = spawnSync(process.execPath,[alpha6,target],{cwd:process.cwd(),stdio:'inherit'});
+if (ar.error) throw ar.error;
+if (ar.status !== 0) throw new Error(`Alpha 6.1: falha ao aplicar Alpha 6 (${ar.status})`);
+
 const p = n => path.join(root,n);
 const read = n => fs.readFileSync(p(n),'utf8');
 const write = (n,t) => fs.writeFileSync(p(n),t,'utf8');
@@ -39,6 +47,7 @@ if (!renderer.includes('GRID_ALPHA61_ARM_HANDLER')) {
   renderer += `\n// GRID_ALPHA61_ARM_HANDLER\n(() => {\n const wire=()=>{const b=document.getElementById('alphaLiveToggle');if(!b||b.dataset.wired)return;b.dataset.wired='1';b.onclick=async()=>{const phrase=prompt('Digite exatamente: ATIVAR LIVE');if(phrase!=='ATIVAR LIVE')return;const api=window[${JSON.stringify(bridge)}];if(!api||typeof api.alphaLiveUnlock!=='function'){alert('Bridge LIVE indisponível');return;}b.disabled=true;let r;try{r=await api.alphaLiveUnlock(phrase);}catch(e){try{r=await api.alphaLiveUnlock({phrase,confirmation:phrase,confirm:phrase});}catch(e2){b.disabled=false;alert(e2.message||'Falha ao armar LIVE');return;}}b.disabled=false;if(r&&r.ok===false){alert(r.message||r.error||'LIVE não liberado');return;}b.textContent='🔓 LIVE ARMADO';const s=document.getElementById('alphaStatusBadge');if(s)s.textContent='PROTOCOLO OK · LIVE ARMADO';};};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire,{once:true});else wire();\n})();\n`;
   write('renderer.js',renderer);
 }
+
 if (!read('index.html').includes('id="alphaLiveToggle"')) throw new Error('ARMAR LIVE ausente');
 if (!read('renderer.js').includes('GRID_ALPHA61_ARM_HANDLER')) throw new Error('handler ARMAR LIVE ausente');
 console.log('Gridium 3.0.0-alpha.6.1 hotfix aplicado.');
