@@ -11,7 +11,7 @@ on:
       - 'apply-alpha61.js'
       - 'apply-alpha62.js'
       - 'apply-alpha7.js'
-      - 'apply-alpha71.js'
+      - 'apply-alpha71-fixed.js'
   workflow_dispatch:
 
 jobs:
@@ -61,7 +61,7 @@ jobs:
 
       - name: Apply Gridium Alpha 7.1 Auto Trader feed fix
         shell: pwsh
-        run: node apply-alpha71.js gridium-build
+        run: node apply-alpha71-fixed.js gridium-build
 
       - name: Verify Alpha 7.1 automatic inspection feeds Auto Trader
         shell: pwsh
