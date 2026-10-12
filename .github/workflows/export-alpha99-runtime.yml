@@ -1,0 +1,26 @@
+name: Export Alpha99 Runtime
+on:
+  push:
+    branches: [gridium-next]
+    paths:
+      - '.github/workflows/export-alpha99-runtime.yml'
+      - 'export-alpha99-runtime.ps1'
+  workflow_dispatch:
+jobs:
+  export:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - shell: pwsh
+        run: ./export-alpha99-runtime.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha99-Runtime
+          path: alpha99-runtime.zip
+          retention-days: 30
