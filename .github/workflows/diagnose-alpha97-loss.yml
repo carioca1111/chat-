@@ -1,0 +1,20 @@
+name: Diagnose Gridium Alpha 9.7 Losses
+on:
+  push:
+    branches:
+      - gridium-next
+    paths:
+      - 'diagnose-alpha97-loss.ps1'
+      - '.github/workflows/diagnose-alpha97-loss.yml'
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - shell: pwsh
+        run: ./diagnose-alpha97-loss.ps1
