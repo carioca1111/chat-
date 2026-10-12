@@ -1,0 +1,40 @@
+name: Diagnose Alpha 9.11 Patch
+
+on:
+  push:
+    branches: [gridium-next]
+    paths:
+      - '.github/workflows/diagnose-alpha911-patch.yml'
+      - 'apply-alpha911.js'
+      - 'alpha911-parts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse patch and print context
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force -Path dummy-target | Out-Null
+          node apply-alpha911.js dummy-target *>&1 | Tee-Object -FilePath alpha911-patch-context.log
+          "exit_code=$LASTEXITCODE" | Add-Content alpha911-patch-context.log
+      - name: Publish diagnostic context
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f alpha911-patch-context.log
+          git commit -m "Add Alpha 9.11 patch context diagnostics"
+          git push origin HEAD:gridium-next
