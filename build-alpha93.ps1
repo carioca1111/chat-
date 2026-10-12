@@ -23,7 +23,11 @@ node apply-alpha88.js gridium-build
 node apply-alpha90.js gridium-build
 node apply-alpha91.js gridium-build
 node apply-alpha92.js gridium-build
-node apply-alpha93.js gridium-build
+# A versão válida do patch 9.3 está no commit inicial da release. Recuperamos do histórico
+# e normalizamos os finais de linha do Windows antes de aplicá-la.
+git show c16e2c3226dc5518304a939afd6b74aec76bc907:apply-alpha93.js | Set-Content -Encoding utf8 apply-alpha93-valid.js
+node alpha93-repair-crlf.js apply-alpha93-valid.js apply-alpha93-runtime.js
+node apply-alpha93-runtime.js gridium-build
 if (-not (Select-String -Path "gridium-build/index.html" -SimpleMatch 'Contas · visão 2×2')) { throw "Alpha 9.3 compact 2x2 UI missing" }
 if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'priorityRouteQueue')) { throw "Priority route queue missing" }
 if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'preferredListingId')) { throw "Priority revalidation missing" }
