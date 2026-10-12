@@ -31,4 +31,4 @@ node apply-alpha95.js gridium-build
 node apply-alpha96.js gridium-build
 node --check gridium-build/main.js
 node --check gridium-build/renderer.js
-Compress-Archive -Path gridium-build/main.js,gridium-build/renderer.js,gridium-build/index.html,gridium-build/styles.css,gridium-build/alpha-core-process.js,gridium-build/alpha-engine.js,gridium-build/market-protocol.js,gridium-build/preload.js -DestinationPath alpha96-runtime.zip -Force
+Compress-Archive -Path gridium-build/main.js,gridium-build/renderer.js,gridium-build/index.html,gridium-build/styles.css,gridium-build/alpha-core-process.js,gridium-build/alpha-engine.js,gridium-build/market-protocol.js,gridium-build/preload.js,gridium-build/network-inspector.js -DestinationPath alpha96-runtime.zip -Force
