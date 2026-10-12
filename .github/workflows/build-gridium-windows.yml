@@ -8,6 +8,7 @@ on:
       - 'gridium-ci/**'
       - 'gridium-desktop/**'
       - '.github/workflows/build-gridium-windows.yml'
+      - 'apply-alpha61.js'
   workflow_dispatch:
 
 jobs:
@@ -43,7 +44,6 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha5.js gridium-build
 
-      # Alpha 6.1 applies the complete LIVE patch inside gridium-build; package version is set separately.
       - name: Apply Gridium Alpha 6.1 LIVE Trading and UI
         shell: pwsh
         run: node apply-alpha61.js gridium-build
@@ -58,6 +58,21 @@ jobs:
           if (-not (Select-String -Path "gridium-build/preload.js" -SimpleMatch 'alphaLiveUnlock:')) { throw "LIVE preload bridge missing" }
           if (-not (Select-String -Path "gridium-build/main.js" -SimpleMatch 'grid:alpha-live-buy')) { throw "LIVE buy IPC missing" }
           if (-not (Test-Path "gridium-build/market-live.js")) { throw "market-live.js missing" }
+
+      - name: Upload assembled LIVE source for runtime contract verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-LIVE-runtime-source
+          path: |
+            gridium-build/renderer.js
+            gridium-build/preload.js
+            gridium-build/main.js
+            gridium-build/alpha-engine.js
+            gridium-build/market-live.js
+            gridium-build/index.html
+            gridium-build/package.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Install dependencies
         working-directory: gridium-build
