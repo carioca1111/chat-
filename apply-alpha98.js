@@ -1,0 +1,40 @@
+'use strict';
+const fs=require('fs'),path=require('path'),zlib=require('zlib');
+const {spawnSync}=require('child_process');
+const target=process.argv[2];
+if(!target)throw new Error('Uso: node apply-alpha98.js <diretorio-alvo>');
+const root=path.resolve(process.cwd(),target);
+if(!fs.existsSync(root))throw new Error('Diretorio alvo nao existe: '+root);
+const partsDir=path.join(__dirname,'alpha98-parts');
+const parts=fs.readdirSync(partsDir).filter(x=>/^part\d+\.b64$/.test(x)).sort();
+if(!parts.length)throw new Error('Alpha 9.8: partes do patch ausentes');
+const b64=parts.map(n=>fs.readFileSync(path.join(partsDir,n),'utf8').trim()).join('');
+const patch=zlib.gunzipSync(Buffer.from(b64,'base64'));
+const tmp=path.join(__dirname,'.alpha98.patch.tmp');fs.writeFileSync(tmp,patch);
+try{
+  const rel=path.relative(process.cwd(),root).replace(/\\/g,'/');
+  if(!rel||rel.startsWith('..'))throw new Error('Diretorio alvo invalido: '+rel);
+  const r=spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${rel}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
+  if(r.error)throw r.error;if(r.status!==0)throw new Error('Alpha 9.8: git apply falhou com codigo '+r.status);
+}finally{try{fs.unlinkSync(tmp)}catch{}}
+const pkgPath=path.join(root,'package.json');const pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));
+if(pkg.version!=='3.0.0-alpha.9.7')throw new Error('Alpha 9.8: base 9.7 esperada, atual '+pkg.version);
+pkg.version='3.0.0-alpha.9.8';fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+'\n');
+const testDir=path.join(root,'test');fs.mkdirSync(testDir,{recursive:true});
+fs.writeFileSync(path.join(testDir,'alpha98-margin-guard.test.js'),`'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),os=require('os');
+const {AlphaEngine}=require('../alpha-engine');
+function engine(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'g98-')),file=path.join(dir,'a.sqlite'),e=new AlphaEngine(file);e.configure({killSwitch:false,executionMode:'auto',liveExecutionUnlocked:true,bankrolls:[{coins:5000000,gems:20},{coins:5000000,gems:20},{coins:5000000,gems:20},{coins:5000000,gems:20}]});return {e,dir};}
+test('historico deduplica snapshots e usa janela curta conservadora',()=>{const {e,dir}=engine();try{const now=Date.now();for(let i=0;i<20;i++)e.recordMarket({at:now-i*1000,listingId:'same',slot:0,assetType:'item',assetId:'23',name:'Stone',currency:'coins',price:300000,liquidity:.8});for(const [i,p] of [100000,105000,110000,115000,120000].entries())e.recordMarket({at:now-i*1000,listingId:'x'+i,slot:0,assetType:'item',assetId:'23',name:'Stone',currency:'coins',price:p,liquidity:.8});const est=e.estimateFairValue({assetId:'23',name:'Stone',currency:'coins'});assert.ok(est.comparableCount<=6);assert.ok(est.fairValue<=120000);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('book raso bloqueia e book profundo calcula ROI liquido',()=>{const {e,dir}=engine();try{let x=e.evaluate({price:100000,currency:'coins',fairValue:140000,confidence:.9,liquidity:.9,bookRequired:true,bookDepth:1,bookTarget:139000,bookAgeMs:1000},'balanced');assert.equal(x.eligible,false);assert.match(x.reason,/Book raso/);x=e.evaluate({price:100000,currency:'coins',fairValue:140000,confidence:.9,liquidity:.9,bookRequired:true,bookDepth:4,bookTarget:139000,bookAgeMs:1000},'balanced');assert.equal(x.marginProtected,true);assert.ok(x.roi>12);assert.ok(x.floorPrice>100000);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('repricing nunca atravessa piso de custo taxa e lucro',()=>{const {e,dir}=engine();try{e.openPosition({slot:0,strategy:'balanced',mode:'real',assetType:'item',assetId:'23',name:'Stone',currency:'coins',entry:100000});const r=e.repricingPreview(0,{listingId:'own',assetType:'item',assetId:'23',name:'Stone',currency:'coins',price:150000,availableAt:0},[{listingId:'c',assetType:'item',assetId:'23',name:'Stone',currency:'coins',price:110000}]);assert.equal(r.canEdit,false);assert.equal(r.competitorBelowFloor,true);assert.ok(r.floor>110000);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('duas perdas no mesmo ativo ativam cooldown',()=>{const {e,dir}=engine();try{for(let i=0;i<2;i++){const id=e.openPosition({slot:0,strategy:'balanced',mode:'real',assetType:'item',assetId:'23',name:'Stone',currency:'coins',entry:100000});e.closePosition(id,90000,0);}const r=e.canExecute({price:1000,currency:'coins',assetId:'23',name:'Stone'},0,'balanced');assert.equal(r.ok,false);assert.match(r.reason,/cooldown/i);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('auto sell usa formula liquida e estrategia da conta',()=>{const src=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');assert.ok(src.includes("function autoSellPrice(listing,evaluation={},strategyId='balanced')"));assert.ok(src.includes('(1+minNetRoi/100)/netFactor'));assert.ok(src.includes('autoSellPrice(listing,evaluation,strategy)'));});
+`,'utf8');
+fs.writeFileSync(path.join(testDir,'alpha98-game-view.test.js'),`'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path');const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8'),renderer=fs.readFileSync(path.join(__dirname,'..','renderer.js'),'utf8'),css=fs.readFileSync(path.join(__dirname,'..','styles.css'),'utf8');
+test('Game View Classic oferece 2x2 1x2 e 1x1',()=>{assert.match(html,/game-classic-toolbar/);assert.match(html,/data-layout="grid">2×2/);assert.match(html,/data-layout="duo">1×2/);assert.match(html,/data-layout="focus">1×1/);});
+test('seletor de conta e layout ficam salvos',()=>{assert.match(html,/data-game-slot="0"/);assert.match(renderer,/gridiumGameLayout/);assert.match(renderer,/gridiumGameSlot/);});
+test('grade usa area util e zoom individual continua',()=>{assert.match(css,/GRID_ALPHA98_MARGIN_GUARD_CLASSIC_GAME_VIEW/);assert.ok(css.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr)'));assert.match(html,/data-zoom-minus="0"/);assert.match(html,/data-zoom-plus="0"/);});
+`,'utf8');
+console.log('Gridium 3.0.0-alpha.9.8 aplicado: Margin Guard + Game View Classic.');
