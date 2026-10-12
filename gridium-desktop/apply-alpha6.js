@@ -30,4 +30,4 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 pkg.version = '3.0.0-alpha.6';
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 console.log(`Gridium ${pkg.version} aplicado em ${targetDir}`);
-// Alpha 6.1 build trigger.
+// Alpha 6.1 corrected UI build trigger.
