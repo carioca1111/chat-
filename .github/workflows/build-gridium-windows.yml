@@ -43,8 +43,7 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha5.js gridium-build
 
-      # Alpha 6.1 includes the complete regenerated Alpha 6 LIVE patch, then the UI hotfix.
-      # Patch chunks and ARMAR LIVE handler are verified before installer generation.
+      # Alpha 6.1 applies the complete LIVE patch inside gridium-build, then the UI hotfix.
       - name: Apply Gridium Alpha 6.1 LIVE Trading and UI
         shell: pwsh
         run: node apply-alpha61.js gridium-build
