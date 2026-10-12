@@ -31,8 +31,18 @@ const tmp=path.join(__dirname,'.alpha911.patch.tmp');fs.writeFileSync(tmp,patch)
 try{
   const rel=path.relative(process.cwd(),root).replace(/\\/g,'/');
   if(!rel||rel.startsWith('..'))throw new Error('Diretorio alvo invalido: '+rel);
-  const r=spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${rel}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
-  if(r.error)throw r.error;if(r.status!==0)throw new Error('Alpha 9.11: git apply falhou com codigo '+r.status);
+  const r=spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${rel}`,tmp],{cwd:process.cwd(),encoding:'utf8'});
+  if(r.stdout)process.stdout.write(r.stdout);
+  if(r.stderr)process.stderr.write(r.stderr);
+  if(r.error)throw r.error;
+  if(r.status!==0){
+    const m=String(r.stderr||'').match(/corrupt patch at .*:(\d+)/i),line=m?Number(m[1]):0;
+    const lines=patch.toString('utf8').split(/\r?\n/),from=Math.max(1,(line||1)-18),to=Math.min(lines.length,(line||1)+18);
+    console.error(`--- Alpha 9.11 patch context ${from}-${to} / ${lines.length} ---`);
+    for(let i=from;i<=to;i++)console.error(`${String(i).padStart(4,'0')}: ${lines[i-1]}`);
+    console.error('--- end patch context ---');
+    throw new Error('Alpha 9.11: git apply falhou com codigo '+r.status);
+  }
 }finally{try{fs.unlinkSync(tmp)}catch{}}
 const pkgPath=path.join(root,'package.json'),pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));
 if(pkg.version!=='3.0.0-alpha.9.10')throw new Error('Alpha 9.11: base 9.10 esperada, atual '+pkg.version);
