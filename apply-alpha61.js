@@ -9,8 +9,6 @@ if (!target) throw new Error('Uso: node apply-alpha61.js <diretorio-alvo>');
 const root = path.resolve(process.cwd(), target);
 if (!fs.existsSync(root)) throw new Error(`Diretorio alvo nao existe: ${root}`);
 
-// Baseline recebido aqui: Alpha 5. O patch abaixo é o Alpha 6 completo,
-// regenerado e verificado byte-a-byte em 6 partes.
 const chunksDir = path.join(__dirname, 'alpha61-full');
 const parts = ['part00.b64','part01.b64','part02.b64','part03.b64','part04.b64','part05.b64'];
 const b64 = parts.map(n => fs.readFileSync(path.join(chunksDir,n),'utf8').trim()).join('');
@@ -18,7 +16,9 @@ const patch = zlib.gunzipSync(Buffer.from(b64,'base64'));
 const tmp = path.join(__dirname, '.alpha61-full.patch.tmp');
 fs.writeFileSync(tmp, patch);
 try {
-  const r = spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',tmp],{cwd:root,stdio:'inherit'});
+  const relTarget = path.relative(process.cwd(), root).replace(/\\/g,'/');
+  if (!relTarget || relTarget.startsWith('..')) throw new Error(`Diretorio alvo invalido: ${relTarget}`);
+  const r = spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${relTarget}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(`Alpha 6.1: git apply falhou com codigo ${r.status}`);
 } finally { try { fs.unlinkSync(tmp); } catch {} }
