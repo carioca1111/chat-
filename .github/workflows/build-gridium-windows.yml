@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
         run: node gridium-desktop/apply-alpha5.js gridium-build
 
-      # Alpha 6.1 applies the complete LIVE patch inside gridium-build, then the UI hotfix.
+      # Alpha 6.1 applies the complete LIVE patch inside gridium-build; package version is set separately.
       - name: Apply Gridium Alpha 6.1 LIVE Trading and UI
         shell: pwsh
         run: node apply-alpha61.js gridium-build
