@@ -1,0 +1,40 @@
+'use strict';
+const fs=require('fs'),path=require('path'),zlib=require('zlib');
+const {spawnSync}=require('child_process');
+const target=process.argv[2];
+if(!target)throw new Error('Uso: node apply-alpha99.js <diretorio-alvo>');
+const root=path.resolve(process.cwd(),target);
+if(!fs.existsSync(root))throw new Error('Diretorio alvo nao existe: '+root);
+const partsDir=path.join(__dirname,'alpha99-parts');
+const parts=fs.readdirSync(partsDir).filter(x=>/^part\d+\.b64$/.test(x)).sort();
+if(!parts.length)throw new Error('Alpha 9.9: partes do patch ausentes');
+const b64=parts.map(n=>fs.readFileSync(path.join(partsDir,n),'utf8').trim()).join('');
+const patch=zlib.gunzipSync(Buffer.from(b64,'base64'));
+const tmp=path.join(__dirname,'.alpha99.patch.tmp');fs.writeFileSync(tmp,patch);
+try{
+  const rel=path.relative(process.cwd(),root).replace(/\\/g,'/');
+  if(!rel||rel.startsWith('..'))throw new Error('Diretorio alvo invalido: '+rel);
+  const r=spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${rel}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
+  if(r.error)throw r.error;if(r.status!==0)throw new Error('Alpha 9.9: git apply falhou com codigo '+r.status);
+}finally{try{fs.unlinkSync(tmp)}catch{}}
+const pkgPath=path.join(root,'package.json'),pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));
+if(pkg.version!=='3.0.0-alpha.9.8')throw new Error('Alpha 9.9: base 9.8 esperada, atual '+pkg.version);
+pkg.version='3.0.0-alpha.9.9';fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+'\n');
+const testDir=path.join(root,'test');fs.mkdirSync(testDir,{recursive:true});
+fs.writeFileSync(path.join(testDir,'alpha99-ultra-performance.test.js'),`'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8'),renderer=fs.readFileSync(path.join(__dirname,'..','renderer.js'),'utf8'),html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8'),preload=fs.readFileSync(path.join(__dirname,'..','preload.js'),'utf8'),network=fs.readFileSync(path.join(__dirname,'..','network-inspector.js'),'utf8');
+test('Ultra Performance oferece perfis e comunica visibilidade/foco',()=>{assert.match(html,/id="performanceProfile"/);assert.match(html,/value="ultra"/);assert.match(html,/value="balanced"/);assert.match(html,/value="quality"/);assert.match(preload,/performanceView/);assert.match(renderer,/sendPerformanceView/);assert.match(main,/grid:performance-view/);});
+test('reduz renderização sem suspender renderer ou WebSocket',()=>{assert.match(main,/setFrameRate/);assert.match(main,/insertCSS/);assert.match(main,/setBackgroundThrottling/);assert.doesNotMatch(main,/\.suspend\s*\(/);assert.match(main,/sampleMs/);});
+test('protocolo e buffers são limitados por perfil',()=>{assert.match(main,/protocolCursorAt/);assert.match(main,/protocolo-recente/);assert.match(network,/configure\(profile/);assert.match(network,/profileInfo/);assert.match(network,/events:1600/);assert.match(network,/market:900/);});
+test('NetworkInspector aplica limites Ultra',()=>{const {NetworkInspector}=require('../network-inspector');const n=new NetworkInspector('ultra'),p=n.profileInfo();assert.equal(p.profile,'ultra');assert.equal(p.events,1600);assert.equal(p.market,900);n.configure('quality');assert.equal(n.profileInfo().events,6000);});
+`,'utf8');
+fs.writeFileSync(path.join(testDir,'alpha99-risk-telemetry.test.js'),`'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),os=require('os');
+const {AlphaEngine}=require('../alpha-engine');
+function engine(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'g99-')),file=path.join(dir,'a.sqlite'),e=new AlphaEngine(file);e.configure({killSwitch:false,executionMode:'auto',liveExecutionUnlocked:true,bankrolls:[{coins:5000000,gems:20},{coins:5000000,gems:20},{coins:5000000,gems:20},{coins:5000000,gems:20}],maxDailyLoss:{coins:50000,gems:5}});return {e,dir};}
+test('perda em aberto participa do limite diário',()=>{const {e,dir}=engine();try{e.openPosition({slot:0,strategy:'balanced',mode:'real',assetType:'item',assetId:'23',name:'Stone',currency:'coins',entry:100000,mark:50000});const r=e.canExecute({price:1000,currency:'coins',assetId:'24',name:'Outro'},0,'balanced');assert.equal(r.ok,false);assert.match(r.reason,/inclui posições em aberto/);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('Trade Journal preserva previsão, realizado e erro',()=>{const {e,dir}=engine();try{const id=e.openPosition({slot:0,strategy:'balanced',mode:'real',assetType:'item',assetId:'23',name:'Stone',currency:'coins',entry:100000,target:140000,mark:100000,metadata:{expectedSale:140000,expectedFee:21000,expectedProfit:19000}});e.closePosition(id,130000);const t=e.trades()[0];assert.equal(t.metadata.expectedSale,140000);assert.equal(t.metadata.actualSale,130000);assert.equal(t.metadata.actualFee,19500);assert.equal(t.metadata.actualProfit,10500);assert.equal(t.metadata.forecastError,-8500);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('compra real grava campos de previsão antes da posição',()=>{const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8'),renderer=fs.readFileSync(path.join(__dirname,'..','renderer.js'),'utf8');for(const key of ['expectedSale','expectedFee','expectedProfit','bookDepth','floorPrice'])assert.ok(main.includes(key));assert.match(renderer,/Previsto: venda/);assert.match(renderer,/erro/);});
+`,'utf8');
+console.log('Gridium 3.0.0-alpha.9.9 aplicado: Margin Guard completo + Ultra Performance.');
