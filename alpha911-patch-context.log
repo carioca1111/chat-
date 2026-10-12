@@ -4,15 +4,15 @@ node:fs:440
 
 Error: ENOENT: no such file or directory, open 'D:\a\chat-\chat-\dummy-target\main.js'
     at Object.readFileSync (node:fs:440:20)
-    at read (eval at <anonymous> (D:\a\chat-\chat-\apply-alpha911.js:1:38), <anonymous>:7:18)
-    at eval (eval at <anonymous> (D:\a\chat-\chat-\apply-alpha911.js:1:38), <anonymous>:15:10)
-    at Object.<anonymous> (D:\a\chat-\chat-\apply-alpha911.js:1:38)
+    at read (D:\a\chat-\chat-\apply-alpha911.js:7:18)
+    at Object.<anonymous> (D:\a\chat-\chat-\apply-alpha911.js:15:10)
     at Module._compile (node:internal/modules/cjs/loader:1781:14)
     at Object..js (node:internal/modules/cjs/loader:1913:10)
     at Module.load (node:internal/modules/cjs/loader:1505:32)
     at Function._load (node:internal/modules/cjs/loader:1309:12)
     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5) {
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49 {
   errno: -4058,
   code: 'ENOENT',
   syscall: 'open',
