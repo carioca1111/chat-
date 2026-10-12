@@ -1,5 +1,13 @@
 name: Export Alpha96 Runtime
-on: workflow_dispatch
+
+on:
+  push:
+    branches:
+      - gridium-next
+    paths:
+      - '.github/workflows/export-alpha96-runtime.yml'
+  workflow_dispatch:
+
 jobs:
   export:
     runs-on: windows-latest
