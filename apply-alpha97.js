@@ -1,0 +1,32 @@
+'use strict';
+const fs=require('fs'),path=require('path'),zlib=require('zlib');
+const {spawnSync}=require('child_process');
+const target=process.argv[2];
+if(!target)throw new Error('Uso: node apply-alpha97.js <diretorio-alvo>');
+const root=path.resolve(process.cwd(),target);
+if(!fs.existsSync(root))throw new Error('Diretorio alvo nao existe: '+root);
+const partsDir=path.join(__dirname,'alpha97-parts');
+const parts=fs.readdirSync(partsDir).filter(x=>/^part\d+\.b64$/.test(x)).sort();
+if(!parts.length)throw new Error('Alpha 9.7: partes do patch ausentes');
+const b64=parts.map(n=>fs.readFileSync(path.join(partsDir,n),'utf8').trim()).join('');
+const patch=zlib.gunzipSync(Buffer.from(b64,'base64'));
+const tmp=path.join(__dirname,'.alpha97.patch.tmp');fs.writeFileSync(tmp,patch);
+try{
+  const rel=path.relative(process.cwd(),root).replace(/\\/g,'/');
+  if(!rel||rel.startsWith('..'))throw new Error('Diretorio alvo invalido: '+rel);
+  const r=spawnSync('git',['apply','--unsafe-paths','--whitespace=nowarn',`--directory=${rel}`,tmp],{cwd:process.cwd(),stdio:'inherit'});
+  if(r.error)throw r.error;if(r.status!==0)throw new Error('Alpha 9.7: git apply falhou com codigo '+r.status);
+}finally{try{fs.unlinkSync(tmp)}catch{}}
+const pkgPath=path.join(root,'package.json');const pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));if(pkg.version!=='3.0.0-alpha.9.6')throw new Error('Alpha 9.7: base 9.6 esperada, atual '+pkg.version);pkg.version='3.0.0-alpha.9.7';fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+'\n');
+const testDir=path.join(root,'test');fs.mkdirSync(testDir,{recursive:true});
+fs.writeFileSync(path.join(testDir,'alpha97-global-market.test.js'),`'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('fs');const path=require('path');const os=require('os');
+const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');const renderer=fs.readFileSync(path.join(__dirname,'..','renderer.js'),'utf8');const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
+test('scanner global cobre itens, categorias e Pokémon sem ficar preso em stone',()=>{assert.match(main,/marketCatalog/);assert.match(main,/t:'market\\.especies'/);assert.match(main,/t:'market\\.listar'/);assert.match(main,/t:'market\\.item'/);assert.match(main,/categoria:''/);assert.match(main,/Scanner global passivo/);});
+test('concorrência de Market é configurável de 1 a 4 e UI existe',()=>{assert.match(main,/configuredMarketConcurrency/);assert.match(main,/ensureMarketActiveSlots/);assert.match(renderer,/alphaMarketConcurrency/);assert.match(html,/id="alphaMarketConcurrency"/);});
+test('4 contas desativam rotação ao manter todas ativas',()=>{assert.match(main,/count>=slots\\.length/);assert.match(main,/Todas as contas ativas · sem rotação/);assert.match(renderer,/desativada \\(4\\/4 trabalhando\\)/);});
+test('navegação automática do Market ficou passiva e não rouba aba visível',()=>{const a=main.indexOf('async function autoNavigateMarketTick('),b=main.indexOf('async function autoMarketInspectionTick',a),seg=main.slice(a,b);assert.match(seg,/Scanner global passivo/);assert.doesNotMatch(seg,/autoNavScript\\(/);assert.doesNotMatch(seg,/\\.click\\(/);});
+test('configuração marketConcurrency normaliza e persiste',()=>{const {AlphaEngine}=require('../alpha-engine');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'g97-')),db=path.join(dir,'a.sqlite'),e=new AlphaEngine(db);try{e.configure({marketConcurrency:3});assert.equal(e.settings.marketConcurrency,3);e.configure({marketConcurrency:99});assert.equal(e.settings.marketConcurrency,4);e.configure({marketConcurrency:-5});assert.equal(e.settings.marketConcurrency,1);}finally{e.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('NetworkInspector aceita múltiplos slots de foco',()=>{const {NetworkInspector}=require('../network-inspector');const n=new NetworkInspector();assert.deepEqual(n.setFocusSlots([0,2,2,9]),[0,2]);assert.deepEqual(n.getFocusSlots(),[0,2]);assert.equal(n.getFocusSlot(),0);n.setFocusSlot(3);assert.deepEqual(n.getFocusSlots(),[3]);});
+`,'utf8');
+console.log('Gridium 3.0.0-alpha.9.7 aplicado: Scanner Global + Market 1–4 contas.');
