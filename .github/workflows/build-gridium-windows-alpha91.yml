@@ -1,0 +1,9 @@
+name: Build Gridium Windows Alpha 9.1
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo Alpha 9.1
