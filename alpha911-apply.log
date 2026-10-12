@@ -1,9 +1,11 @@
-D:\a\chat-\chat-\apply-alpha911.js:30
-  if(!required.every(x=>txt.includes(x)))throw new Error('Alpha 9.11: recuperação do patch falhou na validação de integridade');
-                                         ^
+Alpha 9.11: checksum gzip divergente; payload DEFLATE recuperado (71520 bytes). Git apply + validações + testes farão a verificação final.
+error: corrupt patch at D:/a/chat-/chat-/.alpha911.patch.tmp:267
+D:\a\chat-\chat-\apply-alpha911.js:35
+  if(r.error)throw r.error;if(r.status!==0)throw new Error('Alpha 9.11: git apply falhou com codigo '+r.status);
+                                           ^
 
-Error: Alpha 9.11: recuperação do patch falhou na validação de integridade
-    at Object.<anonymous> (D:\a\chat-\chat-\apply-alpha911.js:30:48)
+Error: Alpha 9.11: git apply falhou com codigo 128
+    at Object.<anonymous> (D:\a\chat-\chat-\apply-alpha911.js:35:50)
     at Module._compile (node:internal/modules/cjs/loader:1781:14)
     at Object..js (node:internal/modules/cjs/loader:1913:10)
     at Module.load (node:internal/modules/cjs/loader:1505:32)
