@@ -1,9 +1,32 @@
 name: Build Gridium Windows Alpha 9.1
+
 on:
+  push:
+    branches: [gridium-next]
+    paths:
+      - '.github/workflows/build-gridium-windows-alpha91.yml'
+      - 'build-alpha91.ps1'
+      - 'apply-alpha91.js'
+      - 'alpha-core-process-91.js'
+      - 'alpha91-process-core.test.js'
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: echo Alpha 9.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build and test Alpha 9.1
+        shell: pwsh
+        run: ./build-alpha91.ps1
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Setup-3.0.0-alpha.9.1
+          path: gridium-build/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
