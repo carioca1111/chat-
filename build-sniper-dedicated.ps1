@@ -9,6 +9,7 @@ node (Join-Path $root 'apply-sniper-budget-persistence.js') $build
 node (Join-Path $root 'apply-sniper-opportunities.js') $build
 node (Join-Path $root 'normalize-sniper-ux3-inputs.js') $build
 node (Join-Path $root 'apply-sniper-ux3.js') $build
+node (Join-Path $root 'fix-sniper-ux3-test.js') $build
 Push-Location $build
 try {
   node --check main.js
