@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-let state = { opportunities: [], anomalies: [], recentEvents: [], stats: {} };
+let state = { opportunities: [], anomalies: [], recentEvents: [], stats: {}, dataMode: 'WAITING_REAL_FEED' };
 let selectedKey = null;
 
 function money(v, currency='GEM') {
@@ -29,15 +29,20 @@ function filtered(items){
 }
 
 function render(){
+  const live=state.dataMode==='REAL_FEED';
   $('#kAssets').textContent=state.stats.trackedAssets??0; $('#kAnoms').textContent=state.stats.anomalies??0; $('#kOpps').textContent=state.stats.strongOpportunities??0; $('#kEvents').textContent=(state.stats.events??0).toLocaleString('pt-BR');
-  $('#updated').textContent=`ao vivo • ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+  $('#updated').textContent=live?`feed real • ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`:'Aguardando feed real • nenhum dado simulado';
+  if($('#dataMode')) $('#dataMode').textContent=live?'FEED REAL CONECTADO':'AGUARDANDO FEED REAL';
+  if($('#dataModeText')) $('#dataModeText').textContent=live?'Exibindo somente eventos recebidos do coletor real do Market.':'Nenhum Pokémon, item, preço ou oportunidade será inventado. O painel só exibirá dados recebidos do Market.';
   renderCards(); renderTable(); renderAnomalies(); renderFeed();
   if(selectedKey) openDrawer(selectedKey, false);
 }
 
+function waitingMessage(){return state.dataMode==='REAL_FEED'?'Nenhuma oportunidade atende aos filtros agora.':'Aguardando o feed real do Market. Nenhum dado fictício será exibido.'}
+
 function renderCards(){
   const rows=filtered(state.opportunities).slice(0,9); const host=$('#cards');
-  if(!rows.length){host.innerHTML='<div class="empty">Nenhuma oportunidade atende aos filtros agora.</div>';return}
+  if(!rows.length){host.innerHTML=`<div class="empty">${waitingMessage()}</div>`;return}
   host.innerHTML=rows.map(x=>`<article class="opp-card ${x.severity}" data-key="${esc(x.key)}"><div class="card-accent"></div><div class="card-body">
     <div class="card-head"><div><div class="asset-name">${esc(x.name)}</div><div class="asset-meta">${x.kind==='pokemon'?'POKÉMON':'ITEM'} • ${x.currency}</div></div><div class="score">${x.score}</div></div>
     <div class="price-grid"><div class="metric"><span>Floor agora</span><b>${money(x.floor,x.currency)}</b></div><div class="metric"><span>Valor justo</span><b>${money(x.fairValue,x.currency)}</b></div><div class="metric"><span>Desconto</span><b class="good">${pct(x.discountPct)}</b></div><div class="metric"><span>Lucro líquido est.</span><b class="good">${money(x.netProfit,x.currency)}</b></div></div>
@@ -48,17 +53,17 @@ function renderCards(){
 }
 
 function renderTable(){
-  const rows=filtered(state.opportunities); $('#oppTable').innerHTML=rows.map(x=>`<tr data-key="${esc(x.key)}"><td><strong>${esc(x.name)}</strong><br><small>${x.kind} • ${x.currency}</small></td><td>${money(x.floor,x.currency)}</td><td>${money(x.fairValue,x.currency)}</td><td class="positive">${pct(x.discountPct)}</td><td class="positive">${money(x.netProfit,x.currency)}</td><td>${x.liquidity}/100</td><td>${x.confidence}%</td><td><span class="score-pill">${x.score}</span></td></tr>`).join('') || '<tr><td colspan="8">Nenhuma oportunidade.</td></tr>';
+  const rows=filtered(state.opportunities); $('#oppTable').innerHTML=rows.map(x=>`<tr data-key="${esc(x.key)}"><td><strong>${esc(x.name)}</strong><br><small>${x.kind} • ${x.currency}</small></td><td>${money(x.floor,x.currency)}</td><td>${money(x.fairValue,x.currency)}</td><td class="positive">${pct(x.discountPct)}</td><td class="positive">${money(x.netProfit,x.currency)}</td><td>${x.liquidity}/100</td><td>${x.confidence}%</td><td><span class="score-pill">${x.score}</span></td></tr>`).join('') || `<tr><td colspan="8">${waitingMessage()}</td></tr>`;
   $$('#oppTable tr[data-key]').forEach(el=>el.onclick=()=>openDrawer(el.dataset.key));
 }
 
 function renderAnomalies(){
-  const rows=filtered(state.anomalies); $('#anomalyList').innerHTML=rows.map(x=>`<article class="anomaly-item" data-key="${esc(x.key)}"><div class="anom-icon">⚡</div><div><h3>${esc(x.name)}</h3><p>${x.anomalyTypes.join(' • ')} · floor ${money(x.floor,x.currency)} · valor justo ${money(x.fairValue,x.currency)}</p></div><div class="anom-score">${x.score}</div></article>`).join('') || '<div class="empty">Nenhuma anomalia nos filtros atuais.</div>';
+  const rows=filtered(state.anomalies); $('#anomalyList').innerHTML=rows.map(x=>`<article class="anomaly-item" data-key="${esc(x.key)}"><div class="anom-icon">⚡</div><div><h3>${esc(x.name)}</h3><p>${x.anomalyTypes.join(' • ')} · floor ${money(x.floor,x.currency)} · valor justo ${money(x.fairValue,x.currency)}</p></div><div class="anom-score">${x.score}</div></article>`).join('') || `<div class="empty">${state.dataMode==='REAL_FEED'?'Nenhuma anomalia nos filtros atuais.':'Aguardando dados reais suficientes para detectar anomalias.'}</div>`;
   $$('#anomalyList [data-key]').forEach(el=>el.onclick=()=>openDrawer(el.dataset.key));
 }
 
 function renderFeed(){
-  $('#feedList').innerHTML=state.recentEvents.slice(0,50).map(e=>`<article class="feed-item"><span class="feed-time">${new Date(e.ts).toLocaleTimeString('pt-BR')}<br>${ago(e.ts)}</span><div><strong>${esc(e.name)}</strong><p>${eventLabel(e.type)} ${e.seller?'• '+esc(e.seller):''}</p></div><span class="feed-price">${money(e.price,e.currency)}</span></article>`).join('');
+  $('#feedList').innerHTML=state.recentEvents.slice(0,50).map(e=>`<article class="feed-item"><span class="feed-time">${new Date(e.ts).toLocaleTimeString('pt-BR')}<br>${ago(e.ts)}</span><div><strong>${esc(e.name)}</strong><p>${eventLabel(e.type)} ${e.seller?'• '+esc(e.seller):''}</p></div><span class="feed-price">${money(e.price,e.currency)}</span></article>`).join('') || `<div class="empty">${state.dataMode==='REAL_FEED'?'Nenhum evento recente.':'Nenhum evento real recebido ainda.'}</div>`;
 }
 function eventLabel(t){return ({listing_created:'Novo anúncio',listing_updated:'Preço alterado',listing_sold:'Vendido',listing_cancelled:'Cancelado'})[t]||t}
 
@@ -68,7 +73,7 @@ function openDrawer(key, doOpen=true){
     <div class="hero-score"><div class="big-score"><strong>${x.score}</strong><span>OPPORTUNITY SCORE</span></div><div class="reason-list">${(x.anomalyTypes.length?x.anomalyTypes:['SEM ANOMALIA FORTE']).map(t=>`<div class="reason">✓ ${esc(t)}</div>`).join('')}</div></div>
     <div class="drawer-grid"><div class="drawer-metric"><span>FLOOR</span><b>${money(x.floor,x.currency)}</b></div><div class="drawer-metric"><span>VALOR JUSTO</span><b>${money(x.fairValue,x.currency)}</b></div><div class="drawer-metric"><span>DESCONTO</span><b class="positive">${pct(x.discountPct)}</b></div><div class="drawer-metric"><span>LUCRO LÍQUIDO EST.</span><b class="positive">${money(x.netProfit,x.currency)}</b></div><div class="drawer-metric"><span>LIQUIDEZ</span><b>${x.liquidity}/100</b></div><div class="drawer-metric"><span>CONFIANÇA</span><b>${x.confidence}%</b></div><div class="drawer-metric"><span>VENDAS 24H</span><b>${x.sales24h}</b></div><div class="drawer-metric"><span>ANÚNCIOS ATIVOS</span><b>${x.activeListings}</b></div></div>
     <div class="chart"><canvas id="chart" width="800" height="240"></canvas></div>
-    <div class="risk-note">A estimativa usa histórico observado e aplica uma taxa configurada para calcular margem líquida. Preço de mercado pode mudar e não há garantia de venda ou lucro.</div>`;
+    <div class="risk-note">A estimativa usa exclusivamente eventos recebidos pelo feed conectado e aplica uma taxa configurada para calcular margem líquida. Preço de mercado pode mudar e não há garantia de venda ou lucro.</div>`;
   drawChart(x.timeline||[]); if(doOpen)$('#drawer').classList.add('open');
 }
 
