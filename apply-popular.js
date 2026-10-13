@@ -74,6 +74,12 @@ write('market-live.js',marketLiveStub);
 let main=read('main.js');
 if(!main.includes('GRID_POPULAR_EDITION'))main='const GRID_POPULAR_EDITION=true;\n'+main;
 main=main.replace(/app\.setName\('Gridium'\)/g,"app.setName('Gridium Popular')");
+const profileAnchor="app.setName('Gridium Popular')";
+if(!main.includes('GRID_POPULAR_PROFILE_ISOLATION')){
+  if(!main.includes(profileAnchor))throw new Error('Gridium Popular: ponto de isolamento de perfil não encontrado');
+  const profileIsolation=`app.setName('Gridium Popular');\n/* GRID_POPULAR_PROFILE_ISOLATION */\nconst gridiumPopularUserData=path.join(app.getPath('appData'),'Gridium Popular');\napp.setPath('userData',gridiumPopularUserData);\ntry{app.setPath('sessionData',path.join(gridiumPopularUserData,'Session'));}catch{}\n`;
+  main=main.replace(profileAnchor,profileIsolation);
+}
 main=main.replace(/path\.join\(appData,'Gridium'\)/g,"path.join(appData,'Gridium Popular')");
 main=main.replace(/Gridium Desktop/gi,'Gridium Popular');
 write('main.js',main);
@@ -97,5 +103,5 @@ let preload=read('preload.js');
 if(!preload.includes('GRID_POPULAR_EDITION'))preload='const GRID_POPULAR_EDITION=true;\n'+preload;
 write('preload.js',preload);
 
-write('README.md','# Gridium Popular\n\nEdição para uso compartilhado do Gridium, com central de contas, estatísticas, Hunt Intelligence, desempenho e recursos de acompanhamento do PokeIdle.io.\n\nO Alpha Terminal e os módulos de execução automática de operações de Market não fazem parte desta edição.\n');
-console.log('Gridium Popular 1.0.0 puro aplicado: lógica do Alpha Terminal substituída por compatibilidade inerte.');
+write('README.md','# Gridium Popular\n\nEdição para uso compartilhado do Gridium, com central de contas, estatísticas, Hunt Intelligence, desempenho e recursos de acompanhamento do PokeIdle.io.\n\nO Alpha Terminal e os módulos de execução automática de operações de Market não fazem parte desta edição.\n\nEsta edição usa perfil, cookies e dados de sessão separados do Gridium privado.\n');
+console.log('Gridium Popular 1.0.0 puro aplicado: Alpha removido e perfil de sessão isolado.');
