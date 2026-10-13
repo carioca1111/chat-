@@ -1,0 +1,75 @@
+name: Build Gridium Windows Alpha 9.13 Sniper
+
+on:
+  push:
+    branches:
+      - gridium-next
+    paths:
+      - 'apply-alpha913.js'
+      - 'alpha913-src/**'
+      - 'alpha913-manifest.json'
+      - 'sniper-src/**'
+      - 'sniper-native/**'
+      - 'build-alpha913.ps1'
+      - 'build-sniper-alpha913.ps1'
+      - '.github/workflows/build-gridium-windows-alpha913.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - name: Assemble Alpha 9.13
+        shell: pwsh
+        run: ./build-alpha913.ps1
+      - name: Install dependencies
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile independent Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Validate payload and test
+        shell: pwsh
+        working-directory: gridium-build
+        run: |
+          if ((Get-Content package.json -Raw) -notmatch '3.0.0-alpha.9.13') { throw 'Alpha 9.13 version missing' }
+          if (-not (Test-Path 'sniper/engine.js')) { throw 'TypeScript Sniper engine missing' }
+          if (-not (Test-Path 'sniper-native/sniper-core.exe')) { throw 'C++ Sniper engine missing' }
+          node --check main.js
+          node --check renderer.js
+          node --check sniper-runtime.js
+          npm test
+      - name: Build Windows installer
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm run dist:win
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $installer = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.9.13.exe'
+          if ($installer.Length -lt 50000000) { throw "Installer too small: $($installer.Length) bytes" }
+          $hash = Get-FileHash $installer.FullName -Algorithm SHA256
+          "Installer bytes: $($installer.Length)"
+          "Installer SHA256: $($hash.Hash)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Setup-3.0.0-alpha.9.13
+          path: gridium-build/dist/Gridium-Setup-3.0.0-alpha.9.13.exe
+          if-no-files-found: error
+          retention-days: 30
