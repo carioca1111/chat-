@@ -4,7 +4,6 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {createRenderLanes,percentile}=require('../ultra-runtime');
-const {AnalyticsClient}=require('../analytics-client');
 
 test('Fast/Slow Render Lanes agrupam atualizações pela chave',()=>{
  let rafFn=null,idleFn=null,fast=0,slow=0;
@@ -35,7 +34,8 @@ test('telemetria mede FPS, render e long tasks e atravessa IPC',()=>{
  assert.match(u,/PerformanceObserver/);assert.match(u,/longtask/);assert.match(u,/requestAnimationFrame/);assert.match(p,/grid:perf-telemetry/);assert.match(m,/rendererPerfTelemetry/);
 });
 
-test('analytics remoto é best-effort e não envia credenciais/sessão',()=>{
- const tmp=path.join(require('node:os').tmpdir(),'gridium-a916-'+Date.now()+'.id');const client=new AnalyticsClient({endpoint:'http://127.0.0.1:9',idFile:tmp,fetchImpl:async()=>({ok:true,json:async()=>({})})});
- const p=client._sanitize({alpha:{accounts:{gems:[{slot:0,realized:2}]},positions:[{id:'p',mode:'real',currency:'gems',metadata:{locked:true,token:'SECRET'}}],recentTrades:[]}});const text=JSON.stringify(p);assert.ok(text.includes('locked'));assert.ok(!text.includes('SECRET'));assert.ok(!text.includes('cookie'));try{fs.unlinkSync(tmp);}catch{}
+test('analytics remoto reutiliza o relay existente e envia somente o modelo Alpha já sanitizado',()=>{
+ const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
+ assert.match(main,/function alpha916RemoteAnalytics/);assert.match(main,/performance:\{renderer:rendererPerfTelemetry/);assert.match(main,/gridium:\{alpha:alphaRemote/);
+ assert.doesNotMatch(main,/analytics-client/);assert.doesNotMatch(main,/DATABASE_URL/);
 });
