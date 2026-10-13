@@ -35,10 +35,10 @@ jobs:
         working-directory: gridium-build
         run: npm install --no-audit --no-fund
 
-      - name: Test Popular edition
+      - name: Test Popular features
         shell: pwsh
         working-directory: gridium-build
-        run: npm test
+        run: node --test test/stats.test.js test/features.test.js test/forecast-server.test.js test/hunt-engine.test.js test/market-protocol.test.js test/network-inspector.test.js test/alpha96-hunt-intelligence.test.js test/main.test.js
 
       - name: Package Gridium Popular for Windows
         shell: pwsh
