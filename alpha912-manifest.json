@@ -1,0 +1,15 @@
+{
+  "main.js": "16d68915131a81c9d3c400626f1455dc0a0e47a3f43faf81e0d26b5e75424592",
+  "alpha-engine.js": "b90e6a30be482680ee207c533c39781d522f76b765a712f95babeb8198baf786",
+  "alpha-core-process.js": "4030af8eb9ad557f9e7a4a7907dae68f764ebb12913a703b16d562ff0ad1750d",
+  "market-live.js": "34290e9af545c904388d1ea992eb5e4a53e55bd1c49253ccdb46bc3530ac0745",
+  "market-protocol.js": "fd2fde83a0dc783932eedd43d1dc89685bb4602ef4e78735daad2c77b5103b59",
+  "alpha-professional.js": "5f9a67d3249ae2e28764f1ae0a72ac0261fb1e65a4d52ca9b2cc4a4988174ef7",
+  "professional-dashboard.js": "08539e1754fd54cd4bc85b0708d3cba640ecc7f9838589e59398ff7e2f4f4e3a",
+  "renderer.js": "794a4a98ccb88bcec832249a2f1ac8c4acd74e49d02ed89a9a929a16f3b0a615",
+  "index.html": "6a43689461dd6cde4d5907a1d805f5168e579e28a3802fefd4421bbdddbd42b0",
+  "styles.css": "8beacec3ea88a8da6fd07c9f09e8c66238b1485568ad531a119dd1d026cd9d4f",
+  "test/alpha912-professional.test.js": "0892329d7d26c745ea91b5a12cddd71dd1c76b72d5381c246f9262ec0368299a",
+  "test/alpha-engine.test.js": "67c757c01b8daa2d74b1cb82ab832fbb9ec82603893e9bbcd79188712e7c90c6",
+  "package.json": "a60e1eddd621ef78c3b15006989e26936d3b15e21db7bcf900f8c398bcfbeed6"
+}

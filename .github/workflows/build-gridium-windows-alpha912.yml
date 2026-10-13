@@ -1,0 +1,71 @@
+name: Build Gridium Windows Alpha 9.12
+# Rebuild after Alpha 9.12 payload recovery diagnostics
+
+on:
+  push:
+    branches:
+      - gridium-next
+    paths:
+      - 'apply-alpha912.js'
+      - 'alpha912-src/**'
+      - 'alpha912-manifest.json'
+      - 'qa/**'
+      - 'build-alpha912.ps1'
+      - '.github/workflows/build-gridium-windows-alpha912.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Assemble Alpha 9.12 and check syntax
+        shell: pwsh
+        run: ./build-alpha912.ps1
+
+      - name: Install dependencies
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+
+      - name: Test Alpha 9.12
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm test
+
+      - name: UI smoke test with Edge
+        shell: pwsh
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.58.2
+          node qa/ui-smoke.cjs
+
+      - name: Upload UI evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Gridium-Alpha912-UI
+          path: qa/*.png
+          if-no-files-found: warn
+
+      - name: Package Alpha 9.12 for Windows
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm run dist:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Setup-3.0.0-alpha.9.12
+          path: gridium-build/dist/Gridium-Setup-3.0.0-alpha.9.12.exe
+          if-no-files-found: error
+          retention-days: 30

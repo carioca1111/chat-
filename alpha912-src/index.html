@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; frame-src https://pokeidle.io https://www.pokeidle.io; img-src 'self' data:; object-src 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridium</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="brand"><img class="brand-logo" src="assets/gridium-icon.svg" alt=""><div><strong>Gridium</strong><small>GAME INTELLIGENCE PLATFORM</small></div></div>
+  <nav class="primary-nav" aria-label="Módulos">
+    <button class="tab active" data-section="games">Contas</button>
+    <button class="tab" data-section="dashboard">Painel</button>
+    <button class="tab" data-section="hunt">Hunt Intelligence</button>
+    <button class="tab alpha-nav" data-section="alpha">Alpha Terminal <span class="beta-dot">α</span></button>
+  </nav>
+  <div class="header-actions"><span id="powerBadge" class="pill">Preparando…</span><span id="serverBadge" class="pill warn">Servidor: verificando</span><span id="remoteBadge" class="pill secondary">Remoto desligado</span><button id="optionsButton" aria-expanded="false">⚙ Opções</button><button id="minimize" title="Minimizar e continuar executando">Minimizar</button></div>
+</header>
+<section id="options" class="options" hidden>
+  <div class="option-group">
+    <h3>Execução</h3>
+    <label>Energia do computador<select id="power"><option value="system">Manter PC ativo; tela pode apagar</option><option value="display">Manter PC e tela ativos</option><option value="off">Permitir suspensão normal</option></select></label>
+    <label class="check"><input type="checkbox" id="background" checked>Continuar executando minimizado</label>
+    <label class="check"><input type="checkbox" id="mute">Silenciar as quatro contas</label>
+    <label class="check"><input type="checkbox" id="autoReconnect" checked>Reconectar contas automaticamente após queda/reinício</label>
+    <label>Modo de desempenho<select id="performanceProfile"><option value="ultra">Ultra · máximo desempenho</option><option value="balanced" selected>Balanceado · recomendado</option><option value="quality">Qualidade · renderização completa</option></select></label>
+    <label class="check"><input type="checkbox" id="liveEcoMode">Lives econômicas · várias transmissões com menos GPU/CPU</label>
+    <small>Lives econômicas reduz FPS e efeitos das contas fora de foco, mantém timers/WebSocket ativos, não pausa vídeo e não simula visualização. A concessão de XP continua dependendo das regras do próprio jogo.</small>
+  </div>
+  <div class="option-group">
+    <h3>Alertas</h3>
+    <label class="check"><input type="checkbox" id="desktopAlerts" checked>Notificações no computador</label>
+    <label class="check"><input type="checkbox" id="shinyAlerts" checked>Avisar quando registrar shiny</label>
+    <label class="check"><input type="checkbox" id="idleAlerts" checked>Avisar conta sem atividade</label>
+    <label class="check"><input type="checkbox" id="connectionAlerts">Avisar alteração de conexão</label>
+    <label>Minutos sem atividade<input id="idleMinutes" type="number" min="1" max="120" step="1" value="5"></label>
+  </div>
+  <div class="option-group remote-config">
+    <h3>Gridium Mobile</h3>
+    <div class="pair-box"><span>Código de pareamento</span><strong id="pairCode">— — — — — —</strong><small id="pairCountdown">Gere um código e digite os 6 números no celular.</small><button id="generatePair">Gerar código de 6 dígitos</button></div>
+    <small id="remoteStatus">Ainda não configurado.</small>
+    <details class="remote-advanced"><summary>Configuração do relay</summary><label class="check"><input type="checkbox" id="remoteEnabled">Enviar painel para o servidor remoto</label><label>Endereço do relay<input id="remoteEndpoint" type="url" value="https://pokegrid-relay-209e4eb1d9.onrender.com"></label><label>Chave privada do PC<input id="remoteToken" type="password" placeholder="Cole a chave privada do relay"></label><div class="inline-actions"><button id="saveRemote">Salvar relay</button><button id="clearRemoteToken">Limpar chave</button></div></details>
+  </div>
+  <div class="option-group option-help"><button id="openBrowser">Abrir PokéIdle no navegador</button><p>O Gridium mantém as quatro sessões separadas. Credenciais e sessão do PokéIdle permanecem no computador; o relay recebe apenas telemetria autorizada.</p></div>
+</section>
+<div id="notice" role="status" hidden></div>
+
+<main id="workspace">
+  <section id="games" class="workspace-section active accounts-page" aria-label="Contas do jogo">
+    <div class="game-classic-toolbar">
+      <div class="game-classic-left"><strong>CONTAS</strong><span id="gameViewHint">2×2 · quatro sessões</span><span id="performanceBadge" class="performance-badge">BALANCEADO</span></div>
+      <div class="game-slot-picker" aria-label="Conta em foco"><button class="active" data-game-slot="0">1</button><button data-game-slot="1">2</button><button data-game-slot="2">3</button><button data-game-slot="3">4</button></div>
+      <div class="account-layout-actions"><div class="segmented game-layout-segment"><button class="active" data-layout="grid">2×2</button><button data-layout="duo">1×2</button><button data-layout="focus">1×1</button></div><button id="reloadAll" title="Recarregar todas">↻ Todas</button></div>
+    </div>
+    <div class="game-grid layout-grid" id="gameGrid">
+      <article class="game-panel selected" data-slot="0"><div class="panelbar"><span class="account-dot a0"></span><b id="name0">Conta 1</b><span id="accountMeta0" class="account-meta">aguardando dados</span><div class="zoom-control"><button data-zoom-minus="0" title="Diminuir zoom">−</button><span id="zoom0">100%</span><button data-zoom-plus="0" title="Aumentar zoom">+</button></div><button data-focus="0" title="Focar conta">⛶</button><button data-reload="0" title="Recarregar conta 1">↻</button></div><webview src="https://pokeidle.io/" partition="persist:pokeidle-account-1" allowpopups></webview><div id="mini0" class="mini">Aguardando login</div></article>
+      <article class="game-panel" data-slot="1"><div class="panelbar"><span class="account-dot a1"></span><b id="name1">Conta 2</b><span id="accountMeta1" class="account-meta">aguardando dados</span><div class="zoom-control"><button data-zoom-minus="1">−</button><span id="zoom1">100%</span><button data-zoom-plus="1">+</button></div><button data-focus="1">⛶</button><button data-reload="1">↻</button></div><webview src="https://pokeidle.io/" partition="persist:pokeidle-account-2" allowpopups></webview><div id="mini1" class="mini">Aguardando login</div></article>
+      <article class="game-panel" data-slot="2"><div class="panelbar"><span class="account-dot a2"></span><b id="name2">Conta 3</b><span id="accountMeta2" class="account-meta">aguardando dados</span><div class="zoom-control"><button data-zoom-minus="2">−</button><span id="zoom2">100%</span><button data-zoom-plus="2">+</button></div><button data-focus="2">⛶</button><button data-reload="2">↻</button></div><webview src="https://pokeidle.io/" partition="persist:pokeidle-account-3" allowpopups></webview><div id="mini2" class="mini">Aguardando login</div></article>
+      <article class="game-panel" data-slot="3"><div class="panelbar"><span class="account-dot a3"></span><b id="name3">Conta 4</b><span id="accountMeta3" class="account-meta">aguardando dados</span><div class="zoom-control"><button data-zoom-minus="3">−</button><span id="zoom3">100%</span><button data-zoom-plus="3">+</button></div><button data-focus="3">⛶</button><button data-reload="3">↻</button></div><webview src="https://pokeidle.io/" partition="persist:pokeidle-account-4" allowpopups></webview><div id="mini3" class="mini">Aguardando login</div></article>
+    </div>
+  </section>
+
+  <section id="dashboard" class="workspace-section dashboard-page">
+    <div class="dashboard-shell">
+      <div class="dashboard-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><h2>Painel de desempenho</h2></div><span id="live" class="live">● Coletando</span></div>
+      <div class="account-tabs" role="group" aria-label="Selecionar conta"><button class="active" data-account="all">Geral</button><button data-account="0">01</button><button data-account="1">02</button><button data-account="2">03</button><button data-account="3">04</button></div>
+      <div class="selection"><div><h3 id="selectionTitle">Todas as contas</h3><p id="selectionStatus">Aguardando a primeira atividade do jogo</p></div><span id="duration">00:00:00</span></div>
+      <div class="metrics dashboard-metrics">
+        <article class="metric hero"><label>Capturas por hora</label><strong id="captureRate">—</strong><small id="captureRateNote">Ritmo combinado das contas</small></article>
+        <article class="metric"><label>Pokémon capturados</label><strong id="captures">—</strong><small>Desde o início da medição</small></article>
+        <article class="metric shiny"><label>Shinies vistos</label><strong id="seen">—</strong><small>Revelados pelas bolas da conta</small></article>
+        <article class="metric shiny"><label>Shinies capturados</label><strong id="shiny">—</strong><small>Capturas confirmadas pelo jogo</small></article>
+        <article class="metric"><label>XP do treinador/h</label><strong id="xpRateMetric">—</strong><small>Ritmo médio da medição</small></article>
+        <article class="metric"><label>Gold/h</label><strong id="goldRateMetric">—</strong><small>Ritmo médio da medição</small></article>
+        <article class="metric wide"><div><label>Tempo observado por shiny</label><strong id="shinyTime">Aguardando shiny</strong></div><span class="shiny-symbol">✧</span><small id="shinyTimeNote">Tempo registrado ÷ shinies vistos. Não prevê o próximo.</small></article>
+      </div>
+      <section class="dashboard-section trend-section"><div class="section-row"><div><h3>Histórico de desempenho</h3><span>janela móvel salva no computador</span></div><div class="trend-controls"><select id="trendMetric"><option value="capturasRate">Capturas/h</option><option value="xpRate">XP treinador/h</option><option value="goldRate">Gold/h</option><option value="shiniesVistosDelta">Shinies vistos</option></select><select id="trendRange"><option value="3600000">1h</option><option value="21600000" selected>6h</option><option value="86400000">24h</option><option value="604800000">7d</option></select></div></div><div class="chart-wrap"><canvas id="trendChart" width="1200" height="260"></canvas><div id="chartEmpty" class="chart-empty">O gráfico começa a ganhar histórico conforme o Gridium coleta dados.</div></div></section>
+      <div class="dashboard-columns">
+        <section class="dashboard-section"><div class="section-row"><div><h3>Metas</h3><span id="goalScopeLabel">geral</span></div><button id="toggleGoalEditor">Editar metas</button></div><div id="goals" class="goals"></div><form id="goalEditor" class="goal-editor" hidden><label>Capturas<input name="capturas" type="number" min="0"></label><label>Shinies<input name="shinies" type="number" min="0"></label><label>XP treinador<input name="xpTreinador" type="number" min="0"></label><label>Gold<input name="gold" type="number" min="0"></label><label>Horas<input name="hours" type="number" min="0" step="0.5"></label><button type="submit">Salvar metas</button></form></section>
+        <section class="dashboard-section"><div class="section-row"><div><h3>Saúde das contas</h3><span>atividade, conexão e execução</span></div></div><div id="systemHealth" class="system-health">Preparando informações…</div><div id="healthGrid" class="health-grid"></div></section>
+      </div>
+      <section class="dashboard-section hunt-intelligence-dashboard"><div class="section-row hunt-intel-title"><div><h3>Hunt Intelligence · Pokémon principal</h3><span>nível, IVs, qualidade e desempenho real por Hunt</span></div><button id="reconnectNow">Reconectar contas</button></div><div id="serverCard" class="server-card hunt-server-compact"><span class="server-light"></span><div><b id="serverCardTitle">Verificando servidor…</b><small id="serverCardDetail">O Gridium acompanha a conexão sem ocupar o painel.</small></div></div><div id="huntPerformanceGrid" class="hunt-performance-grid"></div><div class="hunt-intel-note"><b>Como a recomendação funciona</b><span>O Gridium aprende XP/h e Gold/h realmente observados por Hunt para o Pokémon ativo. Resultados medidos em níveis próximos do nível atual recebem mais peso. IV/qualidade descrevem o Pokémon; não inventamos bônus que o jogo não informou.</span></div></section>
+      <section class="dashboard-section two-column-section"><div><div class="section-row"><div><h3>Feed de eventos</h3><span>últimos acontecimentos</span></div></div><div id="eventFeed" class="event-feed"><p class="muted">Nenhum evento ainda.</p></div></div><div><div class="section-row"><div><h3>Sessões históricas</h3><span>medições anteriores</span></div></div><div id="sessionList" class="session-list"><p class="muted">Nenhuma sessão encerrada ainda.</p></div></div></section>
+      <div class="table-heading"><h3>Atividade e recursos</h3><span>na sessão</span></div><dl id="resources" class="resources"></dl>
+      <details><summary>Como os números são calculados</summary><p>Lemos os contadores locais da sessão do jogo a cada 2 segundos. A primeira leitura vira a base e o histórico é salvo localmente.</p><p>O relay recebe telemetria do Gridium. Senhas e armazenamento de autenticação do jogo não são enviados.</p></details>
+      <div class="dashboard-actions"><button id="pause">Pausar medição</button><button id="export">Exportar CSV</button><button id="reset" class="danger">Zerar geral</button></div><p class="footnote" id="savedNote">Salvo no computador · atualização a cada 2 segundos</p>
+    </div>
+  </section>
+
+  <section id="hunt" class="workspace-section module-page">
+    <div class="module-header"><div><span class="eyebrow">HUNT INTELLIGENCE 2.0</span><h1>A Hunt certa para o Pokémon principal.</h1><p>Perfil real do Pokémon, nível, IVs e histórico observado para encontrar o melhor XP/h e Gold/h sem chutar.</p></div><div class="module-actions"><span class="safe-chip">Somente leitura nesta fase</span><button id="huntScan">Mapear hunts visíveis</button></div></div>
+    <div id="huntAccounts" class="hunt-grid"></div>
+    <section class="module-card"><div class="section-row"><div><h3>Como o Hunt Intelligence decide</h3><span>o score muda conforme o objetivo</span></div></div><div class="feature-grid"><div><b>XP máximo</b><small>prioriza XP/h observado e previsto</small></div><div><b>Gold máximo</b><small>prioriza geração de Coins/Gold</small></div><div><b>Capital Bootstrap</b><small>valoriza Gold + drops + ponte para Gems</small></div><div><b>Itens</b><small>valor esperado dos drops e liquidez</small></div><div><b>Capturas</b><small>ritmo de encontros/capturas</small></div><div><b>Segurança</b><small>penaliza risco de morte e tempo parado</small></div></div></section>
+    <section class="module-card"><h3>Diagnóstico de mapeamento</h3><pre id="huntScanOutput" class="diagnostic">Ainda não executado.</pre></section>
+  </section>
+
+  <section id="alpha" class="workspace-section module-page alpha-page">
+    <div class="module-header"><div><span class="eyebrow">ALPHA TERMINAL</span><h1>Trading profissional, simples na frente.</h1><p>Alpha 9.12 · decisões explicadas, ordens rastreadas e capital protegido.</p></div><div class="module-actions"><button id="alphaAutopilot" class="autopilot-action" title="Um clique: inicia o automático; o LIVE é liberado sozinho somente após todas as verificações">▶ INICIAR AUTOMÁTICO</button><label class="market-concurrency-control" title="Com 1–3 contas o Gridium rotaciona o grupo ativo. Com 4, todas trabalham sem rotação."><span>Contas no Market</span><select id="alphaMarketConcurrency"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label><span id="alphaAutoRouteBadge" class="safe-chip warning">NAVEGAÇÃO: PARADA</span><span id="alphaStatusBadge" class="safe-chip warning">LIVE BLOQUEADO</span><button id="alphaLiveToggle" class="secondary-action live-arm-action" hidden aria-hidden="true" tabindex="-1">🔒 ARMAR LIVE</button><select id="alphaMode"><option value="observer">Observer</option><option value="paper" selected>Paper Trading</option><option value="confirm">Confirmar compra</option><option value="semi">Semi-auto</option><option value="auto">Auto</option></select><span id="alphaAutoInspectorBadge" class="safe-chip">INSPEÇÃO AUTO: INICIANDO</span><span id="alphaAutoTraderBadge" class="safe-chip warning">AUTO TRADER: PARADO</span><span id="alphaRecoveryBadge" class="safe-chip">ANÚNCIOS: OK</span><span id="liveEcoBadge" class="safe-chip">LIVES ECO: OFF</span><button id="marketScan">Inspecionar agora</button><button id="alphaKill" class="kill">PARAR AUTO TRADING</button></div></div>
+<section class="pro-terminal" aria-label="Resumo do automático">
+  <div class="pro-heading"><div><span class="eyebrow">SEU RESULTADO, SEM CONFUSÃO</span><h2 id="proHeadline">Preparando leitura das contas…</h2><p>Coins e Gems do jogo. Resultado em aberto é uma estimativa, não dinheiro ganho.</p></div><label>Proteção adicional<select id="proProfile"><option value="defensive">Defensiva · menos exposição</option><option value="balanced">Equilibrada · padrão</option><option value="growth">Expansão · mais exposição</option></select></label></div>
+  <div class="pro-money-grid" id="proMoney"></div>
+  <p class="pro-policy" id="proPolicy"></p>
+  <div id="proAttention" class="pro-attention" role="status" hidden></div>
+  <div class="pro-section-heading"><h3>O que cada conta está fazendo</h3><span>Última decisão e motivo</span></div><div class="pro-decisions" id="proDecisions"></div>
+  <div class="pro-section-heading"><h3>Comprei. E agora?</h3><span>Ciclo de cada posição real</span></div>
+  <div class="pro-table-wrap"><table class="pro-table"><thead><tr><th>Conta / item</th><th>Capital aplicado</th><th>Piso de venda por unidade</th><th>Estado e próximo passo</th><th>Tempo em estoque</th></tr></thead><tbody id="proPositions"></tbody></table></div>
+  <details class="pro-results"><summary>Como o automático está se saindo de verdade</summary><p id="proSample"></p><div id="proMetrics" class="pro-money-grid"></div><p>Os indicadores usam apenas vendas reais encerradas na moeda selecionada. Ofertas no Market não comprovam liquidez. O piso de venda é um limite do sistema, não uma promessa de comprador.</p></details>
+</section>
+
+    <div class="alpha-kpis alpha-kpis-compact"><article><span>Resultado confirmado</span><strong id="alphaTotalPnl">0</strong><small id="alphaTodayPnl">Hoje: 0</small></article><article><span>Capital</span><strong id="alphaOperational">0</strong></article><article><span>Profit Lock</span><strong id="alphaLocked">0</strong></article><article><span>Posições</span><strong id="alphaOpenPositions">0</strong></article><article><span>Média por venda real</span><strong id="alphaProfitHour">0</strong></article></div><div id="alphaSimpleOverall" class="alpha-simple-summary alpha-simple-overall" aria-label="Resumo fácil do resultado"></div><div class="alpha-account-section-head"><div><b>Contas · visão 2×2</b><small>banca, P&L, posições e grupo ativo do Market</small></div><div class="currency-switch"><button class="active" data-alpha-currency="gems">Gems</button><button data-alpha-currency="coins">Coins</button></div></div><div id="alphaAccountCards" class="alpha-account-grid"></div><div id="alphaAccountInsights" class="alpha-account-insights"></div>
+
+    <details class="alpha-advanced"><summary>⚙ Capital, risco e rankings</summary><div class="alpha-layout alpha-advanced-grid">
+      <section class="module-card alpha-settings-card"><div class="section-row"><div><h3>Capital & risco</h3><span>banca virtual separada do saldo real</span></div></div>
+        <label>Conta<select id="alphaAccount"><option value="0">Conta 1</option><option value="1">Conta 2</option><option value="2">Conta 3</option><option value="3">Conta 4</option></select></label>
+        <div class="two-inputs"><label>Banca Gems<input id="alphaBankrollGems" type="number" min="0"></label><label>Banca Coins<input id="alphaBankrollCoins" type="number" min="0"></label></div>
+        <div class="two-inputs"><label>Reinvestir lucro %<input id="alphaReinvest" type="number" min="0" max="100" value="100"></label><label>Profit Lock %<input id="alphaProfitLock" type="number" min="0" max="100" value="0"></label></div>
+        <div class="two-inputs"><label>Auto Reserve Gems<input id="alphaReserveGems" type="number" min="0" value="0"></label><label>Auto Reserve Coins<input id="alphaReserveCoins" type="number" min="0" value="0"></label></div>
+        <div class="two-inputs"><label>Meta diária Gems<input id="alphaDailyTarget" type="number" min="0" value="0"></label><label>Goal Mode: banca alvo Gems<input id="alphaGoal" type="number" min="0" value="0"></label></div>
+        <div class="two-inputs"><label>Máx. por ordem · Gems<input id="alphaMaxOrderGems" type="number" min="0" value="5"></label><label>Máx. por ordem · Coins<input id="alphaMaxOrderCoins" type="number" min="0" value="2000000"></label></div>
+        <div class="two-inputs"><label>Ordens/hora<input id="alphaMaxOrdersHour" type="number" min="1" max="60" value="6"></label><label>Intervalo mínimo (s)<input id="alphaMinOrderSeconds" type="number" min="3" value="10"></label></div><div class="two-inputs"><label>Apertar risco após perda %<input id="alphaLossTighten" type="number" min="0.25" max="50" step="0.25" value="2"></label><label>Pausar novas compras após perda %<input id="alphaLossPause" type="number" min="0.5" max="80" step="0.5" value="5"></label></div>
+        <label class="checkline"><input id="alphaAutoSell" type="checkbox" checked> Auto anunciar após compra quando o ativo não estiver travado</label>
+        <button id="saveAlphaConfig">Salvar regras</button>
+        <p class="muted compact-note">O botã INICIAR AUTOMÁTICO ativa Auto + LIVE + scanner e navegação Market/RMT em um clique. O Gridium usa limites por ordem/hora, banca automática conservadora e para sozinho após falhas consecutivas.</p>
+      </section>
+      <section class="module-card"><div class="section-row"><div><h3>Conta Campeã</h3><span>lucro por conta</span></div><div class="currency-switch"><button class="active" data-alpha-currency="gems">Gems</button><button data-alpha-currency="coins">Coins</button></div></div><div id="alphaAccountRanking" class="rank-list"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Ranking de estratégias</h3><span>P&L, win rate e profit/h</span></div></div><div id="alphaStrategyRanking" class="rank-list"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Validação do motor</h3><span>o que já é seguro automatizar</span></div></div><div id="alphaValidation" class="validation-list"></div></section>
+    </div></details>
+
+    <details id="alphaAdvancedTools" class="alpha-advanced alpha-tools"><summary>📊 Ferramentas, gráficos e logs</summary><div class="alpha-tools-body">
+    <div class="alpha-layout two-wide alpha5-desk">
+      <section class="module-card"><div class="section-row"><div><h3>Paper Desk</h3><span>simule entrada/saída usando o mesmo Journal e P&L</span></div></div>
+        <form id="paperDeskForm" class="paper-desk-form">
+          <div class="two-inputs"><label>Ativo<input id="paperName" placeholder="Ex.: Charizard"></label><label>ID<input id="paperAssetId" placeholder="species/item id"></label></div>
+          <div class="two-inputs"><label>Moeda<select id="paperCurrency"><option value="coins">Coins</option><option value="gems">Gems</option></select></label><label>Estratégia<select id="paperStrategy"><option value="balanced">Balanceado</option><option value="conservative">Conservador</option><option value="aggressive">Agressivo</option><option value="bootstrap">Capital Bootstrap</option></select></label></div>
+          <div class="two-inputs"><label>Entrada<input id="paperEntry" type="number" min="0" step="any" required></label><label>Quantidade<input id="paperQty" type="number" min="1" step="1" value="1"></label></div>
+          <button type="submit">Abrir posição Paper</button>
+        </form>
+        <p class="muted compact-note">Para encerrar uma posição Paper, use o botão “Fechar” na lista de posições.</p>
+      </section>
+      <section class="module-card"><div class="section-row"><div><h3>Anúncios próprios · Repricing Guard</h3><span>respeita o cooldown real de ~2 min</span></div><button id="refreshMarketDesk" class="secondary-action">Atualizar</button></div><div id="alphaOwnListings" class="data-list"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Fila Confirmar / Semi-auto</h3><span>avalia e pode enviar ordem real após sua confirmação</span></div></div><div id="alphaOpportunities" class="data-list"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Market Action Journal</h3><span>ações críticas persistidas</span></div></div><div id="alphaMarketActions" class="data-list"></div></section>
+    </div>
+
+    <section class="module-card"><div class="section-row"><div><h3>Curva de capital</h3><span>capital inicial + P&L realizado</span></div><div class="legend-inline"><span>Mark-to-Market separado</span></div></div><div class="alpha-chart"><canvas id="alphaCurve" width="1400" height="260"></canvas><div id="alphaCurveEmpty" class="chart-empty">A curva aparece quando houver operações Paper ou reais.</div></div></section>
+
+    <div class="alpha-layout two-wide">
+      <section class="module-card"><div class="section-row"><div><h3>Opportunity Heatmap</h3><span>mercado observado nos últimos 7 dias</span></div></div><div id="alphaHeatmap" class="heatmap-list"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Posições · Mark-to-Market</h3><span>realizado ≠ não realizado</span></div></div><div id="alphaPositions" class="data-list"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Performance por horário</h3><span>onde o capital rende melhor</span></div></div><div id="alphaHours" class="hour-grid"></div></section>
+      <section class="module-card"><div class="section-row"><div><h3>Performance por Pokémon/item</h3><span>origem real do lucro</span></div></div><div id="alphaAssets" class="data-list"></div></section>
+    </div>
+
+    <div class="alpha-layout two-wide market-protocol-layout"><section class="module-card"><div class="section-row"><div><h3>Market Protocol · contas ao vivo</h3><span id="marketProtocolStamp">Aguardando leitura</span></div></div><div id="marketProtocolAccounts" class="data-list"></div></section><section class="module-card"><div class="section-row"><div><h3>Cross-Market · Coins ↔ Gems</h3><span>taxa implícita observada; não é câmbio fixo</span></div></div><div id="crossMarketList" class="data-list"></div></section></div>
+
+    <section class="module-card"><div class="section-row"><div><h3>Strategy Lab</h3><span>perfis prontos; dados reais do Market já alimentam o histórico</span></div></div><div id="strategyLab" class="strategy-grid"></div></section>
+    <div class="alpha-layout two-wide"><section class="module-card"><div class="section-row"><div><h3>Trade Journal automático</h3><span>Paper vs Real</span></div></div><div class="alpha-journal-note">Valores previstos são estimativas de book/taxa e não garantem lucro.</div><div id="alphaJournal" class="data-list"></div></section><section class="module-card"><div class="section-row"><div><h3>Audit Log</h3><span>cada decisão do motor</span></div></div><div id="alphaAudit" class="data-list"></div></section></div>
+    <section class="module-card"><div class="section-row"><div><h3>Market Inspector · diagnóstico HTTP/WebSocket</h3><span>tokens e credenciais são ocultados</span></div><div class="inspector-actions"><button id="copyMarketScan">📋 Copiar resultado</button><button id="clearMarketScan" class="secondary-action">Limpar captura</button></div></div><pre id="marketScanOutput" class="diagnostic">Inspeção automática iniciando. O Gridium captura HTTP/WebSocket e lê o Market em segundo plano, em modo somente leitura.</pre></section>
+    </div></details>
+  </section>
+</main>
+<script src="professional-dashboard.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>
