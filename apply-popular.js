@@ -61,3 +61,4 @@ main=main.replace(/Gridium Desktop/gi,'Gridium Popular');
 write('main.js',main);
 
 console.log('Gridium Popular 1.0.0 aplicado: Alpha Terminal bloqueado na interface e identidade separada configurada.');
+// build trigger: 2026-10-12
