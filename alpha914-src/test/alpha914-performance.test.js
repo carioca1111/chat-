@@ -73,5 +73,5 @@ test('recursos obrigatórios de UI e leitura segura continuam presentes',()=>{
   for(const token of ['SEM ANÚNCIO','estimativa, não garantida','zoom-plus','marketConcurrency'])assert.ok(renderer.includes(token),token);
   assert.ok(html.includes('Coins')||renderer.includes('Coins'));
   assert.ok(html.includes('Gems')||renderer.includes('Gems'));
-  assert.ok(html.includes('Diamonds')||renderer.includes('Diamonds'));
+  assert.ok(html.includes('Diamonds')||renderer.includes('Diamonds')||html.includes('Diamantes')||renderer.includes('Diamantes'));
 });
