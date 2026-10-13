@@ -77,7 +77,7 @@ main=main.replace(/app\.setName\('Gridium'\)/g,"app.setName('Gridium Popular')")
 const profileAnchor="app.setName('Gridium Popular')";
 if(!main.includes('GRID_POPULAR_PROFILE_ISOLATION')){
   if(!main.includes(profileAnchor))throw new Error('Gridium Popular: ponto de isolamento de perfil não encontrado');
-  const profileIsolation=`app.setName('Gridium Popular');\n/* GRID_POPULAR_PROFILE_ISOLATION */\nconst gridiumPopularUserData=path.join(app.getPath('appData'),'Gridium Popular');\nif(typeof app.setPath==='function'){\n  app.setPath('userData',gridiumPopularUserData);\n  try{app.setPath('sessionData',path.join(gridiumPopularUserData,'Session'));}catch{}\n}\n`;
+  const profileIsolation=`app.setName('Gridium Popular');\n/* GRID_POPULAR_PROFILE_ISOLATION */\nconst gridiumPopularUserData=path.join(app.getPath('appData'),'Gridium Popular Fresh Profile');\nif(typeof app.setPath==='function'){\n  app.setPath('userData',gridiumPopularUserData);\n  try{app.setPath('sessionData',path.join(gridiumPopularUserData,'Session'));}catch{}\n}\n`;
   main=main.replace(profileAnchor,profileIsolation);
 }
 main=main.replace(/path\.join\(appData,'Gridium'\)/g,"path.join(appData,'Gridium Popular')");
