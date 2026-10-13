@@ -61,7 +61,7 @@ test('main agrupa publish sem alterar scanner, WebSocket ou proteções de ordem
   const src=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
   assert.match(src,/createCoalescedPublisher/);
   assert.match(src,/function publish\(options=\{\}\)/);
-  assert.match(src,/blockOwnAccount/);
+  assert.match(src,/isOwnAccountListing/);
   assert.match(src,/alphaCoreProcess/);
   assert.match(src,/sniperRuntime/);
 });
