@@ -30,12 +30,9 @@ pkg=pkg.replace(/3\.0\.0-alpha\.9\.13/g,'3.0.0-alpha.9.14');
 fs.writeFileSync(path.join(root,'package.json'),pkg);
 
 let html=readText(path.join(root,'index.html'));
-html=replaceOnce(
-  html,
-  '<script src="professional-dashboard.js"></script>\n<script src="renderer.js"></script>',
-  '<script src="professional-dashboard.js"></script>\n<script src="perf-runtime.js"></script>\n<script src="renderer.js"></script>',
-  'perf-runtime no renderer'
-);
+const rendererTag=/<script\s+src=["']renderer\.js["']><\/script>/;
+must(rendererTag.test(html),'Alpha 9.14: script renderer.js não encontrado no index');
+html=html.replace(rendererTag,'<script src="perf-runtime.js"></script>\n<script src="renderer.js"></script>');
 fs.writeFileSync(path.join(root,'index.html'),html);
 
 let engine=readText(path.join(root,'alpha-engine.js'));
