@@ -20,9 +20,11 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -42,10 +44,15 @@ jobs:
         run: |
           $file='gridium-build/dist/Gridium-Sniper-Setup-3.0.0-sniper.1.exe'
           if(!(Test-Path $file)){ throw "Installer not found: $file" }
-          Get-Item $file | Format-List Name,Length,LastWriteTime
+          $item=Get-Item $file
+          if($item.Length -lt 50000000){ throw "Installer too small: $($item.Length) bytes" }
+          $hash=Get-FileHash $file -Algorithm SHA256
+          "Installer bytes: $($item.Length)"
+          "Installer SHA256: $($hash.Hash)"
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: Gridium-Sniper-3.0.0-sniper.1-Windows
           path: gridium-build/dist/Gridium-Sniper-Setup-3.0.0-sniper.1.exe
           if-no-files-found: error
+          retention-days: 30
