@@ -35,7 +35,7 @@ test('assinatura ignora somente timestamp de carregamento e detecta dado real',(
   assert.notEqual(signature(b),signature(c));
 });
 
-test('AlphaEngine.view reutiliza as leituras completas síncronas de SQLite',()=>{
+test('AlphaEngine.view reutiliza leituras SQLite e agregações repetidas',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'gridium-alpha914-'));
   const file=path.join(dir,'alpha.sqlite');
   const engine=new AlphaEngine(file);
@@ -45,6 +45,9 @@ test('AlphaEngine.view reutiliza as leituras completas síncronas de SQLite',()=
   const state=engine.view();
   assert.ok(state&&state.accounts&&state.professional);
   assert.ok(fullReads<=2,`view fez ${fullReads} leituras completas; esperado no máximo 2`);
+  const src=fs.readFileSync(path.join(__dirname,'..','alpha-engine.js'),'utf8');
+  assert.match(src,/const dayFormatter=new Intl\.DateTimeFormat/);
+  assert.match(src,/accountSummaries/);
   engine.close();
   fs.rmSync(dir,{recursive:true,force:true});
 });
@@ -53,7 +56,11 @@ test('renderer não reconstrói Alpha escondido nem pede alphaState a cada grid:
   const src=fs.readFileSync(path.join(__dirname,'..','renderer.js'),'utf8');
   assert.match(src,/function scheduleAlphaRender\(/);
   assert.match(src,/activeSection!=='alpha'/);
-  assert.doesNotMatch(src,/if\(activeSection==='alpha'\)void refreshAlpha\(\);/);
+  const start=src.indexOf('function render(data){'),end=src.indexOf('function renderEvents()',start);
+  assert.ok(start>=0&&end>start,'bloco render(data) não localizado');
+  const renderBlock=src.slice(start,end);
+  assert.doesNotMatch(renderBlock,/refreshAlpha\(/);
+  assert.match(src,/setInterval\(\(\)=>\{if\(activeSection==='alpha'\)void refreshAlpha\(\);\},5000\)/);
   assert.match(src,/requestAnimationFrame/);
 });
 
