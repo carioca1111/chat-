@@ -126,3 +126,6 @@ body{overflow:hidden;background:radial-gradient(circle at 15% 0%,rgba(25,98,155,
 #gameGrid .mini{font-size:9px!important}
 
 #gameGrid .panelbar>button[data-reload]{grid-column:5!important}
+/* Override legacy layout-specific header dimensions, including their !important rules. */
+#gameGrid.layout-grid .game-panel .panelbar,#gameGrid.layout-duo .game-panel .panelbar,#gameGrid.layout-focus .game-panel .panelbar{height:56px!important;min-height:56px!important;padding:3px 8px!important}
+#gameGrid.layout-grid .game-panel .account-meta,#gameGrid.layout-duo .game-panel .account-meta,#gameGrid.layout-focus .game-panel .account-meta{max-width:none!important;width:100%!important;white-space:nowrap!important;line-height:25px!important}
