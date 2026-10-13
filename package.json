@@ -1,9 +1,10 @@
 {
   "name": "pokegrid-relay",
-  "version": "1.2.0",
+  "version": "1.5.0",
   "private": true,
-  "description": "Relay privado do PokéGrid com pareamento mobile por código temporário",
+  "description": "Relay privado do PokéGrid com pareamento mobile e analytics Alpha em PostgreSQL",
   "main": "server.js",
   "scripts": {"start": "node server.js"},
-  "engines": {"node": ">=20"}
+  "engines": {"node": ">=20"},
+  "dependencies": {"pg": "^8.13.1"}
 }
