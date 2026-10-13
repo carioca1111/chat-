@@ -6,7 +6,9 @@ const crypto=require('crypto');
 const root=path.resolve(process.argv[2]||'gridium-build');
 const overlay=path.join(__dirname,'alpha914-src');
 const manifest=JSON.parse(fs.readFileSync(path.join(overlay,'manifest.json'),'utf8'));
-const sha=file=>crypto.createHash('sha256').update(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n')).digest('hex');
+const normalizeText=text=>String(text).replace(/\r\n/g,'\n');
+const readText=file=>normalizeText(fs.readFileSync(file,'utf8'));
+const sha=file=>crypto.createHash('sha256').update(readText(file)).digest('hex');
 for(const [rel,expected] of Object.entries(manifest)){
   const file=path.join(overlay,rel);
   if(!fs.existsSync(file))throw new Error(`Alpha 9.14 payload ausente: ${rel}`);
@@ -22,12 +24,12 @@ const replaceOnce=(text,search,replacement,label)=>{
 fs.copyFileSync(path.join(overlay,'perf-runtime.js'),path.join(root,'perf-runtime.js'));
 fs.copyFileSync(path.join(overlay,'test','alpha914-performance.test.js'),path.join(root,'test','alpha914-performance.test.js'));
 
-let pkg=fs.readFileSync(path.join(root,'package.json'),'utf8');
+let pkg=readText(path.join(root,'package.json'));
 must(/3\.0\.0-alpha\.9\.13/.test(pkg),'Alpha 9.14: versão base 9.13 não encontrada');
 pkg=pkg.replace(/3\.0\.0-alpha\.9\.13/g,'3.0.0-alpha.9.14');
 fs.writeFileSync(path.join(root,'package.json'),pkg);
 
-let html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+let html=readText(path.join(root,'index.html'));
 html=replaceOnce(
   html,
   '<script src="professional-dashboard.js"></script>\n<script src="renderer.js"></script>',
@@ -36,7 +38,7 @@ html=replaceOnce(
 );
 fs.writeFileSync(path.join(root,'index.html'),html);
 
-let engine=fs.readFileSync(path.join(root,'alpha-engine.js'),'utf8');
+let engine=readText(path.join(root,'alpha-engine.js'));
 engine=replaceOnce(
   engine,
   "  _rows(table){if(this.db)return this.db.prepare(`SELECT * FROM ${table} ORDER BY ${table==='alpha_positions'?'opened_at':'at'} DESC`).all();return this.fallback.data[table.replace('alpha_','')]||[];}",
@@ -73,7 +75,7 @@ view=view.slice(0,close)+
 engine=engine.slice(0,viewStart)+view+engine.slice(proStart);
 fs.writeFileSync(path.join(root,'alpha-engine.js'),engine);
 
-let main=fs.readFileSync(path.join(root,'main.js'),'utf8');
+let main=readText(path.join(root,'main.js'));
 main=replaceOnce(
   main,
   "const {Worker}=require('worker_threads');\n",
@@ -88,7 +90,7 @@ main=replaceOnce(
 );
 fs.writeFileSync(path.join(root,'main.js'),main);
 
-let renderer=fs.readFileSync(path.join(root,'renderer.js'),'utf8');
+let renderer=readText(path.join(root,'renderer.js'));
 renderer=replaceOnce(
   renderer,
   "async function refreshAlpha(force=false){if(alphaRefreshBusy)return;if(!force&&alphaState&&Date.now()-(alphaState._loadedAt||0)<5000)return;alphaRefreshBusy=true;try{const s=await window.gridAPI.alphaState();if(s){s._loadedAt=Date.now();renderAlpha(s);}}catch(e){console.error(e);}finally{alphaRefreshBusy=false;}}",
