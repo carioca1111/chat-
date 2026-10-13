@@ -34,6 +34,18 @@ function feeRate(kind, currency, price) {
   if (price <= 5000) return 0.10;
   return 0.075;
 }
+function safeMarketUrl(value) {
+  if (!value) return null;
+  try {
+    const u = new URL(String(value));
+    const host = u.hostname.toLowerCase();
+    if (u.protocol !== 'https:') return null;
+    if (host !== 'pokeidle.io' && !host.endsWith('.pokeidle.io')) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
 
 function ensureAsset(e) {
   const key = assetKey(e);
@@ -68,6 +80,7 @@ function ingest(raw) {
     price: Math.max(0, Number(raw.price || 0)),
     seller: raw.seller ? String(raw.seller) : null,
     listingId: raw.listingId ? String(raw.listingId) : null,
+    marketUrl: safeMarketUrl(raw.marketUrl || raw.url),
     ts: now,
     meta: raw.meta || {},
   };
@@ -80,7 +93,14 @@ function ingest(raw) {
 
   if (e.type === 'listing_created' || e.type === 'listing_updated') {
     const lid = e.listingId || e.id;
-    a.listings.set(lid, { id: lid, price: e.price, ts: now, seller: e.seller });
+    const prev = a.listings.get(lid) || {};
+    a.listings.set(lid, {
+      id: lid,
+      price: e.price,
+      ts: now,
+      seller: e.seller || prev.seller || null,
+      marketUrl: e.marketUrl || prev.marketUrl || null,
+    });
     a.priceObs.push({ price: e.price, ts: now, source: 'listing' });
   } else if (e.type === 'listing_sold') {
     const lid = e.listingId || e.id;
@@ -111,7 +131,8 @@ function analyzeAsset(a, now = Date.now()) {
   const soldPrices = sold7d.map(x => x.price).filter(Boolean);
   const obs = a.priceObs.filter(x => x.ts >= now - 7 * 864e5).map(x => x.price).filter(Boolean);
 
-  const floor = activePrices.length ? Math.min(...activePrices) : (obs.length ? obs[obs.length - 1] : 0);
+  const floorListing = active.length ? [...active].sort((x, y) => x.price - y.price || y.ts - x.ts)[0] : null;
+  const floor = floorListing ? floorListing.price : (obs.length ? obs[obs.length - 1] : 0);
   const listMedian = median(activePrices);
   const saleMedian = median(soldPrices);
   const historyMedian = median(obs);
@@ -198,6 +219,9 @@ function analyzeAsset(a, now = Date.now()) {
     robustZ,
     anomalyTypes,
     updatedAt: a.lastSeen,
+    listingId: floorListing ? floorListing.id : null,
+    marketUrl: floorListing ? floorListing.marketUrl : null,
+    seller: floorListing ? floorListing.seller : null,
     timeline: a.timeline.slice(-80),
   };
 }
@@ -274,7 +298,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
 
   if (u.pathname === '/api/dashboard' && req.method === 'GET') return sendJson(res, 200, dashboard());
-  if (u.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok:true, now:Date.now(), events:state.events.length, assets:state.assets.size, dataMode:state.events.length?'REAL_FEED':'WAITING_REAL_FEED' });
+  if (u.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok:true, now:Date.now(), events:state.events.length, assets:state.assets.size, dataMode:state.events.length?'REAL_FEED':'WAITING_REAL_FEED', marketDeepLink:true });
   if (u.pathname === '/api/stream' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type':'text/event-stream', 'Cache-Control':'no-cache', 'Connection':'keep-alive',
