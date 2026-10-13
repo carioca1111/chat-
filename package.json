@@ -4,7 +4,7 @@
   "private": true,
   "description": "Relay privado do PokéGrid com pareamento mobile e analytics Alpha em PostgreSQL",
   "main": "server.js",
-  "scripts": {"start": "node server.js"},
+  "scripts": {"prestart":"npm install --omit=dev --ignore-scripts", "start": "node server.js"},
   "engines": {"node": ">=20"},
   "dependencies": {"pg": "^8.13.1"}
 }
