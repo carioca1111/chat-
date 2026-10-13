@@ -1,4 +1,5 @@
 $ErrorActionPreference='Stop'
+$PSNativeCommandUseErrorActionPreference=$true
 $root=$PSScriptRoot
 $build=Join-Path $root 'gridium-build'
 & (Join-Path $root 'build-alpha917.ps1')
@@ -6,6 +7,7 @@ node (Join-Path $root 'prepare-sniper-alpha917.js') $build
 node (Join-Path $root 'apply-sniper-dedicated.js') $build
 node (Join-Path $root 'apply-sniper-budget-persistence.js') $build
 node (Join-Path $root 'apply-sniper-opportunities.js') $build
+node (Join-Path $root 'normalize-sniper-ux3-inputs.js') $build
 node (Join-Path $root 'apply-sniper-ux3.js') $build
 Push-Location $build
 try {
