@@ -1,0 +1,10 @@
+'use strict';
+const fs=require('fs');
+const path=require('path');
+const root=path.resolve(process.argv[2]||path.join(__dirname,'gridium-build'));
+const file=path.join(root,'test','sniper-ux3.test.js');
+if(!fs.existsSync(file))throw new Error('sniper-ux3.test.js ausente');
+let t=fs.readFileSync(file,'utf8');
+t=t.replace("assert.doesNotMatch(ui,/confirm('Armar o Gridium Sniper/);","assert.equal(ui.includes(\"confirm('Armar o Gridium Sniper\"),false);");
+fs.writeFileSync(file,t,'utf8');
+console.log('Sniper UX3 test escaping fixed.');
