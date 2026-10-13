@@ -17,6 +17,32 @@ function pct(v){return `${v>=0?'+':''}${Number(v||0).toFixed(1)}%`}
 function ago(ts){const s=Math.max(0,(Date.now()-ts)/1000);if(s<60)return `${Math.floor(s)}s`;if(s<3600)return `${Math.floor(s/60)}min`;if(s<86400)return `${Math.floor(s/3600)}h`;return `${Math.floor(s/86400)}d`}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
+function findSignal(key){return [...state.opportunities,...state.anomalies].find(i=>i.key===key)}
+function marketHref(x){
+  if(x.marketUrl) return x.marketUrl;
+  const u=new URL('https://pokeidle.io/app');
+  u.searchParams.set('alphaRadar','1');
+  if(x.listingId)u.searchParams.set('listingId',x.listingId);
+  if(x.name)u.searchParams.set('q',x.name);
+  u.hash='market';
+  return u.toString();
+}
+function marketButtonHtml(x,large=false){
+  if(!x?.listingId || state.dataMode!=='REAL_FEED')return '';
+  const exact=x.marketUrl?'<span class="market-exact">LINK EXATO</span>':'';
+  return `<button class="market-btn ${large?'large':''}" data-market-key="${esc(x.key)}" type="button">🎯 ${x.marketUrl?'ABRIR ANÚNCIO NO MARKET':'ABRIR NO MARKET'} ${exact}</button>`;
+}
+function bindMarketButtons(root=document){
+  root.querySelectorAll('[data-market-key]').forEach(btn=>{
+    btn.onclick=async ev=>{
+      ev.preventDefault();ev.stopPropagation();
+      const x=findSignal(btn.dataset.marketKey);if(!x?.listingId)return;
+      try{await navigator.clipboard.writeText(x.listingId)}catch{}
+      window.open(marketHref(x),'_blank','noopener,noreferrer');
+    };
+  });
+}
+
 async function load(){
   try{
     const r=await fetch('/api/dashboard',{cache:'no-store'}); state=await r.json(); render();
@@ -48,8 +74,10 @@ function renderCards(){
     <div class="price-grid"><div class="metric"><span>Floor agora</span><b>${money(x.floor,x.currency)}</b></div><div class="metric"><span>Valor justo</span><b>${money(x.fairValue,x.currency)}</b></div><div class="metric"><span>Desconto</span><b class="good">${pct(x.discountPct)}</b></div><div class="metric"><span>Lucro líquido est.</span><b class="good">${money(x.netProfit,x.currency)}</b></div></div>
     <div class="badges">${x.anomalyTypes.slice(0,3).map((t,i)=>`<span class="badge ${i===0&&x.score>=80?'hot':''}">${esc(t)}</span>`).join('')}</div>
     <div class="mini-row"><span>Liquidez <b>${x.liquidity}/100</b></span><span>Confiança <b>${x.confidence}%</b></span><span>${ago(x.updatedAt)}</span></div>
+    ${marketButtonHtml(x)}
   </div></article>`).join('');
-  host.querySelectorAll('[data-key]').forEach(el=>el.onclick=()=>openDrawer(el.dataset.key));
+  host.querySelectorAll('.opp-card[data-key]').forEach(el=>el.onclick=()=>openDrawer(el.dataset.key));
+  bindMarketButtons(host);
 }
 
 function renderTable(){
@@ -63,17 +91,19 @@ function renderAnomalies(){
 }
 
 function renderFeed(){
-  $('#feedList').innerHTML=state.recentEvents.slice(0,50).map(e=>`<article class="feed-item"><span class="feed-time">${new Date(e.ts).toLocaleTimeString('pt-BR')}<br>${ago(e.ts)}</span><div><strong>${esc(e.name)}</strong><p>${eventLabel(e.type)} ${e.seller?'• '+esc(e.seller):''}</p></div><span class="feed-price">${money(e.price,e.currency)}</span></article>`).join('') || `<div class="empty">${state.dataMode==='REAL_FEED'?'Nenhum evento recente.':'Nenhum evento real recebido ainda.'}</div>`;
+  $('#feedList').innerHTML=state.recentEvents.slice(0,50).map(e=>`<article class="feed-item"><span class="feed-time">${new Date(e.ts).toLocaleTimeString('pt-BR')}<br>${ago(e.ts)}</span><div><strong>${esc(e.name)}</strong><p>${eventLabel(e.type)} ${e.seller?'• '+esc(e.seller):''}${e.listingId?' • anúncio '+esc(e.listingId):''}</p></div><span class="feed-price">${money(e.price,e.currency)}</span></article>`).join('') || `<div class="empty">${state.dataMode==='REAL_FEED'?'Nenhum evento recente.':'Nenhum evento real recebido ainda.'}</div>`;
 }
 function eventLabel(t){return ({listing_created:'Novo anúncio',listing_updated:'Preço alterado',listing_sold:'Vendido',listing_cancelled:'Cancelado'})[t]||t}
 
 function openDrawer(key, doOpen=true){
-  const x=[...state.opportunities,...state.anomalies].find(i=>i.key===key); if(!x)return; selectedKey=key;
+  const x=findSignal(key); if(!x)return; selectedKey=key;
   $('#drawerContent').innerHTML=`<span class="eyebrow">ANÁLISE DO SINAL</span><h2>${esc(x.name)}</h2><div class="drawer-sub">${x.kind.toUpperCase()} • ${x.currency} • atualizado há ${ago(x.updatedAt)}</div>
     <div class="hero-score"><div class="big-score"><strong>${x.score}</strong><span>OPPORTUNITY SCORE</span></div><div class="reason-list">${(x.anomalyTypes.length?x.anomalyTypes:['SEM ANOMALIA FORTE']).map(t=>`<div class="reason">✓ ${esc(t)}</div>`).join('')}</div></div>
     <div class="drawer-grid"><div class="drawer-metric"><span>FLOOR</span><b>${money(x.floor,x.currency)}</b></div><div class="drawer-metric"><span>VALOR JUSTO</span><b>${money(x.fairValue,x.currency)}</b></div><div class="drawer-metric"><span>DESCONTO</span><b class="positive">${pct(x.discountPct)}</b></div><div class="drawer-metric"><span>LUCRO LÍQUIDO EST.</span><b class="positive">${money(x.netProfit,x.currency)}</b></div><div class="drawer-metric"><span>LIQUIDEZ</span><b>${x.liquidity}/100</b></div><div class="drawer-metric"><span>CONFIANÇA</span><b>${x.confidence}%</b></div><div class="drawer-metric"><span>VENDAS 24H</span><b>${x.sales24h}</b></div><div class="drawer-metric"><span>ANÚNCIOS ATIVOS</span><b>${x.activeListings}</b></div></div>
+    ${x.listingId?`<div class="market-target"><span>ANÚNCIO REAL</span><b>ID ${esc(x.listingId)}</b>${x.seller?`<small>Vendedor: ${esc(x.seller)}</small>`:''}${marketButtonHtml(x,true)}<p>${x.marketUrl?'O coletor forneceu um link direto para este anúncio.':'O PokeIdle será aberto no Market e o ID do anúncio será copiado automaticamente para facilitar localizar/destacar no Gridium.'}</p></div>`:''}
     <div class="chart"><canvas id="chart" width="800" height="240"></canvas></div>
     <div class="risk-note">A estimativa usa exclusivamente eventos recebidos pelo feed conectado e aplica uma taxa configurada para calcular margem líquida. Preço de mercado pode mudar e não há garantia de venda ou lucro.</div>`;
+  bindMarketButtons($('#drawerContent'));
   drawChart(x.timeline||[]); if(doOpen)$('#drawer').classList.add('open');
 }
 
