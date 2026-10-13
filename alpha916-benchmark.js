@@ -1,0 +1,5 @@
+'use strict';
+const {dashboardModel}=require('./alpha912-src/professional-dashboard');
+const now=Date.now(),positions=Array.from({length:2000},(_,i)=>({id:'p'+i,mode:'real',currency:i%2?'coins':'gems',slot:i%4,name:'Item '+i,entry:100+i,qty:1,opened_at:now-i*1000,metadata:{}}));
+const state={professional:{coverage:{},ownSnapshots:{0:now,1:now,2:now,3:now},pending:[],decisions:[],metrics:{gems:{},coins:{}},policy:{}},accounts:{gems:Array.from({length:4},(_,slot)=>({slot})),coins:Array.from({length:4},(_,slot)=>({slot}))},positions,settings:{liveExecutionUnlocked:true,killSwitch:false,liveSafety:{minExitProfitPct:5},feePct:{gems:15,coins:15}}};
+const times=[];for(let i=0;i<25;i++){const s=performance.now();dashboardModel(state,i%2?'gems':'coins',now);times.push(performance.now()-s);}times.sort((a,b)=>a-b);const median=times[Math.floor(times.length/2)],p95=times[Math.ceil(times.length*.95)-1];console.log('GRIDIUM_ALPHA916_CORE',JSON.stringify({positions:positions.length,medianMs:+median.toFixed(3),p95Ms:+p95.toFixed(3)}));if(p95>100)throw new Error('Professional Core synthetic benchmark >100ms');
