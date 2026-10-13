@@ -12,6 +12,7 @@ on:
       - 'apply-sniper-budget-persistence.js'
       - 'prepare-sniper-alpha917.js'
       - 'apply-sniper-opportunities.js'
+      - 'apply-sniper-ux3.js'
       - 'build-sniper-dedicated.ps1'
       - '.github/workflows/build-gridium-sniper-dedicated.yml'
   push:
@@ -25,6 +26,7 @@ on:
       - 'apply-sniper-budget-persistence.js'
       - 'prepare-sniper-alpha917.js'
       - 'apply-sniper-opportunities.js'
+      - 'apply-sniper-ux3.js'
       - 'build-sniper-dedicated.ps1'
       - '.github/workflows/build-gridium-sniper-dedicated.yml'
   workflow_dispatch:
@@ -54,7 +56,7 @@ jobs:
       - name: Verify installer
         shell: pwsh
         run: |
-          $file='gridium-build/dist/Gridium-Sniper-Setup-3.0.0-sniper.2.exe'
+          $file='gridium-build/dist/Gridium-Sniper-Setup-3.0.0-sniper.3.exe'
           if(!(Test-Path $file)){ throw "Installer not found: $file" }
           $item=Get-Item $file
           if($item.Length -lt 50000000){ throw "Installer too small: $($item.Length) bytes" }
@@ -64,7 +66,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Sniper-3.0.0-sniper.2-Windows
-          path: gridium-build/dist/Gridium-Sniper-Setup-3.0.0-sniper.2.exe
+          name: Gridium-Sniper-3.0.0-sniper.3-Windows
+          path: gridium-build/dist/Gridium-Sniper-Setup-3.0.0-sniper.3.exe
           if-no-files-found: error
           retention-days: 30
