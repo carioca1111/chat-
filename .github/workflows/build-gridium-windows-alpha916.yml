@@ -5,9 +5,9 @@ on:
     branches: [gridium-next]
     paths:
       - 'alpha916-src/**'
-      - 'alpha916-cloud/**'
       - 'alpha916-benchmark.js'
       - 'apply-alpha916.js'
+      - 'apply-alpha916-entry.js'
       - 'build-alpha916.ps1'
       - '.github/workflows/build-gridium-windows-alpha916.yml'
   workflow_dispatch:
@@ -47,7 +47,6 @@ jobs:
           node --check preload.js
           node --check alpha-core-process.js
           node --check ultra-runtime.js
-          node --check analytics-client.js
           npm test
       - name: Build Windows installer
         working-directory: gridium-build
