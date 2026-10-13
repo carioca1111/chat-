@@ -6,6 +6,8 @@ node ./alpha914-benchmark.js ./gridium-build baseline-9.13
 if ($LASTEXITCODE -ne 0) { throw 'Baseline Alpha 9.13 benchmark failed' }
 node ./apply-alpha914.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 9.14 patch failed' }
+node ./apply-alpha914-radar.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha Radar sync patch failed' }
 node ./optimize-alpha914.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 9.14 optimizer failed' }
 node ./alpha914-benchmark.js ./gridium-build optimized-9.14
@@ -14,4 +16,4 @@ node --check ./gridium-build/main.js
 node --check ./gridium-build/renderer.js
 node --check ./gridium-build/alpha-engine.js
 node --check ./gridium-build/perf-runtime.js
-Write-Host 'Alpha 9.14 responsiveness patch assembled and profiled.'
+Write-Host 'Alpha 9.14 responsiveness patch assembled and profiled with Alpha Radar real-feed sync.'
