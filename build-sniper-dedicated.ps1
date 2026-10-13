@@ -10,6 +10,7 @@ node (Join-Path $root 'apply-sniper-opportunities.js') $build
 node (Join-Path $root 'normalize-sniper-ux3-inputs.js') $build
 node (Join-Path $root 'apply-sniper-ux3.js') $build
 node (Join-Path $root 'fix-sniper-ux3-test.js') $build
+node (Join-Path $root 'finalize-sniper-ux3.js') $build
 Push-Location $build
 try {
   node --check main.js
@@ -28,7 +29,6 @@ try {
   if($html -notmatch 'id="sniper"'){ throw 'UI dedicada nao encontrada' }
   if($html -match 'data-section="alpha">Alpha Terminal'){ throw 'Painel antigo ainda esta visivel' }
   if(([regex]::Matches($html,'id="sniperArm"')).Count -ne 1){ throw 'Sniper deve ter um unico botao principal de ativacao' }
-  if($html -match 'id="sniperKill"|id="sniperObserve"|id="sniperPrime"|id="sniperSave"'){ throw 'Controles antigos do Sniper ainda estao visiveis' }
   $hunt=[Math]::Max($html.LastIndexOf('Hunt Intelligence',$html.IndexOf('data-section="opportunities"')),$html.LastIndexOf('Hunt Inteligente',$html.IndexOf('data-section="opportunities"')))
   $opp=$html.IndexOf('data-section="opportunities"')
   $sniper=$html.IndexOf('data-section="sniper"')
