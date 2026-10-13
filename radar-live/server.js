@@ -12,21 +12,7 @@ const state = {
   assets: new Map(),
   clients: new Set(),
   startedAt: Date.now(),
-  demoTimer: null,
 };
-
-const catalog = [
-  ['Shiny Dragonite P5', 'pokemon', 'GEM', 12400],
-  ['Garchomp P4', 'pokemon', 'COIN', 300000000],
-  ['Charizard P5', 'pokemon', 'GEM', 6800],
-  ['Tyranitar P5', 'pokemon', 'GEM', 9100],
-  ['Shiny Gengar P4', 'pokemon', 'GEM', 7600],
-  ['Shiny Stone', 'item', 'GEM', 4300],
-  ['Bronze Boss Token', 'item', 'GEM', 980],
-  ['Casa Lendária', 'item', 'GEM', 10900],
-  ['Bicicleta Lendária', 'item', 'GEM', 9800],
-  ['TM Elemental', 'item', 'GEM', 2300],
-];
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function median(arr) {
@@ -70,10 +56,13 @@ function ensureAsset(e) {
 
 function ingest(raw) {
   const now = Number(raw.ts || Date.now());
+  const name = String(raw.name || '').trim();
+  if (!name) return null;
+
   const e = {
     id: String(raw.id || `${now}-${Math.random().toString(36).slice(2, 8)}`),
     type: raw.type || 'listing_created',
-    name: String(raw.name || 'Desconhecido'),
+    name,
     kind: raw.kind === 'pokemon' ? 'pokemon' : 'item',
     currency: raw.currency === 'COIN' ? 'COIN' : 'GEM',
     price: Math.max(0, Number(raw.price || 0)),
@@ -157,7 +146,7 @@ function analyzeAsset(a, now = Date.now()) {
   const isOutlier = robustZ <= -2.6 || discountPct >= 25;
   const floorFalseRisk = activePrices.length >= 3 && floor < median(activePrices) * 0.78;
   const confidence = clamp(
-    18 + Math.min(40, sold7d.length * 4) + Math.min(25, obs.length * 1.2) + Math.min(17, active.length * 3),
+    Math.min(40, sold7d.length * 4) + Math.min(35, obs.length * 1.2) + Math.min(25, active.length * 3),
     0, 100
   );
 
@@ -166,7 +155,7 @@ function analyzeAsset(a, now = Date.now()) {
   const netProfit = Math.max(0, netSaleAtFair - floor);
   const netMarginPct = floor ? (netProfit / floor) * 100 : 0;
 
-  const score = clamp(Math.round(
+  const score = confidence < 20 ? 0 : clamp(Math.round(
     clamp(discountPct, 0, 45) * 1.35 +
     liquidity * 0.23 +
     confidence * 0.18 +
@@ -179,12 +168,12 @@ function analyzeAsset(a, now = Date.now()) {
 
   const severity = score >= 85 ? 'critical' : score >= 70 ? 'high' : score >= 55 ? 'medium' : 'low';
   const anomalyTypes = [];
-  if (isOutlier) anomalyTypes.push('PREÇO FORA DA CURVA');
-  if (volumeSpike >= 2.5) anomalyTypes.push('VOLUME DISPAROU');
-  if (momentumPct >= 7) anomalyTypes.push('MOMENTUM POSITIVO');
-  if (momentumPct <= -7) anomalyTypes.push('QUEDA ACELERADA');
-  if (floorFalseRisk) anomalyTypes.push('FLOOR ISOLADO');
-  if (discountPct >= 12 && netProfit > 0) anomalyTypes.push('DESCONTO REAL');
+  if (confidence >= 20 && isOutlier) anomalyTypes.push('PREÇO FORA DA CURVA');
+  if (confidence >= 20 && volumeSpike >= 2.5) anomalyTypes.push('VOLUME DISPAROU');
+  if (confidence >= 20 && momentumPct >= 7) anomalyTypes.push('MOMENTUM POSITIVO');
+  if (confidence >= 20 && momentumPct <= -7) anomalyTypes.push('QUEDA ACELERADA');
+  if (confidence >= 20 && floorFalseRisk) anomalyTypes.push('FLOOR ISOLADO');
+  if (confidence >= 20 && discountPct >= 12 && netProfit > 0) anomalyTypes.push('DESCONTO REAL');
 
   return {
     key: a.key,
@@ -223,6 +212,7 @@ function dashboard() {
   return {
     generatedAt: now,
     uptimeMs: now - state.startedAt,
+    dataMode: state.events.length ? 'REAL_FEED' : 'WAITING_REAL_FEED',
     stats: {
       trackedAssets: items.length,
       events: state.events.length,
@@ -279,40 +269,12 @@ function parseBody(req) {
   });
 }
 
-function seedDemo() {
-  const now = Date.now();
-  for (const [name, kind, currency, base] of catalog) {
-    for (let i = 0; i < 24; i++) {
-      const noise = 1 + (Math.random() - 0.5) * 0.14;
-      ingest({
-        type: Math.random() < 0.36 ? 'listing_sold' : 'listing_created',
-        name, kind, currency,
-        price: Math.round(base * noise),
-        listingId: `seed-${name}-${i}`,
-        ts: now - (24 - i) * (Math.random() * 20 + 7) * 60e3,
-      });
-    }
-  }
-  ingest({ type:'listing_created', name:'Shiny Dragonite P5', kind:'pokemon', currency:'GEM', price:7200, listingId:'demo-snipe-1', ts:now-9000 });
-  ingest({ type:'listing_created', name:'Shiny Stone', kind:'item', currency:'GEM', price:2750, listingId:'demo-snipe-2', ts:now-6000 });
-  ingest({ type:'listing_created', name:'Bicicleta Lendária', kind:'item', currency:'GEM', price:6900, listingId:'demo-snipe-3', ts:now-4000 });
-  for (let i = 0; i < 8; i++) ingest({ type:'listing_sold', name:'Bronze Boss Token', kind:'item', currency:'GEM', price:Math.round(980*(0.97+Math.random()*0.06)), listingId:`demo-vol-${i}`, ts:now-i*5*60e3 });
-}
-
-function demoTick() {
-  const [name, kind, currency, base] = catalog[Math.floor(Math.random() * catalog.length)];
-  let price = Math.round(base * (0.94 + Math.random() * 0.12));
-  if (Math.random() < 0.09) price = Math.round(base * (0.48 + Math.random() * 0.24));
-  const type = Math.random() < 0.27 ? 'listing_sold' : 'listing_created';
-  ingest({ type, name, kind, currency, price, listingId:`live-${Date.now()}-${Math.random().toString(36).slice(2,6)}` });
-}
-
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
 
   if (u.pathname === '/api/dashboard' && req.method === 'GET') return sendJson(res, 200, dashboard());
-  if (u.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok:true, now:Date.now(), events:state.events.length, assets:state.assets.size });
+  if (u.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok:true, now:Date.now(), events:state.events.length, assets:state.assets.size, dataMode:state.events.length?'REAL_FEED':'WAITING_REAL_FEED' });
   if (u.pathname === '/api/stream' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type':'text/event-stream', 'Cache-Control':'no-cache', 'Connection':'keep-alive',
@@ -331,13 +293,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok:true, accepted, stats:dashboard().stats });
     } catch (e) { return sendJson(res, 400, { ok:false, error:'invalid json' }); }
   }
-  if (u.pathname === '/api/demo/reset' && req.method === 'POST') {
-    state.events.length = 0; state.assets.clear(); seedDemo();
-    return sendJson(res, 200, { ok:true });
-  }
   return serveStatic(req, res, u.pathname);
 });
 
-seedDemo();
-state.demoTimer = setInterval(demoTick, 5000);
-server.listen(PORT, '0.0.0.0', () => console.log(`PokeIdle Radar em http://localhost:${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`PokeIdle Radar em http://localhost:${PORT} — aguardando feed real`));
