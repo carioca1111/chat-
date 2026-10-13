@@ -1,0 +1,54 @@
+name: Build Gridium Popular Windows
+
+on:
+  push:
+    branches:
+      - gridium-popular
+    paths:
+      - 'apply-popular.js'
+      - 'build-popular.ps1'
+      - '.github/workflows/build-gridium-popular.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Assemble Gridium Popular
+        shell: pwsh
+        run: ./build-popular.ps1
+
+      - name: Install dependencies
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+
+      - name: Test Popular edition
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm test
+
+      - name: Package Gridium Popular for Windows
+        shell: pwsh
+        working-directory: gridium-build
+        run: npm run dist:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Popular-Setup-1.0.0
+          path: gridium-build/dist/Gridium-Popular-Setup-1.0.0.exe
+          if-no-files-found: error
+          retention-days: 30
