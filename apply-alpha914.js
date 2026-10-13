@@ -6,7 +6,7 @@ const crypto=require('crypto');
 const root=path.resolve(process.argv[2]||'gridium-build');
 const overlay=path.join(__dirname,'alpha914-src');
 const manifest=JSON.parse(fs.readFileSync(path.join(overlay,'manifest.json'),'utf8'));
-const sha=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const sha=file=>crypto.createHash('sha256').update(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n')).digest('hex');
 for(const [rel,expected] of Object.entries(manifest)){
   const file=path.join(overlay,rel);
   if(!fs.existsSync(file))throw new Error(`Alpha 9.14 payload ausente: ${rel}`);
