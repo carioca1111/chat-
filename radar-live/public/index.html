@@ -18,8 +18,8 @@
       </nav>
       <div class="side-card">
         <div class="side-label">MODO DE DADOS</div>
-        <div class="live-row"><span class="dot"></span><b id="dataMode">DEMO AO VIVO</b></div>
-        <p>Pronto para receber eventos reais enviados pelo Alpha Terminal.</p>
+        <div class="live-row"><span class="dot"></span><b id="dataMode">AGUARDANDO FEED REAL</b></div>
+        <p id="dataModeText">Nenhum Pokémon, item, preço ou oportunidade será inventado. O painel só exibirá dados recebidos do Market.</p>
       </div>
       <div class="side-foot">Leitura de mercado • não executa compras</div>
     </aside>
@@ -32,16 +32,16 @@
           <p class="subtitle">Encontre preços fora da curva e oportunidades com margem líquida.</p>
         </div>
         <div class="top-actions">
-          <div class="status-pill"><span class="pulse"></span><span id="updated">Atualizando…</span></div>
+          <div class="status-pill"><span class="pulse"></span><span id="updated">Aguardando dados reais…</span></div>
           <button id="refreshBtn" class="icon-btn">↻</button>
         </div>
       </header>
 
       <section class="kpis">
-        <article><span>Ativos monitorados</span><strong id="kAssets">—</strong><small>Pokémon + itens</small></article>
+        <article><span>Ativos monitorados</span><strong id="kAssets">—</strong><small>Pokémon + itens reais</small></article>
         <article><span>Anomalias agora</span><strong id="kAnoms">—</strong><small>Desvios detectados</small></article>
         <article><span>Oportunidades fortes</span><strong id="kOpps">—</strong><small>Score ≥ 70</small></article>
-        <article><span>Eventos analisados</span><strong id="kEvents">—</strong><small>Na sessão atual</small></article>
+        <article><span>Eventos analisados</span><strong id="kEvents">—</strong><small>Recebidos do Market</small></article>
       </section>
 
       <section class="filters">
@@ -67,7 +67,7 @@
       </section>
 
       <section id="feed" class="tab-panel">
-        <div class="section-title"><div><span class="eyebrow">STREAM</span><h2>Feed do mercado</h2></div><span class="hint">Últimos eventos recebidos</span></div>
+        <div class="section-title"><div><span class="eyebrow">STREAM</span><h2>Feed do mercado</h2></div><span class="hint">Últimos eventos reais recebidos</span></div>
         <div id="feedList" class="feed-list"></div>
       </section>
     </main>
