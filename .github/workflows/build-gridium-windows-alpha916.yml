@@ -10,6 +10,15 @@ on:
       - 'apply-alpha916-entry.js'
       - 'build-alpha916.ps1'
       - '.github/workflows/build-gridium-windows-alpha916.yml'
+  pull_request:
+    branches: [gridium-next]
+    paths:
+      - 'alpha916-src/**'
+      - 'alpha916-benchmark.js'
+      - 'apply-alpha916.js'
+      - 'apply-alpha916-entry.js'
+      - 'build-alpha916.ps1'
+      - '.github/workflows/build-gridium-windows-alpha916.yml'
   workflow_dispatch:
 
 jobs:
