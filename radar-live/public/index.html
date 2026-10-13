@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Alpha Radar — PokeIdle.io</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">A</div><div><b>ALPHA RADAR</b><span>PokeIdle.io Market Intelligence</span></div></div>
+      <nav>
+        <button class="nav active" data-tab="radar"><span>◈</span> Radar</button>
+        <button class="nav" data-tab="opportunities"><span>⌁</span> Oportunidades</button>
+        <button class="nav" data-tab="anomalies"><span>⚡</span> Anomalias</button>
+        <button class="nav" data-tab="feed"><span>≋</span> Feed do mercado</button>
+      </nav>
+      <div class="side-card">
+        <div class="side-label">MODO DE DADOS</div>
+        <div class="live-row"><span class="dot"></span><b id="dataMode">DEMO AO VIVO</b></div>
+        <p>Pronto para receber eventos reais enviados pelo Alpha Terminal.</p>
+      </div>
+      <div class="side-foot">Leitura de mercado • não executa compras</div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">MARKET INTELLIGENCE</div>
+          <h1>Radar de Anomalias</h1>
+          <p class="subtitle">Encontre preços fora da curva e oportunidades com margem líquida.</p>
+        </div>
+        <div class="top-actions">
+          <div class="status-pill"><span class="pulse"></span><span id="updated">Atualizando…</span></div>
+          <button id="refreshBtn" class="icon-btn">↻</button>
+        </div>
+      </header>
+
+      <section class="kpis">
+        <article><span>Ativos monitorados</span><strong id="kAssets">—</strong><small>Pokémon + itens</small></article>
+        <article><span>Anomalias agora</span><strong id="kAnoms">—</strong><small>Desvios detectados</small></article>
+        <article><span>Oportunidades fortes</span><strong id="kOpps">—</strong><small>Score ≥ 70</small></article>
+        <article><span>Eventos analisados</span><strong id="kEvents">—</strong><small>Na sessão atual</small></article>
+      </section>
+
+      <section class="filters">
+        <div class="search-wrap"><span>⌕</span><input id="search" placeholder="Buscar Pokémon ou item…" /></div>
+        <select id="currency"><option value="ALL">Todas moedas</option><option value="GEM">Gemas</option><option value="COIN">Coins</option></select>
+        <select id="minScore"><option value="0">Qualquer score</option><option value="50">Score 50+</option><option value="70" selected>Score 70+</option><option value="85">Score 85+</option></select>
+        <label class="switch-row"><input id="onlyNet" type="checkbox" checked><span></span> Só lucro líquido</label>
+      </section>
+
+      <section id="radar" class="tab-panel active">
+        <div class="section-title"><div><span class="eyebrow">AGORA</span><h2>Melhores sinais</h2></div><span class="hint">Ordenado pelo Opportunity Score</span></div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section id="opportunities" class="tab-panel">
+        <div class="section-title"><div><span class="eyebrow">RANKING</span><h2>Oportunidades</h2></div><span class="hint">Margem já descontando taxa estimada</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Ativo</th><th>Floor</th><th>Valor justo</th><th>Desconto</th><th>Lucro líquido</th><th>Liquidez</th><th>Confiança</th><th>Score</th></tr></thead><tbody id="oppTable"></tbody></table></div>
+      </section>
+
+      <section id="anomalies" class="tab-panel">
+        <div class="section-title"><div><span class="eyebrow">DETECÇÃO</span><h2>Anomalias</h2></div><span class="hint">Outliers, spikes e floors isolados</span></div>
+        <div id="anomalyList" class="anomaly-list"></div>
+      </section>
+
+      <section id="feed" class="tab-panel">
+        <div class="section-title"><div><span class="eyebrow">STREAM</span><h2>Feed do mercado</h2></div><span class="hint">Últimos eventos recebidos</span></div>
+        <div id="feedList" class="feed-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="drawer" class="drawer"><div class="drawer-backdrop" data-close></div><div class="drawer-panel">
+    <button class="drawer-close" data-close>×</button>
+    <div id="drawerContent"></div>
+  </div></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
