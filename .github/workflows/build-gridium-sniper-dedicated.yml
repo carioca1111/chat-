@@ -14,6 +14,7 @@ on:
       - 'apply-sniper-opportunities.js'
       - 'normalize-sniper-ux3-inputs.js'
       - 'apply-sniper-ux3.js'
+      - 'fix-sniper-ux3-test.js'
       - 'build-sniper-dedicated.ps1'
       - '.github/workflows/build-gridium-sniper-dedicated.yml'
   push:
@@ -29,6 +30,7 @@ on:
       - 'apply-sniper-opportunities.js'
       - 'normalize-sniper-ux3-inputs.js'
       - 'apply-sniper-ux3.js'
+      - 'fix-sniper-ux3-test.js'
       - 'build-sniper-dedicated.ps1'
       - '.github/workflows/build-gridium-sniper-dedicated.yml'
   workflow_dispatch:
