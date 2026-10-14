@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(process.argv[2]||'gridium-build'),testDir=path.join(root,'test');
+const read=n=>fs.readFileSync(path.join(testDir,n),'utf8').replace(/\r\n/g,'\n');
+const write=(n,s)=>fs.writeFileSync(path.join(testDir,n),s,'utf8');
+const replace=(name,from,to,label)=>{let s=read(name);if(!s.includes(from))throw new Error(`Alpha 11.5 test contract anchor missing: ${label} (${name})`);s=s.replace(from,to);write(name,s);};
+for(const name of ['mobile-command-center.test.js','performance-cleanup.test.js','shiny-cloud-integration.test.js','sniper-arm-ui.test.js'])replace(name,"'3.0.0-alpha.11.4'","'3.0.0-alpha.11.5'",'version');
+replace('alpha-engine.test.js',"a.recordMarket({assetId:'x',name:'X'","a.recordMarket({assetType:'item',assetId:'x',name:'X'",'fair-value fixture market type');
+replace('alpha-engine.test.js',"a.evaluate({assetId:'x',name:'X'","a.evaluate({assetType:'item',assetId:'x',name:'X'",'fair-value fixture evaluation type');
+replace('long-session-stability.test.js',"    assert.ok(rt.metrics.failed>=10,'descartes por capacidade devem ser explícitos');","    assert.ok(rt.metrics.ignored>=10,'oportunidades não enviadas descartadas por capacidade devem ser contabilizadas sem fingir falha de compra');\n    assert.ok(rt.feed.some(x=>x.reason==='queue-capacity'),'descartes por capacidade devem continuar explícitos no feed');\n    assert.equal(rt.metrics.failed,0,'capacidade da fila não deve contaminar falhas reais de execução');",'queue capacity semantics');
+console.log('Gridium Alpha 11.5: legacy regression contracts normalized for stricter asset comparables, queue semantics and version.');
