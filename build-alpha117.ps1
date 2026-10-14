@@ -50,6 +50,8 @@ Remove-Item $zip -Force -ErrorAction SilentlyContinue
 
 node ./apply-alpha117.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 Hunt visual patch failed' }
+node ./alpha117-harden-isolation.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 current-Pokemon isolation hardening failed' }
 
 foreach ($name in @('main.js','sniper-runtime.js','hunt-intelligence.js','hunt-visual-model.js','hunt-visual.js')) {
   node --check (Join-Path './gridium-build' $name)
