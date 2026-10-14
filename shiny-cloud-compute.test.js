@@ -3,9 +3,12 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {computeShiny,probability}=require('./shiny-cloud-compute');
 const NOW=1_800_000_000_000;
-const bin=(attempts,ms=15*60_000)=>({at:NOW-1000,ms,attempts,kills:attempts,bodies:attempts});
+function bins(total){
+  const base=Math.floor(total/90),extra=total%90;
+  return Array.from({length:90},(_,i)=>{const attempts=base+(i<extra?1:0);return {at:NOW-(89-i)*10_000,ms:10_000,attempts,kills:attempts,bodies:attempts};});
+}
 function account({slot,hunt='forest',name='C'+(slot+1),attempts=120,lure=false,eligible=true,area='forest'}={}){
-  return {id:String(slot+1),slot,name,online:true,inHunt:true,eligibility:{eligible,reason:eligible?'Roll shiny disponível':'Área sem roll shiny'},context:'p|'+lure+'|false|false|false',hunt:{slug:hunt,name:hunt,area},inventory:{1:500},boosts:{secretLure:lure,captureBoost:false,kickShiny:false,kickCapture:false,lureMs:lure?3_600_000:0,captureMs:0},farmMs:900000,totals:{attempts,normal:lure?0:attempts,lure:lure?attempts:0,unknown:0,seen:0,captured:0,escaped:0,started:NOW-900000},today:{attempts,seen:0,captured:0,escaped:0},bins:[bin(attempts)],huntGroups:[],species:['Pikachu'],recent:[]};
+  return {id:String(slot+1),slot,name,online:true,inHunt:true,eligibility:{eligible,reason:eligible?'Roll shiny disponível':'Área sem roll shiny'},context:'p|'+lure+'|false|false|false',hunt:{slug:hunt,name:hunt,area},inventory:{1:500},boosts:{secretLure:lure,captureBoost:false,kickShiny:false,kickCapture:false,lureMs:lure?3_600_000:0,captureMs:0},farmMs:900000,totals:{attempts,normal:lure?0:attempts,lure:lure?attempts:0,unknown:0,seen:0,captured:0,escaped:0,started:NOW-900000},today:{attempts,seen:0,captured:0,escaped:0},bins:bins(attempts),huntGroups:[],species:['Pikachu'],recent:[]};
 }
 test('duas contas na mesma Hunt compartilham ritmo e chance sem misturar Lure',()=>{
   const out=computeShiny({at:NOW,preferences:{mode:'more'},accounts:[account({slot:0,attempts:120,lure:false}),account({slot:1,attempts:240,lure:true})]});
