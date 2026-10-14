@@ -3,10 +3,11 @@ const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(process.argv[2]||'gridium-build'),file=path.join(root,'main.js');let s=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');
 const must=(c,m)=>{if(!c)throw new Error('Alpha 11.2 shiny delta: '+m);};
 const start=s.indexOf('let shinyCloudCache=null,shinyCloudCacheAt=0,shinyCloudPending=null;');
-const endMarker="handler('grid:shiny-state',()=>shinyCloudView());",end=s.indexOf(endMarker,start);
-must(start>=0&&end>start,'bloco shinyCloudView não encontrado');
+const sniperHandler=s.indexOf("  handler('grid:sniper-state'",start),shinyHandler=s.indexOf("  handler('grid:shiny-state'",start);
+const end=sniperHandler>=0&&sniperHandler<shinyHandler?sniperHandler:shinyHandler;
+must(start>=0&&shinyHandler>start&&end>start,'bloco shinyCloudView não encontrado');
 const replacement=`let shinyCloudCache=null,shinyCloudCacheAt=0,shinyCloudPending=null,shinyDeltaBaseline=null,shinyDeltaFullAt=0,shinyDeltaSeq=0,shinyDeltaSupported=null;
-  const shinyDeltaClientId='gridium-'+process.pid+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+  const shinyDeltaClientId='gridium-'+nodeProcess.pid+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
   function shinyJson112(x){try{return JSON.stringify(x);}catch{return '';}}
   function shinyAccountBase112(a={}){const {bins,huntGroups,species,recent,...base}=a;return base;}
   function shinyGroupKey112(g={}){return String(g.hunt||'')+'|'+String(g.context||'');}
@@ -37,6 +38,6 @@ const replacement=`let shinyCloudCache=null,shinyCloudCacheAt=0,shinyCloudPendin
     shinyCloudPending=shinyCloudRequest112(input).then(result=>{shinyCloudCache=result;shinyCloudCacheAt=Date.now();return result;}).catch(error=>shinyTelemetry.visualView('Cálculo remoto indisponível · '+String(error?.message||error).slice(0,120))).finally(()=>{shinyCloudPending=null;});
     return shinyCloudPending;
   }
-  `+endMarker;
-s=s.slice(0,start)+replacement+s.slice(end+endMarker.length);
-fs.writeFileSync(file,s,'utf8');console.log('Gridium Alpha 11.2: Shiny Cloud usa delta incremental com full sync de segurança a cada 60s.');
+  `;
+s=s.slice(0,start)+replacement+s.slice(end);
+fs.writeFileSync(file,s,'utf8');console.log('Gridium Alpha 11.2: Shiny Cloud usa delta incremental sem remover handlers do Sniper; full sync de segurança a cada 60s.');
