@@ -95,8 +95,8 @@ class SniperRuntime{
     this.persistenceFile=persistenceFile;
     this.onDecision=typeof onDecision==='function'?onDecision:null;
     this.onPostEvent=typeof onPostEvent==='function'?onPostEvent:null;
-    this.mode='OFF';this.killSwitch=true;this.policy=normalizePolicy({},{});
-    this.accounts=new Map();this.serverOffsets=new Map();this.claims=new Map();this.watch=new Map();this.timers=new Map();this.seen=new Map();this.assetWins=new Map();this.attemptTimes=[];this.spend=[];this.feed=[];
+    this.mode='OFF';this.killSwitch=true;this.policy=normalizePolicy({},{});this.lastTrimAt=0;
+    this.accounts=new Map();this.serverOffsets=new Map();this.busySlots=new Set();this.claims=new Map();this.watch=new Map();this.timers=new Map();this.seen=new Map();this.assetWins=new Map();this.attemptTimes=[];this.spend=[];this.feed=[];
     this.metrics={events:0,matches:0,opportunities:0,attempts:0,wins:0,losses:0,failed:0,ignored:0,lastEventAt:0,lastSendAt:0,lastConfirmAt:0,decision:[],server:[]};
     this.load();
   }
@@ -119,9 +119,10 @@ class SniperRuntime{
     if(patch.killSwitch!==undefined)this.killSwitch=patch.killSwitch!==false;
     this.save();return this.snapshot();
   }
-  kill(on=true){this.killSwitch=on!==false;if(this.killSwitch&&this.mode==='AUTO')this.mode='OFF';for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();for(const row of this.watch.values())if(!['WON','LOST','FAILED'].includes(row.state))row.state='FAILED';this.save();return this.snapshot();}
+  kill(on=true){this.killSwitch=on!==false;if(this.killSwitch&&this.mode==='AUTO')this.mode='OFF';for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();for(const row of this.watch.values())if(!['WON','LOST','FAILED'].includes(row.state))row.state='FAILED';this.busySlots.clear();this.save();return this.snapshot();}
   _push(type,message,data={}){const row={at:now(),type,message:text(message).slice(0,240),...data};this.feed.push(row);if(this.feed.length>200)this.feed.splice(0,this.feed.length-200);try{this.onPostEvent?.(row);}catch{}return row;}
-  _trim(ts=now()){
+  _trim(ts=now(),force=false){
+    if(!force&&ts-this.lastTrimAt<1000)return;this.lastTrimAt=ts;
     for(const [k,t] of this.seen)if(ts-t>30*60*1000)this.seen.delete(k);
     for(const [k,row] of this.claims)if(ts-Number(row.at||0)>30*60*1000)this.claims.delete(k);
     this.attemptTimes=this.attemptTimes.filter(t=>t>ts-60000);this.spend=this.spend.filter(x=>x.at>ts-86400000);
@@ -142,7 +143,7 @@ class SniperRuntime{
   disconnect(slot){const a=this.accounts.get(Number(slot));if(a)a.connected=false;}
   _serverNow(slot,ts=now()){return ts+Number(this.serverOffsets.get(Number(slot))||0);}
   _route(listing){
-    const candidates=[...this.accounts.values()].filter(a=>a.connected!==false&&now()-Number(a.lastAt||0)<120000).sort((a,b)=>Number(a.slot)-Number(b.slot));
+    const candidates=[...this.accounts.values()].filter(a=>a.connected!==false&&now()-Number(a.lastAt||0)<120000&&!this.busySlots.has(Number(a.slot))).sort((a,b)=>Number(a.slot)-Number(b.slot));
     const risk=this.policy.risk,own=listing.sellerId!=null?String(listing.sellerId):'';
     for(const a of candidates){
       if(risk.blockOwn&&own&&a.id&&own===String(a.id))continue;
@@ -152,9 +153,9 @@ class SniperRuntime{
     }
     return null;
   }
-  _gateBudget(l,slot){
+  _gateBudget(l,slot,{ignoreClaim=false}={}){
     const risk=this.policy.risk,price=Number(l.price),currency=l.currency,ts=now();
-    if(risk.blockDuplicate&&this.claims.has(listingKey(l)))return {ok:false,reason:'duplicate-claim'};
+    if(!ignoreClaim&&risk.blockDuplicate&&this.claims.has(listingKey(l)))return {ok:false,reason:'duplicate-claim'};
     if(risk.respectRateLimits&&this.attemptTimes.length>=risk.maxPerMinute)return {ok:false,reason:'rate-limit'};
     if((this.assetWins.get(assetKey(l))||0)>=risk.maxPerAsset)return {ok:false,reason:'asset-limit'};
     const max=currency==='gems'?risk.maxPerPurchaseGems:risk.maxPerPurchaseCoins;if(max>0&&price>max)return {ok:false,reason:'max-purchase'};
@@ -176,7 +177,7 @@ class SniperRuntime{
     this._trim(receivedAt);const key=listingKey(listing);if(!key||this.seen.has(key))return null;this.seen.set(key,receivedAt);this.metrics.events++;this.metrics.lastEventAt=receivedAt;
     const evaluation=this._decision(listing,receivedAt);if(evaluation.decision!=='MATCH'){this.metrics.ignored++;return evaluation;}this.metrics.matches++;this.metrics.opportunities++;
     const route=this._route(listing);if(!route){this.metrics.ignored++;this._push('BLOCKED','Oportunidade sem conta elegível',{listing:copy(listing),reason:'no-account'});return {...evaluation,reason:'no-account'};}
-    const routed={...listing,sourceSlot:Number(listing.slot),slot:Number(route.slot)},availableAt:Number(listing.availableAt)||0,serverNow=this._serverNow(route.slot,receivedAt),delayMs=0;
+    const routed={...listing,sourceSlot:Number(listing.slot),slot:Number(route.slot)},availableAt=Number(listing.availableAt)||0,serverNow=this._serverNow(route.slot,receivedAt),delayMs=0;
     routed.delayMs=availableAt>0?Math.max(0,availableAt-serverNow):0;
     const row={key,listing:routed,rule:evaluation.rule,state:'CLAIMED',createdAt:receivedAt,updatedAt:receivedAt,account:{slot:route.slot,name:route.name||`Conta ${route.slot+1}`},delayMs:routed.delayMs,timing:{t0:receivedAt,decisionMs:evaluation.decisionMs}};this.claims.set(key,{at:receivedAt,state:'CLAIMED'});this.watch.set(key,row);
     if(this.mode==='OBSERVE'||this.mode==='SEMI'){row.state=routed.delayMs>0?'WATCHING':'READY';this._push('MATCH',this.mode==='OBSERVE'?'TERIA COMPRADO':'Aguardando confirmação',{listing:copy(routed),state:row.state});return evaluation;}
@@ -191,21 +192,21 @@ class SniperRuntime{
   }
   async _send(key){
     const row=this.watch.get(key);if(!row||this.killSwitch||this.mode!=='AUTO'||!['READY','CLAIMED'].includes(row.state))return;
-    const l=row.listing,gate=this._gateBudget(l,l.slot);if(!gate.ok){row.state='FAILED';row.reason=gate.reason;row.updatedAt=now();this.metrics.failed++;this._push('FAILED','Compra bloqueada pelo risco',{listing:copy(l),reason:gate.reason});return;}
+    const l=row.listing,gate=this._gateBudget(l,l.slot,{ignoreClaim:true});if(!gate.ok){row.state='FAILED';row.reason=gate.reason;row.updatedAt=now();this.metrics.failed++;this._push('FAILED','Compra bloqueada pelo risco',{listing:copy(l),reason:gate.reason});return;}
     const serverNow=this._serverNow(l.slot);if(Number(l.availableAt)>0&&serverNow+1<Number(l.availableAt)){row.state='PREARMED';this._schedule(key,Number(l.availableAt)-serverNow);return;}
-    row.state='SENT';row.updatedAt=now();row.timing.sendAt=row.updatedAt;this.metrics.attempts++;this.metrics.lastSendAt=row.updatedAt;this.attemptTimes.push(row.updatedAt);this._push('SENT','BUY enviado',{listing:copy(l)});
+    if(this.busySlots.has(Number(l.slot))){row.state='FAILED';row.reason='slot-busy';row.updatedAt=now();this.metrics.failed++;return;}this.busySlots.add(Number(l.slot));row.state='SENT';row.updatedAt=now();row.timing.sendAt=row.updatedAt;this.metrics.attempts++;this.metrics.lastSendAt=row.updatedAt;this.attemptTimes.push(row.updatedAt);this._push('SENT','BUY enviado',{listing:copy(l)});
     const start=mono();
     try{
       if(!this.onDecision)throw new Error('executor-unavailable');const result=await this.onDecision({listing:copy(l),evaluation:{rule:row.rule,decisionMs:row.timing.decisionMs},policy:copy(this.policy)});const total=elapsedMs(start),ok=result?.ok===true||result?.outcome?.ok===true;this.metrics.server.push(total);row.serverMs=total;row.result=result||null;row.updatedAt=now();
       if(ok){row.state='WON';this.metrics.wins++;this.metrics.lastConfirmAt=row.updatedAt;this.spend.push({at:row.updatedAt,currency:l.currency,amount:Number(result?.outcome?.price??l.price)||0});this.assetWins.set(assetKey(l),(this.assetWins.get(assetKey(l))||0)+1);this._push('WON','Compra confirmada',{listing:copy(l),serverMs:total});}
       else{row.state='LOST';row.reason=text(result?.outcome?.error||result?.error||'not-confirmed');this.metrics.losses++;this._push('LOST','Compra não confirmada',{listing:copy(l),reason:row.reason,serverMs:total});}
     }catch(error){row.state='FAILED';row.reason=text(error?.message||error);row.updatedAt=now();this.metrics.failed++;this._push('FAILED','Falha no executor',{listing:copy(l),reason:row.reason});}
-    finally{const claim=this.claims.get(key);if(claim)claim.state=row.state;this.save();}
+    finally{this.busySlots.delete(Number(l.slot));const claim=this.claims.get(key);if(claim)claim.state=row.state;this.save();}
   }
   observeSales(){return this.snapshot();}
   manualClaim(listing){return this.ingestOne(listing,now());}
   snapshot(){
-    this._trim();const d=this.metrics.decision,s=this.metrics.server,attempts=this.metrics.attempts,wins=this.metrics.wins;
+    this._trim(now(),true);const d=this.metrics.decision,s=this.metrics.server,attempts=this.metrics.attempts,wins=this.metrics.wins;
     return {mode:this.mode,killSwitch:this.killSwitch,policy:copy(this.policy),metrics:{...this.metrics,decision:undefined,server:undefined,winRate:attempts?wins/attempts*100:0,decisionP50Ms:percentile(d,.50),decisionP95Ms:percentile(d,.95),decisionP99Ms:percentile(d,.99),serverP50Ms:percentile(s,.50),serverP95Ms:percentile(s,.95),serverP99Ms:percentile(s,.99)},watchQueue:[...this.watch.values()].sort((a,b)=>Number(a.listing?.availableAt||0)-Number(b.listing?.availableAt||0)).slice(0,80).map(copy),feed:this.feed.slice(-120).reverse().map(copy),accounts:[...this.accounts.values()].map(copy),states:[...STATES]};
   }
   close(){this.kill(true);this.save();}
