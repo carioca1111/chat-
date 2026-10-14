@@ -1,0 +1,55 @@
+name: Diagnose Alpha 11.6 Baseline
+
+on:
+  push:
+    branches: [gridium-alpha11.6-lightning-latency]
+    paths:
+      - '.github/workflows/diagnose-alpha116-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble Alpha 11.5 baseline
+        shell: pwsh
+        run: ./build-alpha115.ps1
+      - name: Verify baseline version and syntax
+        shell: pwsh
+        run: |
+          $pkg = Get-Content './gridium-build/package.json' -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.11.5') { throw "Unexpected baseline $($pkg.version)" }
+          foreach ($name in @('main.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','market-protocol.js','alpha-engine.js','alpha-analysis-worker.js','hunt-intelligence.js','collector.js','package.json')) {
+            $path = Join-Path './gridium-build' $name
+            if (-not (Test-Path $path)) { throw "Missing baseline file $name" }
+            if ($name.EndsWith('.js')) { node --check $path }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.5-Baseline-Runtime
+          path: |
+            gridium-build/main.js
+            gridium-build/network-inspector.js
+            gridium-build/sniper-runtime.js
+            gridium-build/sniper-ui.js
+            gridium-build/market-protocol.js
+            gridium-build/alpha-engine.js
+            gridium-build/alpha-analysis-worker.js
+            gridium-build/hunt-intelligence.js
+            gridium-build/collector.js
+            gridium-build/package.json
+            gridium-build/test/*.test.js
+            gridium-build/alpha112-benchmark.json
+            gridium-build/sniper-benchmark.json
+          if-no-files-found: error
+          retention-days: 3
