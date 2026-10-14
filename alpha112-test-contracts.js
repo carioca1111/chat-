@@ -53,14 +53,25 @@ swap('shiny-integration.test.js',
 "assert.match(main,/await shinyTelemetry\\.close\\(\\)/);assert.match(main,/await flushRuntimePersistence112\\(\\)/);",
 'async quit contract');
 
+swap('sniper-integration.test.js',
+"const main=read('main.js'),a=main.indexOf('async function executeLightningBuy'),b=main.indexOf('function intelligencePass',a);",
+"const main=read('main.js'),a=main.indexOf('async function executeLightningBuy'),b=main.indexOf('const sniperIntelCache',a);",
+'Lightning hot path boundary');
+
 let parity=read('sniper-parity.test.js');
 const parityOld="test('daily/hourly/rate and per-asset counters survive restart',()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'gridium-sniper11-')),file=path.join(dir,'state.json'),first=new SniperRuntime({persistenceFile:file}),ts=Date.now();first.attemptTimes=[ts];first.spend=[{at:ts,currency:'coins',amount:1234}];first.assetWins.set('pokemon:25:coins',1);first.save();first.close();const restored=new SniperRuntime({persistenceFile:file});assert.equal(restored.attemptTimes.length,1);assert.equal(restored.spend[0]?.amount,1234);assert.equal(restored.assetWins.get('pokemon:25:coins'),1);restored.close();fs.rmSync(dir,{recursive:true,force:true});});";
 const parityNew="test('daily/hourly/rate and per-asset counters survive restart',async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'gridium-sniper11-')),file=path.join(dir,'state.json'),first=new SniperRuntime({persistenceFile:file}),ts=Date.now();first.attemptTimes=[ts];first.spend=[{at:ts,currency:'coins',amount:1234}];first.assetWins.set('pokemon:25:coins',1);await first.flush();const restored=new SniperRuntime({persistenceFile:file});assert.equal(restored.attemptTimes.length,1);assert.equal(restored.spend[0]?.amount,1234);assert.equal(restored.assetWins.get('pokemon:25:coins'),1);await restored.flush();fs.rmSync(dir,{recursive:true,force:true});});";
 must(parity.includes(parityOld),'sniper parity async flush');write('sniper-parity.test.js',parity.replace(parityOld,parityNew));
 
 let mainTest=read('main.test.js');
+const quitStub="app.getPath=()=>tmp;app.whenReady=()=>({then:fn=>{ready=fn;}});app.quit=()=>{};";
+const quitLifecycle="app.getPath=()=>tmp;app.whenReady=()=>({then:fn=>{ready=fn;}});app.quit=()=>{app.emit('before-quit',{});};";
+must(mainTest.includes(quitStub),'main Electron quit stub');mainTest=mainTest.replace(quitStub,quitLifecycle);
+const ctxOld=" const ctx={URL,require:name=>name==='electron'?electron:name.startsWith('./')?require(path.join(root,name)):require(name),__dirname:root,console,setInterval:(fn)=>{timers.push(fn);return timers.length;},clearInterval:()=>{}};";
+const ctxNew=" const ctx={URL,require:name=>name==='electron'?electron:name.startsWith('./')?require(path.join(root,name)):require(name),__dirname:root,console,setInterval:(fn)=>{timers.push(fn);return timers.length;},clearInterval:()=>{},setTimeout,clearTimeout,setImmediate,clearImmediate};";
+must(mainTest.includes(ctxOld),'main VM timing globals');mainTest=mainTest.replace(ctxOld,ctxNew);
 const quitOld=" app.emit('before-quit');assert(fs.existsSync(path.join(tmp,'grid-statistics.json')));";
-const quitNew=" app.emit('before-quit',{preventDefault(){}});await new Promise(resolve=>setTimeout(resolve,40));assert(fs.existsSync(path.join(tmp,'grid-statistics.json')));";
+const quitNew=" app.emit('before-quit',{preventDefault(){}});await new Promise(resolve=>setTimeout(resolve,100));assert(fs.existsSync(path.join(tmp,'grid-statistics.json')));";
 must(mainTest.includes(quitOld),'main async quit');write('main.test.js',mainTest.replace(quitOld,quitNew));
 
-console.log('Gridium Alpha 11.2: contratos de regressão legados normalizados para timers removidos, snapshot core e persistência assíncrona.');
+console.log('Gridium Alpha 11.2: contratos de regressão legados normalizados para timers removidos, snapshot core, hot path isolado e persistência assíncrona.');
