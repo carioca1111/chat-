@@ -1,0 +1,15 @@
+'use strict';
+const fs=require('fs'),path=require('path');
+const root=path.resolve(process.argv[2]||'gridium-build');
+const file=path.join(root,'hunt-intelligence.js');
+let src=fs.readFileSync(file,'utf8');
+const old="source=sameExact.length>=2?sameExact:sameSpecies.length>=2?sameSpecies:a.samples,exact=source===sameExact&&sameExact.length>0,now=Date.now();";
+const next="source=p?(sameExact.length?sameExact:(sameSpecies.length?sameSpecies:[])):[],exact=source===sameExact&&sameExact.length>0,now=Date.now();";
+if(!src.includes(old)) throw new Error('Alpha 11.7 isolation patch: accountView source selector not found');
+src=src.replace(old,next);
+const oldBasis="dataBasis:exact?'mesmo Pokémon':sameSpecies.length>=2?'mesma espécie':'histórico da conta'";
+const nextBasis="dataBasis:exact?'mesmo Pokémon':source.length?'mesma espécie':'sem amostra do Pokémon atual'";
+if(!src.includes(oldBasis)) throw new Error('Alpha 11.7 isolation patch: dataBasis selector not found');
+src=src.replace(oldBasis,nextBasis);
+fs.writeFileSync(file,src);
+console.log('Alpha 11.7: strict current-Pokemon Hunt isolation applied.');
