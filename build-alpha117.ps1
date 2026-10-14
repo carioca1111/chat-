@@ -14,7 +14,8 @@ $zip = Join-Path $env:TEMP 'gridium-alpha117-hunt-backgrounds.zip'
 $stream = [IO.File]::Open($zip, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
 try {
   foreach ($part in $parts) {
-    $text = (Get-Content $part.FullName -Raw).Trim()
+    $raw = Get-Content $part.FullName -Raw
+    $text = ($raw -replace '[^A-Za-z0-9+/=]', '').Trim()
     if (-not $text) { throw "Alpha 11.7: chunk vazio $($part.Name)" }
     try { $bytes = [Convert]::FromBase64String($text) }
     catch { throw "Alpha 11.7: Base64 inválido em $($part.Name): $($_.Exception.Message)" }
