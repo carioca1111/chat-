@@ -5,7 +5,7 @@ const root=path.resolve(__dirname,'..'),read=n=>fs.readFileSync(path.join(root,n
 test('Alpha 11.2 usa snapshot core sem estados pesados legados',()=>{
   const main=read('main.js'),pkg=JSON.parse(read('package.json'));
   assert.equal(pkg.version,'3.0.0-alpha.11.2');
-  const a=main.indexOf('function snapshot()'),b=main.indexOf('function publish()',a),snap=main.slice(a,b);
+  const a=main.indexOf('function snapshot()'),b=main.indexOf('const statePublisher112',a),snap=main.slice(a,b);
   assert.ok(a>0&&b>a);for(const forbidden of ['alphaSnapshot()','huntView()','marketProtocolSummary()','autoTraderStatus()','autopilotPublicState()'])assert.doesNotMatch(snap,new RegExp(forbidden.replace(/[()]/g,'\\$&')));
   assert.match(main,/grid:remote-status/);assert.doesNotMatch(main,/remoteSync\.push\([^\n]+then\(\(\)=>publish\(\)\)/);
 });
@@ -31,6 +31,7 @@ test('Sniper UI é event-driven e Relâmpago não recebe worker ou cloud no hot 
   assert.doesNotMatch(ui,/setInterval\(refresh,600\)|setInterval\(refreshIntel,3500\)/);
   assert.match(ui,/onSniper/);assert.match(preload,/onSniper:/);assert.match(main,/grid:sniper-event/);assert.match(main,/sniperIntelCache/);
   const a=runtime.indexOf('ingestOne('),b=runtime.indexOf('_schedule(',a),hot=runtime.slice(a,b);assert.ok(a>0&&b>a);assert.doesNotMatch(hot,/evaluateListingsInWorker|fetch\(|SQLite|sqlite|cloud/);
+  for(const ipc of ['grid:sniper-state','grid:sniper-config','grid:sniper-arm','grid:sniper-kill','grid:sniper-intelligence','grid:sniper-manual-buy'])assert.match(main,new RegExp(ipc));
 });
 
 test('Hunt é cacheado e renderizado por conta com keyed rows',()=>{
@@ -41,8 +42,8 @@ test('Hunt é cacheado e renderizado por conta com keyed rows',()=>{
 
 test('persistência de runtime sai do writeFileSync e mantém atomic rename/flush',()=>{
   const main=read('main.js'),runtime=read('sniper-runtime.js');
-  const a=main.indexOf('function save()'),b=main.indexOf('function loadHistory',a),block=main.slice(a,b);assert.ok(a>0&&b>a);assert.doesNotMatch(block,/writeFileSync/);assert.match(main,/atomicWrite112/);assert.match(main,/fs\.promises\.rename/);
-  const s=runtime.indexOf('save(force=false)'),e=runtime.indexOf('configure(',s),rb=runtime.slice(s,e);assert.ok(s>0&&e>s);assert.doesNotMatch(rb,/writeFileSync/);assert.match(rb,/fs\.promises\.writeFile/);assert.match(runtime,/async flush\(\)/);
+  const a=main.indexOf('function save()'),b=main.indexOf('function saveHistory',a),block=main.slice(a,b);assert.ok(a>0&&b>a);assert.doesNotMatch(block,/writeFileSync/);assert.match(main,/atomicWrite112/);assert.match(main,/fs\.promises\.rename/);
+  const s=runtime.indexOf('save(force=false)'),e=runtime.indexOf('configure(',s),rb=runtime.slice(s,e);assert.ok(s>0&&e>s);assert.doesNotMatch(rb,/writeFileSync/);assert.match(rb,/fs\.promises\.writeFile/);assert.match(rb,/riskRuntime/);assert.match(runtime,/async flush\(\)/);
 });
 
 test('telemetria de performance fica desligada por padrão',()=>{
