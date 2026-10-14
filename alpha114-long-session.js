@@ -68,4 +68,13 @@ write('sniper-runtime.js',runtime);
 const pkgPath=path.join(root,'package.json'),pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));
 pkg.version='3.0.0-alpha.11.4';
 fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+'\n');
+
+for(const name of ['mobile-command-center.test.js','performance-cleanup.test.js','shiny-cloud-integration.test.js','sniper-arm-ui.test.js']){
+  const file=path.join(root,'test',name);
+  if(!fs.existsSync(file))continue;
+  const before=fs.readFileSync(file,'utf8');
+  const after=before.replaceAll('3.0.0-alpha.11.3','3.0.0-alpha.11.4');
+  if(before===after)throw new Error('Alpha 11.4 long-session: versão esperada não encontrada em '+name);
+  fs.writeFileSync(file,after,'utf8');
+}
 console.log('Gridium Alpha 11.4: long-session retention guards applied.');
