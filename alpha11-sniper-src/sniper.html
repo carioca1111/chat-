@@ -1,0 +1,65 @@
+<section id="sniper" class="workspace-section sniper-page" aria-label="Market Sniper">
+  <div class="ms-shell">
+    <header class="ms-head">
+      <div><span class="ms-kicker">◎ MARKET EXECUTION</span><h2>Market Sniper</h2></div>
+      <div class="ms-head-state"><span id="msConnection" class="ms-pill">● Aguardando Market</span><span id="msGlobalState" class="ms-pill danger">Sniper Seguro</span></div>
+    </header>
+
+    <div id="msNotice" class="ms-notice" hidden></div>
+    <div class="ms-metrics">
+      <article><span>Anúncios vistos</span><b id="msSeen">0</b></article><article><span>Oportunidades</span><b id="msOpps">0</b></article><article><span>Compras</span><b id="msWins">0</b></article><article><span>Perdidos</span><b id="msLosses">0</b></article><article><span>Win Rate</span><b id="msWinRate">—</b></article>
+      <article class="wide"><span>Latência decisão</span><b id="msDecision">P50 — · P95 — · P99 —</b></article><article class="wide"><span>Latência servidor</span><b id="msServer">P50 — · P95 — · P99 —</b></article>
+    </div>
+
+    <div class="ms-top-grid">
+      <section class="ms-card lightning">
+        <div class="ms-card-title"><div><h3>⚡ Sniper Relâmpago</h3><p>Filtro em RAM → claim → pré-armamento → compra.</p></div><label class="ms-switch"><input id="msLightningEnabled" type="checkbox"><span></span><b id="msLightningLabel">SEGURO</b></label></div>
+        <div class="ms-fields two">
+          <label>Preço máximo<input id="msMaxPrice" type="number" min="0" step="1" value="50"></label>
+          <label>Moeda<select id="msCurrency"><option value="gems">Gemas</option><option value="coins">Coins</option><option value="any">Qualquer</option></select></label>
+          <label>Pokémon / ativo<input id="msQuery" placeholder="Qualquer" value="*"></label>
+          <label>Máx. por minuto<input id="msMaxMinute" type="number" min="1" max="120" value="3"></label>
+        </div>
+        <div class="ms-categories"><label><input id="msCatPokemon" type="checkbox" checked> Pokémon</label><label><input id="msCatShiny" type="checkbox" checked> Shiny ✦</label><label><input id="msCatItems" type="checkbox" checked> Itens</label><label><input id="msCatStones" type="checkbox" checked> Pedras</label></div>
+        <div class="ms-checks"><label><input id="msWatch" type="checkbox" checked> Observar anúncios antes da abertura</label><label><input id="msBuyOpen" type="checkbox" checked> Comprar assim que o servidor liberar</label><label><input id="msPriority" type="checkbox" checked> Prioridade máxima</label></div>
+        <div class="ms-action-row"><button id="msDryRun" class="ghost-red">RADAR / DRY RUN</button><button id="msArm" class="red">ARMAR AUTO</button><button id="msKill" class="dark">KILL SWITCH</button></div>
+        <div class="ms-health"><span>Conexão <b id="msHot">—</b></span><span>Sessão <b id="msSession">—</b></span><span>Executor <b id="msExecutor">—</b></span><span>Watch Queue <b id="msWatchCount">0</b></span></div>
+      </section>
+
+      <section class="ms-card intelligence">
+        <div class="ms-card-title"><div><h3>🎯 Sniper Inteligente</h3><p>Fair Value, margem, liquidez e confiança fora do hot path.</p></div><label class="ms-switch blue"><input id="msIntelEnabled" type="checkbox" checked><span></span><b>ATIVO</b></label></div>
+        <div class="ms-fields two">
+          <label>ROI mínimo<input id="msMinRoi" type="number" value="30"></label><label>Lucro mínimo<input id="msMinProfit" type="number" value="300"></label>
+          <label>Score mínimo<input id="msMinScore" type="number" min="0" max="100" value="82"></label><label>Confiança mínima %<input id="msMinConfidence" type="number" min="0" max="100" value="80"></label>
+          <label>Valor máximo por compra<input id="msIntelMaxPrice" type="number" min="0" value="5000"></label><label>Moeda<select id="msIntelCurrency"><option value="any">Qualquer</option><option value="gems">Gemas</option><option value="coins">Coins</option></select></label>
+          <label class="span2">Pokémon / ativo<input id="msIntelQuery" placeholder="Qualquer" value="*"></label>
+        </div>
+        <div class="ms-categories blue"><label><input id="msIntelPokemon" type="checkbox" checked> Pokémon</label><label><input id="msIntelShiny" type="checkbox" checked> Shiny ✦</label><label><input id="msIntelItems" type="checkbox" checked> Itens</label><label><input id="msIntelStones" type="checkbox" checked> Pedras</label></div>
+        <div class="ms-intel-foot"><span id="msIntelCore">Worker: aguardando</span><span id="msIntelSample">Amostra: —</span></div>
+      </section>
+
+      <aside class="ms-card risk">
+        <div class="ms-card-title"><div><h3>🛡 Gerenciamento de Risco</h3><p>Valores pré-computados em memória.</p></div></div>
+        <div class="ms-fields">
+          <label>Saldo reservado %<input id="msReservePct" type="number" min="0" max="95" value="20"></label>
+          <label>Máximo por compra · Gems<input id="msMaxBuyGems" type="number" min="0" value="2000"></label>
+          <label>Gasto máximo/h · Gems<input id="msHourGems" type="number" min="0" value="5000"></label>
+          <label>Gasto máximo/dia · Gems<input id="msDayGems" type="number" min="0" value="15000"></label>
+          <label>Máx. do mesmo ativo<input id="msMaxAsset" type="number" min="1" value="3"></label>
+        </div>
+        <div class="ms-checks"><label><input id="msBlockOwn" type="checkbox" checked> Não comprar meus próprios anúncios</label><label><input id="msBlockDuplicate" type="checkbox" checked> Impedir compra duplicada</label><label><input id="msBlockSuspicious" type="checkbox" checked> Bloquear preço suspeito</label><label><input id="msRateLimits" type="checkbox" checked> Respeitar rate limits do servidor</label></div>
+        <button id="msSave" class="blue-btn">SALVAR CONFIGURAÇÃO</button>
+      </aside>
+    </div>
+
+    <div class="ms-mid-grid">
+      <section class="ms-table-card"><div class="ms-table-head"><h3>⌛ Fila de Anúncios <small>(Aguardando Abertura)</small></h3><span id="msQueueBadge">0</span></div><div class="ms-scroll"><table><thead><tr><th>ID</th><th>Ativo</th><th>Preço</th><th>Libera em</th><th>Conta</th><th>Estado</th></tr></thead><tbody id="msQueue"></tbody></table></div></section>
+      <section class="ms-table-card"><div class="ms-table-head"><h3>◎ Oportunidades em Tempo Real</h3><button id="msRefreshIntel">Atualizar</button></div><div class="ms-scroll"><table><thead><tr><th>Ativo</th><th>Preço</th><th>Valor Est.</th><th>Lucro</th><th>ROI</th><th>Score</th><th>Ação</th></tr></thead><tbody id="msOpportunities"></tbody></table></div></section>
+    </div>
+
+    <div class="ms-mid-grid bottom">
+      <section class="ms-table-card"><div class="ms-table-head"><h3>Compras Recentes</h3><span id="msSpend">—</span></div><div class="ms-scroll"><table><thead><tr><th>Tempo</th><th>Ativo</th><th>Preço</th><th>Modo</th><th>Resultado</th><th>Servidor</th></tr></thead><tbody id="msPurchases"></tbody></table></div></section>
+      <section class="ms-table-card"><div class="ms-table-head"><h3>Logs em Tempo Real</h3><button id="msClearLogs">Limpar visual</button></div><div id="msLogs" class="ms-logs"></div></section>
+    </div>
+  </div>
+</section>
