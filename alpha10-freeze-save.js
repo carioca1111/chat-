@@ -3,7 +3,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(process.argv[2]||'gridium-build');
 const file=path.join(root,'shiny-telemetry.js');
-let src=fs.readFileSync(file,'utf8');
+let src=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');
 function once(from,to,label){if(!src.includes(from))throw new Error('Alpha 10.3 save patch anchor missing: '+label);src=src.replace(from,to);}
 once(
 "    this.lastLog = 0;\n    this.cached = null;",
