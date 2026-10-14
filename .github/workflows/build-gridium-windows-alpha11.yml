@@ -1,11 +1,11 @@
-name: Build Gridium Alpha 11 Market Sniper
+name: Build Gridium Alpha 11.1 Market Sniper
 on:
   pull_request:
     branches: [gridium-next]
-    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-risk-persist.js', 'alpha11-ui-hotfix.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
+    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-risk-persist.js', 'alpha11-ui-hotfix.js', 'alpha11-arm-hotfix.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
   push:
     branches: [gridium-next]
-    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-risk-persist.js', 'alpha11-ui-hotfix.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
+    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-risk-persist.js', 'alpha11-ui-hotfix.js', 'alpha11-arm-hotfix.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Assemble Alpha 11 Market Sniper
+      - name: Assemble Alpha 11.1 Market Sniper
         shell: pwsh
         run: ./build-alpha11.ps1
       - name: Install build dependencies
@@ -38,7 +38,7 @@ jobs:
       - name: Verify installer and assets
         shell: pwsh
         run: |
-          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.exe'
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.1.exe'
           if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
           if (-not (Test-Path 'gridium-build/sniper-benchmark.json')) { throw 'Benchmark output missing' }
           $normal=(Get-ChildItem 'gridium-build/assets/sniper/pokemon/normal' -Filter *.png).Count
@@ -48,9 +48,9 @@ jobs:
           Get-Content 'gridium-build/sniper-benchmark.json'
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Alpha-11-Market-Sniper-Windows
+          name: Gridium-Alpha-11.1-Market-Sniper-Windows
           path: |
-            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.exe
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.1.exe
             gridium-build/sniper-benchmark.json
           if-no-files-found: error
           retention-days: 30
