@@ -38,7 +38,7 @@ preload=once(preload,"  sniperManualBuy:listing=>ipcRenderer.invoke('grid:sniper
 write('preload.js',preload);
 
 let ui=read('sniper-ui.js');
-ui=once(ui,"let active=false,state=null,intel=null,pollTimer=null,intelTimer=null,localLogs=[];","let active=false,state=null,intel=null,eventUnsub=null,refreshQueued=false,intelQueued=false,localLogs=[];",'estado UI event driven');
+ui=once(ui,"let active=false,state=null,intel=null,pollTimer=null,intelTimer=null,localLogs=[],hydrated=false;","let active=false,state=null,intel=null,eventUnsub=null,refreshQueued=false,intelQueued=false,localLogs=[],hydrated=false;",'estado UI event driven');
 const oldStart="function start(){if(pollTimer)return;void refresh();void refreshIntel();pollTimer=setInterval(refresh,600);intelTimer=setInterval(refreshIntel,3500);}\n  function stop(){clearInterval(pollTimer);clearInterval(intelTimer);pollTimer=intelTimer=null;}";
 const newStart=`function queueRefresh(kind='state'){if(!active)return;if(kind==='intel'){if(intelQueued)return;intelQueued=true;queueMicrotask(async()=>{try{await refreshIntel();}finally{intelQueued=false;}});return;}if(refreshQueued)return;refreshQueued=true;queueMicrotask(async()=>{try{await refresh();}finally{refreshQueued=false;}});}
   function applySniperEvent(evt){if(!active||!evt)return;if(evt.kind==='feed'&&evt.row){localLogs.unshift(evt.row);if(localLogs.length>120)localLogs.length=120;renderLogs(state);queueRefresh('state');}else if(evt.kind==='intel')queueRefresh('intel');else queueRefresh('state');}
