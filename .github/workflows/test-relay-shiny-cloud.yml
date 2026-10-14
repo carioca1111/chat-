@@ -1,0 +1,25 @@
+name: Test Relay Shiny Cloud
+on:
+  pull_request:
+    branches: [main]
+    paths: ['shiny-cloud-compute.js', 'shiny-cloud-wrapper.js', 'shiny-cloud-compute.test.js', 'package.json', 'server.js', '.github/workflows/test-relay-shiny-cloud.yml']
+  push:
+    branches: [main]
+    paths: ['shiny-cloud-compute.js', 'shiny-cloud-wrapper.js', 'shiny-cloud-compute.test.js', 'package.json', 'server.js', '.github/workflows/test-relay-shiny-cloud.yml']
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check shiny-cloud-wrapper.js
+          node --check shiny-cloud-compute.js
+          node --check server.js
+      - name: Shiny cloud tests
+        run: node --test shiny-cloud-compute.test.js
