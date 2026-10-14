@@ -3,6 +3,10 @@ $PSNativeCommandUseErrorActionPreference = $true
 Set-Location $PSScriptRoot
 ./build-alpha11.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.1 base build failed' }
+# Preserve the exact pre-11.2 runtime so the Lightning benchmark compares both
+# implementations inside the same Node process/runner instead of comparing
+# two short, noisy measurements taken at different moments in the build.
+Copy-Item -Force ./gridium-build/sniper-runtime.js ./gridium-build/sniper-runtime-alpha11-baseline.js
 node ./alpha112-publisher-compat.js ./gridium-build pre
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 publisher pre-normalization failed' }
 node ./alpha112-core-performance.js ./gridium-build
