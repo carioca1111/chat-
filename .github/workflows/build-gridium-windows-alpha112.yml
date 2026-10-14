@@ -1,0 +1,58 @@
+name: Build Gridium Alpha 11.2 Performance Cleanup
+on:
+  pull_request:
+    branches: [gridium-next]
+    paths: ['alpha112-*.js', 'alpha112-src/**', 'build-alpha112.ps1', '.github/workflows/build-gridium-windows-alpha112.yml']
+  push:
+    branches: [gridium-alpha11.2-performance-cleanup, gridium-next]
+    paths: ['alpha112-*.js', 'alpha112-src/**', 'build-alpha112.ps1', '.github/workflows/build-gridium-windows-alpha112.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble Alpha 11.2 Performance Cleanup
+        shell: pwsh
+        run: ./build-alpha112.ps1
+      - name: Install build dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile TypeScript and C++ Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Full regression suite
+        working-directory: gridium-build
+        run: node --test --test-timeout=30000 test/*.test.js
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify installer, assets and performance reports
+        shell: pwsh
+        run: |
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.2.exe'
+          if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
+          if (-not (Test-Path 'gridium-build/sniper-benchmark.json')) { throw 'Alpha 11 baseline benchmark missing' }
+          if (-not (Test-Path 'gridium-build/alpha112-benchmark.json')) { throw 'Alpha 11.2 benchmark missing' }
+          $normal=(Get-ChildItem 'gridium-build/assets/sniper/pokemon/normal' -Filter *.png).Count
+          $shiny=(Get-ChildItem 'gridium-build/assets/sniper/pokemon/shiny' -Filter *.png).Count
+          if ($normal -lt 900 -or $shiny -lt 700) { throw "Sprite library incomplete: normal=$normal shiny=$shiny" }
+          Get-FileHash $file.FullName -Algorithm SHA256
+          Get-Content 'gridium-build/alpha112-benchmark.json'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.2-Performance-Cleanup-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.2.exe
+            gridium-build/sniper-benchmark.json
+            gridium-build/alpha112-benchmark.json
+          if-no-files-found: error
+          retention-days: 30
