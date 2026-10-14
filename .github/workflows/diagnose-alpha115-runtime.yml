@@ -35,3 +35,18 @@ jobs:
               }
             }
           }
+      - name: Upload assembled runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: Alpha-11.4-runtime-for-11.5
+          path: |
+            gridium-build/main.js
+            gridium-build/network-inspector.js
+            gridium-build/hunt-intelligence.js
+            gridium-build/collector.js
+            gridium-build/alpha-analysis-worker.js
+            gridium-build/sniper-runtime.js
+            gridium-build/sniper-ui.js
+            gridium-build/package.json
+          if-no-files-found: error
+          retention-days: 7
