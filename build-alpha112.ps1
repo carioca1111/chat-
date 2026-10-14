@@ -15,6 +15,8 @@ node ./alpha112-persistence.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 async persistence patch failed' }
 node ./alpha112-hunt-accountstate.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 Hunt/AccountState patch failed' }
+node ./alpha112-dashboard-diff.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 Dashboard DOM diff patch failed' }
 node ./alpha112-finalize.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 finalizer failed' }
 Copy-Item -Force ./alpha112-src/test/*.test.js ./gridium-build/test/
