@@ -48,5 +48,5 @@
  $('shTargetForm').onsubmit=async e=>{e.preventDefault();if(await configure({target:$('shTarget').value,mode:'target'}))$('shStrategyNote').textContent='Alvo salvo para análise. Troque de hunt manualmente conforme a recomendação.';};
  for(const id of ['shDays','shHistoryAccount','shResult','shFilterSpecies'])$(id).onchange=()=>{offset=0;void history();};$('shPrevious').onclick=()=>{offset=Math.max(0,offset-50);void history();};$('shNext').onclick=()=>{if(offset+50<historyTotal)offset+=50;void history();};
  const unsubscribe=window.gridAPI.onShiny(event);window.addEventListener('beforeunload',()=>{unsubscribe();clearTimeout(toastTimer);void audio?.close();},{once:true});
- window.ShinyAssistant={update(value,visible){active=visible;if(value)data=value;try{render();}catch(e){fail(e);}},open(){active=true;void refresh();}};
+ window.ShinyAssistant={update(value,visible){const changed=visible!==active||value?.at!==data?.at;active=visible;if(value)data=value;if(!changed)return;try{render();}catch(e){fail(e);}},open(){active=true;void refresh();}};
 })();
