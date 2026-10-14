@@ -1,17 +1,35 @@
-name: Build Mobile APK
+name: Build Gridium Mobile Command Center
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile-android/**'
+      - 'public/**'
+      - 'mobile-command-*.js'
+      - 'package.json'
+      - '.github/workflows/build-mobile-apk.yml'
   push:
     paths:
       - 'mobile-android/**'
+      - 'public/**'
+      - 'mobile-command-*.js'
+      - 'package.json'
+      - '.github/workflows/build-mobile-apk.yml'
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile-android
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate relay and Command Center
+        run: |
+          node --check mobile-command-core.js
+          node --check mobile-command-wrapper.js
+          node --check public/app.js
+          node --test mobile-command-core.test.js shiny-cloud-compute.test.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,8 +37,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - run: gradle assembleDebug
+      - name: Build Android APK
+        working-directory: mobile-android
+        run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: PokeGrid-Mobile-2.4-SEPARADO
+          name: Gridium-Mobile-3.0-Command-Center
           path: mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
