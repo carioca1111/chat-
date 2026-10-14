@@ -44,5 +44,62 @@ patch('renderer.js',"function setSection(id){activeSection=id;","function setSec
 for(const [name,content] of outputs)write(name,content);
 for(const n of ['shiny-telemetry.js','shiny-ui.js','shiny.css'])fs.copyFileSync(path.join(source,n),path.join(target,n));
 for(const n of fs.readdirSync(path.join(source,'test')))fs.copyFileSync(path.join(source,'test',n),path.join(target,'test',n));
+
+// The assistant polls its dedicated IPC only while visible. Hidden tabs do zero Shiny DOM work
+// and do not serialize the Shiny dashboard state.
+function patchCopied(n,from,to){let s=read(n);if(!s.includes(from))throw Error('Alpha 10 copied anchor missing: '+n+' / '+from.slice(0,80));write(n,s.replace(from,to));}
+patchCopied('shiny-ui.js',
+"  let historyBusy = false, historyQueued = false, toastTimer = null, audio = null, historyTotal = 0, filterTimer = null;",
+"  let historyBusy = false, historyQueued = false, toastTimer = null, audio = null, historyTotal = 0, filterTimer = null;\n  let refreshBusy = false, refreshTimer = null;");
+patchCopied('shiny-ui.js',
+"  async function refresh() {\n    try { data = await window.gridAPI.shinyState(); render(); }\n    catch (e) { fail(e); }\n  }",
+`  async function refresh(force = false) {
+    if ((!active && !force) || refreshBusy) return;
+    refreshBusy = true;
+    try {
+      const next = await window.gridAPI.shinyState();
+      if (next) { data = next; render(); }
+    } catch (e) { fail(e); }
+    finally { refreshBusy = false; }
+  }
+
+  function stopPolling() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  function startPolling() {
+    if (!active || refreshTimer) return;
+    void refresh(true);
+    refreshTimer = setInterval(() => { if (active) void refresh(); }, 3000);
+  }
+  function setVisible(visible) {
+    visible = visible === true;
+    if (active === visible) { if (visible && !refreshTimer) startPolling(); return; }
+    active = visible;
+    if (active) startPolling(); else stopPolling();
+  }`);
+patchCopied('shiny-ui.js',
+"    unsubscribe(); clearTimeout(toastTimer); clearTimeout(filterTimer); void audio?.close();",
+"    unsubscribe(); clearTimeout(toastTimer); clearTimeout(filterTimer); stopPolling(); void audio?.close();");
+patchCopied('shiny-ui.js',
+`  window.ShinyAssistant = {
+    update(value, visible) {
+      const changed = visible !== active || value?.at !== data?.at;
+      active = visible;
+      if (value) data = value;
+      if (!changed) return;
+      try { render(); } catch (e) { fail(e); }
+    },
+    open() { active = true; void refresh(); }
+  };`,
+`  window.ShinyAssistant = {
+    setVisible,
+    update(value, visible) {
+      setVisible(visible);
+      if (value && active) { data = value; try { render(); } catch (e) { fail(e); } }
+    },
+    open() { setVisible(true); void refresh(true); }
+  };`);
+
 pkg.version='3.0.0-alpha.10';write('package.json',JSON.stringify(pkg,null,2)+'\n');
 console.log('Gridium Alpha 10 — Shiny Assistente integrated with low-overhead telemetry');
