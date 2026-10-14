@@ -1,7 +1,7 @@
 'use strict';
 const http=require('node:http');
 const crypto=require('node:crypto');
-const {computeShiny}=require('./shiny-cloud-compute');
+const {computeShiny}=require('./shiny-cloud-delta');
 
 const TOKEN=String(process.env.POKEGRID_TOKEN||'').trim();
 const originalCreateServer=http.createServer;
@@ -20,7 +20,8 @@ function wrap(listener){
       return json(res,200,computeShiny(payload));
     }catch(error){
       const message=String(error?.message||'bad-request');
-      return json(res,message==='too-large'?413:400,{error:message==='invalid-shiny-payload'?'invalid-shiny-payload':'bad-request'});
+      const status=message==='too-large'?413:message==='shiny-resync-required'?409:400;
+      return json(res,status,{error:['invalid-shiny-payload','invalid-shiny-delta','shiny-resync-required'].includes(message)?message:'bad-request'});
     }
   };
 }
