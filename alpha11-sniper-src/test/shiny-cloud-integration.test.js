@@ -6,7 +6,7 @@ const path=require('node:path');
 const read=n=>fs.readFileSync(path.join(__dirname,'..',n),'utf8');
 test('desktop envia projeção mínima ao Render e não usa view pesada do Shiny',()=>{
   const main=read('main.js'),telemetry=read('shiny-telemetry.js'),ui=read('shiny-ui.js'),pkg=JSON.parse(read('package.json'));
-  assert.equal(pkg.version,'3.0.0-alpha.11');
+  assert.equal(pkg.version,'3.0.0-alpha.11.1');
   assert.match(main,/\/api\/v1\/shiny\/compute/);
   assert.match(main,/shinyTelemetry\.cloudInput\(\)/);
   assert.match(main,/shinyTelemetry\.visualView/);
