@@ -1,0 +1,98 @@
+name: Build Gridium Alpha 11.7 Hunt Visual
+
+on:
+  push:
+    branches: [gridium-alpha11.7-hunt-visual]
+    paths: ['alpha117-**', 'apply-alpha117.js', 'build-alpha117.ps1', '.github/workflows/build-gridium-windows-alpha117.yml']
+  pull_request:
+    branches: [gridium-next]
+    paths: ['alpha117-**', 'apply-alpha117.js', 'build-alpha117.ps1', '.github/workflows/build-gridium-windows-alpha117.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble Alpha 11.7 from clean Alpha 11.6
+        shell: pwsh
+        run: ./build-alpha117.ps1
+      - name: Install build dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile TypeScript and C++ Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Full regression suite
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify Hunt assets and packaged app.asar
+        shell: pwsh
+        run: |
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.7.exe'
+          if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
+          $asar='gridium-build/dist/win-unpacked/resources/app.asar'
+          if (-not (Test-Path $asar)) { throw 'app.asar missing' }
+          npx asar extract $asar 'gridium-build/dist/asar-check'
+          $pkg=Get-Content 'gridium-build/dist/asar-check/package.json' -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.11.7') { throw "Packaged version mismatch: $($pkg.version)" }
+          foreach ($n in @('beach','cave','default','desert','forest','ice','lake','meadow','mountain','ruins','swamp','volcano')) {
+            $p="gridium-build/dist/asar-check/assets/hunt/backgrounds/hunt-$n.webp"
+            if (-not (Test-Path $p)) { throw "Missing packaged Hunt background: $n" }
+          }
+          $html=Get-Content 'gridium-build/dist/asar-check/index.html' -Raw
+          $renderer=Get-Content 'gridium-build/dist/asar-check/renderer.js' -Raw
+          $main=Get-Content 'gridium-build/dist/asar-check/main.js' -Raw
+          $runtime=Get-Content 'gridium-build/dist/asar-check/sniper-runtime.js' -Raw
+          if ($html -notmatch 'hunt-visual\.js') { throw 'Hunt Visual script missing from app.asar' }
+          if ($renderer -notmatch 'HuntVisual\?\.render') { throw 'Hunt render delegate missing from app.asar' }
+          if ($main -notmatch 'alphaEngine\?\.validation') { throw 'Alpha 11.6 direct validation guard missing' }
+          if ($runtime -notmatch 'PREPARED') { throw 'Alpha 11.6 PREPARED state missing' }
+          "version=$($pkg.version)" | Set-Content 'gridium-build/alpha117-verification.txt'
+          "huntVisual=true" | Add-Content 'gridium-build/alpha117-verification.txt'
+          "huntBackgrounds=12" | Add-Content 'gridium-build/alpha117-verification.txt'
+          "sniper116Guards=true" | Add-Content 'gridium-build/alpha117-verification.txt'
+          Get-FileHash $file.FullName -Algorithm SHA256 | Format-List | Out-File 'gridium-build/alpha117-sha256.txt'
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.7-Diagnostics
+          path: |
+            gridium-build/regression-output.txt
+            alpha117-before.json
+            alpha117-after.json
+            gridium-build/hunt-intelligence.js
+            gridium-build/hunt-visual-model.js
+            gridium-build/hunt-visual.js
+            gridium-build/hunt-visual.css
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.7-Hunt-Visual-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.7.exe
+            alpha117-before.json
+            alpha117-after.json
+            gridium-build/alpha112-benchmark.json
+            gridium-build/alpha117-verification.txt
+            gridium-build/alpha117-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
