@@ -31,7 +31,19 @@ jobs:
         run: ./build-sniper-alpha913.ps1
       - name: Full regression suite
         working-directory: gridium-build
-        run: node --test --test-timeout=30000 test/*.test.js
+        shell: pwsh
+        run: |
+          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+      - name: Upload regression diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.2-Regression-Diagnostics
+          path: gridium-build/regression-output.txt
+          if-no-files-found: warn
+          retention-days: 7
       - name: Windows installer
         working-directory: gridium-build
         run: npx electron-builder --win nsis --publish never
