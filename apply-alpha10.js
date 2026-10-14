@@ -47,7 +47,7 @@ for(const n of fs.readdirSync(path.join(source,'test')))fs.copyFileSync(path.joi
 
 // The assistant polls its dedicated IPC only while visible. Hidden tabs do zero Shiny DOM work
 // and do not serialize the Shiny dashboard state.
-function patchCopied(n,from,to){let s=read(n);if(!s.includes(from))throw Error('Alpha 10 copied anchor missing: '+n+' / '+from.slice(0,80));write(n,s.replace(from,to));}
+function patchCopied(n,from,to){let s=read(n).replace(/\r\n/g,'\n');if(!s.includes(from))throw Error('Alpha 10 copied anchor missing: '+n+' / '+from.slice(0,80));write(n,s.replace(from,to));}
 patchCopied('shiny-ui.js',
 "  let historyBusy = false, historyQueued = false, toastTimer = null, audio = null, historyTotal = 0, filterTimer = null;",
 "  let historyBusy = false, historyQueued = false, toastTimer = null, audio = null, historyTotal = 0, filterTimer = null;\n  let refreshBusy = false, refreshTimer = null;");
