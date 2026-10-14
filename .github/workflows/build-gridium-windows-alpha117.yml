@@ -39,6 +39,16 @@ jobs:
           & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
           $code = $LASTEXITCODE
           if ($code -ne 0) { exit $code }
+      - name: Capture Hunt renderer screenshots
+        shell: pwsh
+        run: |
+          Push-Location gridium-build
+          npx electron ../alpha117-visual-smoke.cjs .
+          $code=$LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { exit $code }
+          if (-not (Test-Path 'gridium-build/alpha117-screenshots/hunt-overview-1920x1080.png')) { throw 'Overview screenshot missing' }
+          if (-not (Test-Path 'gridium-build/alpha117-screenshots/hunt-individual-1366x768.png')) { throw 'Individual screenshot missing' }
       - name: Windows installer
         working-directory: gridium-build
         run: npx electron-builder --win nsis --publish never
@@ -60,13 +70,16 @@ jobs:
           $renderer=Get-Content 'gridium-build/dist/asar-check/renderer.js' -Raw
           $main=Get-Content 'gridium-build/dist/asar-check/main.js' -Raw
           $runtime=Get-Content 'gridium-build/dist/asar-check/sniper-runtime.js' -Raw
+          $hunt=Get-Content 'gridium-build/dist/asar-check/hunt-intelligence.js' -Raw
           if ($html -notmatch 'hunt-visual\.js') { throw 'Hunt Visual script missing from app.asar' }
           if ($renderer -notmatch 'HuntVisual\?\.render') { throw 'Hunt render delegate missing from app.asar' }
           if ($main -notmatch 'alphaEngine\?\.validation') { throw 'Alpha 11.6 direct validation guard missing' }
           if ($runtime -notmatch 'PREPARED') { throw 'Alpha 11.6 PREPARED state missing' }
+          if ($hunt -notmatch 'sem amostra do Pokémon atual') { throw 'Strict current-Pokemon isolation missing' }
           "version=$($pkg.version)" | Set-Content 'gridium-build/alpha117-verification.txt'
           "huntVisual=true" | Add-Content 'gridium-build/alpha117-verification.txt'
           "huntBackgrounds=12" | Add-Content 'gridium-build/alpha117-verification.txt'
+          "currentPokemonIsolation=true" | Add-Content 'gridium-build/alpha117-verification.txt'
           "sniper116Guards=true" | Add-Content 'gridium-build/alpha117-verification.txt'
           Get-FileHash $file.FullName -Algorithm SHA256 | Format-List | Out-File 'gridium-build/alpha117-sha256.txt'
       - name: Upload diagnostics on failure
@@ -82,6 +95,7 @@ jobs:
             gridium-build/hunt-visual-model.js
             gridium-build/hunt-visual.js
             gridium-build/hunt-visual.css
+            gridium-build/alpha117-screenshots/*.png
           if-no-files-found: warn
           retention-days: 7
       - uses: actions/upload-artifact@v4
@@ -94,5 +108,6 @@ jobs:
             gridium-build/alpha112-benchmark.json
             gridium-build/alpha117-verification.txt
             gridium-build/alpha117-sha256.txt
+            gridium-build/alpha117-screenshots/*.png
           if-no-files-found: error
           retention-days: 30
