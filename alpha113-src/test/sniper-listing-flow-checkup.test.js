@@ -42,9 +42,10 @@ test('species catalog summary is intentionally not treated as a buyable listing'
   const s=rt.snapshot();assert.equal(s.metrics.events,0);assert.equal(s.watchQueue.length,0);
 });
 
-test('Sniper UI renders watchQueue and exposes READY/PREARMED/CLAIMED as live opportunities',()=>{
+test('Sniper UI renders non-terminal watchQueue rows in the visible queue',()=>{
   const ui=fs.readFileSync(path.join(__dirname,'..','sniper-ui.js'),'utf8');
-  assert.match(ui,/state\.queue=Array\.isArray\(s\.watchQueue\)\?s\.watchQueue:\[\]/);
-  assert.match(ui,/renderList\('msQueue',state\.queue/);
-  assert.match(ui,/\['READY','PREARMED','CLAIMED'\]\.includes\(x\.state\)/);
+  assert.match(ui,/s\?\.sniper\?\.watchQueue\|\|\[\]/);
+  assert.match(ui,/filter\(x=>!\['WON','LOST','FAILED'\]\.includes\(x\.state\)\)/);
+  assert.match(ui,/setHTML\('msQueue'/);
+  assert.match(ui,/listing\?\.listingId/);
 });
