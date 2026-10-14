@@ -19,3 +19,16 @@ test('reinício mantém histórico e configurações; filtros e paginação',asy
 test('arquivo inválido não é sobrescrito',async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'gridium-shiny-'));try{const file=path.join(dir,'bad.json');fs.writeFileSync(file,'broken');const f=fixture({file});f.welcome();f.throw();await f.t.close();assert.equal(fs.readFileSync(file,'utf8'),'broken');assert.ok(f.t.error);}finally{fs.rmSync(dir,{recursive:true,force:true});}});
 test('Smart Ball exige dados e considera estoque e custo',()=>{assert.equal(optimizeBall({}),null);const args={catalog:[{id:1,nome:'Ultra',priceGold:100},{id:2,nome:'Beast',priceGold:1000}],inventory:{1:3,2:4},probabilities:{1:.1,2:.2}};assert.equal(optimizeBall(args).id,1);assert.equal(optimizeBall({...args,inventory:{1:0,2:4}}).id,2);});
 test('buffers limitados com 32 contas e 100 mil pacotes',()=>{const f=fixture();for(let i=0;i<32;i++)f.welcome(i);const start=performance.now();for(let i=0;i<3200;i++){f.tick(10000);for(let slot=0;slot<32;slot++)f.t.frame(slot,{t:'estado',estado:{servidorAgora:f.now}},f.now);}for(const s of f.t.sessions.values())assert.ok(s.bins.length<=361);assert.ok(performance.now()-start<10000);});
+
+test('progresso de boss não é arena; arena e místico não contaminam hunts',()=>{
+  const f=fixture();f.welcome(0,1,{boss:{arena:null,vitorias:{1:3}}});f.tick();f.throw();
+  const a=f.t.data.accounts['1'],g=Object.values(a.hunts)[0];
+  assert.equal(a.normal,1);assert.equal(g.attempts,1);
+  f.t.frame(0,{t:'estado',estado:{boss:{arena:{id:1}}}},f.now);
+  const before=f.t.sessions.get(0).farmMs;f.tick();f.throw();
+  assert.equal(a.unknown,1);assert.equal(g.attempts,1);assert.equal(f.t.sessions.get(0).farmMs,before);
+  f.t.frame(0,{t:'estado',estado:{boss:{arena:null},mistico:{id:1}}},f.now);f.tick();f.throw();
+  assert.equal(a.unknown,2);assert.equal(g.attempts,1);assert.equal(f.t.sessions.get(0).farmMs,before);
+  f.t.frame(0,{t:'estado',estado:{mistico:null}},f.now);f.tick();f.throw();
+  assert.equal(a.normal,2);assert.equal(g.attempts,2);assert.equal(f.t.sessions.get(0).bins.reduce((n,b)=>n+b.attempts,0),2);assert.equal(f.t.sessions.get(0).farmMs,before+5000);
+});

@@ -39,11 +39,12 @@ class ShinyTelemetry {
     }
     if(!s)return;const a=this.data.accounts[s.id];s.socketAt=at;
     const dt=at-s.lastAt;
-    if(dt>0&&dt<=15000&&s.state.huntSlug&&!s.state.noCentro){s.farmMs+=dt;this.bin(s,at).ms+=dt;const g=this.group(s);if(g)g.ms+=dt;}
+    if(dt>0&&dt<=15000&&this.inHunt(s)){s.farmMs+=dt;this.bin(s,at).ms+=dt;const g=this.group(s);if(g)g.ms+=dt;}
     s.lastAt=at;
     if(p.t==='welcome'||p.t==='estado'){
       const e=p.estado||{},previous=s.state.huntSlug;
-      for(const k of ['huntSlug','noCentro','activeId','servidorAgora','boss','mistico'])if(Object.hasOwn(e,k))s.state[k]=e[k];
+      for(const k of ['huntSlug','noCentro','activeId','servidorAgora','mistico'])if(Object.hasOwn(e,k))s.state[k]=e[k];
+      if(Object.hasOwn(e,'boss'))s.state.bossArena=!!e.boss?.arena;
       if(known(e.servidorAgora))s.serverOffset=at-e.servidorAgora;
       if(Object.hasOwn(e,'balls'))s.state.balls=e.balls&&typeof e.balls==='object'?Object.fromEntries(Object.entries(e.balls).filter(([k,v])=>/^\d+$/.test(k)&&known(v)&&v>=0)):null;
       if(Object.hasOwn(e,'loja'))s.state.boosts=e.loja?.boosts&&typeof e.loja.boosts==='object'?{shiny:e.loja.boosts.shiny??0,captura:e.loja.boosts.captura??0}:null;
@@ -70,11 +71,11 @@ class ShinyTelemetry {
       const pokemonName=name||label(outcome?.nome)||'Espécie não informada';
       this.metric(s,at,'attempts',pokemonName);a.attempts++;if(typeof e.sucesso!=='boolean')this.data.diagnostics.missingOutcome=(this.data.diagnostics.missingOutcome||0)+1;if(pokemonName==='Espécie não informada')this.data.diagnostics.missingSpecies=(this.data.diagnostics.missingSpecies||0)+1;if(a.sinceShiny!==null)a.sinceShiny++;
       const d=a.days[day(at)]??={attempts:0,captured:0,seen:0,escaped:0};d.attempts++;
-      const boosts=this.boosts(s,at),h=this.hunts.get(String(s.state.huntSlug)),eligible=h&&h.area!=='outland'&&!s.state.boss&&!s.state.mistico;
+      const boosts=this.boosts(s,at),h=this.hunts.get(String(s.state.huntSlug)),eligible=h&&h.area!=='outland'&&this.inHunt(s);
       if(eligible&&boosts.secretLure!==null)a[boosts.secretLure?'lure':'normal']++;else a.unknown++;
       if(e.shiny===true){
         const captured=typeof e.sucesso==='boolean'?e.sucesso:null;
-        const event={id:randomUUID(),timestamp:at,accountId:s.id,accountName:s.name,pokemonName,pokemonId:outcome?.speciesId??null,huntId:s.state.huntSlug||null,huntName:h?.nome||s.state.huntSlug||null,ball:this.catalog.find(b=>String(b.id)===String(e.ballId))?.nome||(e.ballId!=null?'Bola '+e.ballId:null),ballId:e.ballId??null,captured,secretLure:boosts.secretLure,captureBoost:boosts.captureBoost,kickShiny:boosts.kickShiny,kickCapture:boosts.kickCapture,source:'batalha.ev.bola',slot};
+        const event={id:randomUUID(),timestamp:at,accountId:s.id,accountName:s.name,pokemonName,pokemonId:outcome?.speciesId??null,huntId:this.inHunt(s)?s.state.huntSlug:null,huntName:this.inHunt(s)?h?.nome||s.state.huntSlug:null,ball:this.catalog.find(b=>String(b.id)===String(e.ballId))?.nome||(e.ballId!=null?'Bola '+e.ballId:null),ballId:e.ballId??null,captured,secretLure:boosts.secretLure,captureBoost:boosts.captureBoost,kickShiny:boosts.kickShiny,kickCapture:boosts.kickCapture,source:'batalha.ev.bola',slot};
         a.seen++;d.seen++;if(captured===true){a.captured++;d.captured++;}if(captured===false){a.escaped++;d.escaped++;}a.lastShiny=at;a.sinceShiny=0;
         this.data.history.push(event);if(this.data.history.length>20000)this.data.history.splice(0,this.data.history.length-20000);
         this.cached=null;this.dirty=true;void this.save();try{this.onShiny(event);}catch(err){this.log('CAPTURE',err);}
@@ -85,8 +86,9 @@ class ShinyTelemetry {
   }
   boosts(s,at){const now=s.serverOffset==null?null:at-s.serverOffset,flag=(obj,key)=>now===null||!obj||!known(obj[key])?null:obj[key]>now,remaining=(obj,key)=>now===null||!obj||!known(obj[key])?null:Math.max(0,obj[key]-now);return {secretLure:flag(s.state.boosts,'shiny'),captureBoost:flag(s.state.boosts,'captura'),kickShiny:flag(s.state.kick,'shiny'),kickCapture:flag(s.state.kick,'captura'),lureMs:remaining(s.state.boosts,'shiny'),captureMs:remaining(s.state.boosts,'captura')};}
   bin(s,at){const key=Math.floor(at/10000)*10000;let b=s.bins[s.bins.length-1];if(!b||b.at!==key){b={at:key,ms:0,attempts:0,kills:0,bodies:0};s.bins.push(b);if(s.bins.length>361)s.bins.splice(0,s.bins.length-361);}return b;}
-  group(s){if(!s.state.huntSlug||!s.profile)return null;const a=this.data.accounts[s.id],boosts=this.boosts(s,s.lastAt),context=[s.profile,boosts.secretLure,boosts.captureBoost,boosts.kickShiny,boosts.kickCapture].join('|'),key=s.state.huntSlug+'|'+context;let g=a.hunts[key];if(!g){if(Object.keys(a.hunts).length>=250)delete a.hunts[Object.keys(a.hunts)[0]];g=a.hunts[key]={hunt:s.state.huntSlug,context,ms:0,attempts:0,kills:0,bodies:0,species:{},at:s.lastAt};}g.at=s.lastAt;return g;}
-  metric(s,at,key,name){this.bin(s,at)[key]++;const g=this.group(s);if(g){g[key]++;if(name&&Object.keys(g.species).length<300)g.species[name]=(g.species[name]||0)+1;}}
+  inHunt(s){return !!s.state.huntSlug&&!s.state.noCentro&&!s.state.bossArena&&!s.state.mistico;}
+  group(s){if(!this.inHunt(s)||!s.profile)return null;const a=this.data.accounts[s.id],boosts=this.boosts(s,s.lastAt),context=[s.profile,boosts.secretLure,boosts.captureBoost,boosts.kickShiny,boosts.kickCapture].join('|'),key=s.state.huntSlug+'|'+context;let g=a.hunts[key];if(!g){if(Object.keys(a.hunts).length>=250)delete a.hunts[Object.keys(a.hunts)[0]];g=a.hunts[key]={hunt:s.state.huntSlug,context,ms:0,attempts:0,kills:0,bodies:0,species:{},at:s.lastAt};}g.at=s.lastAt;return g;}
+  metric(s,at,key,name){if(this.inHunt(s))this.bin(s,at)[key]++;const g=this.group(s);if(g){g[key]++;if(name&&Object.keys(g.species).length<300)g.species[name]=(g.species[name]||0)+1;}}
   configure(p){if(!p||typeof p!=='object')throw Error('Configuração inválida');if(p.mode&&!['more','target'].includes(p.mode))throw Error('Modo ainda não validado');if(p.target!==undefined)this.data.preferences.target=label(p.target).trim();if(p.mode)this.data.preferences.mode=p.mode;if(typeof p.sound==='boolean')this.data.preferences.sound=p.sound;this.cached=null;this.dirty=true;void this.save();return {...this.data.preferences};}
   accountView(s,now){
     const a=this.data.accounts[s.id],online=now-s.socketAt<20000,boosts=this.boosts(s,now),g=this.group(s),h=this.hunts.get(String(s.state.huntSlug)),rows=s.bins.filter(b=>b.at>=now-15*MINUTE),ms=rows.reduce((n,b)=>n+b.ms,0),attempts=rows.reduce((n,b)=>n+b.attempts,0),rate=online&&ms>=MINUTE?attempts*HOUR/ms:null;
