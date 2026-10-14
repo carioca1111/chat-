@@ -2,10 +2,10 @@ name: Build Gridium Alpha 11 Market Sniper
 on:
   pull_request:
     branches: [gridium-next]
-    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
+    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-ui-hotfix.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
   push:
     branches: [gridium-next]
-    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
+    paths: ['alpha11-sniper-src/**', 'apply-alpha11-sniper.js', 'alpha11-runtime-optimize.js', 'alpha11-ui-hotfix.js', 'alpha11-sniper-benchmark.js', 'prepare-sniper-assets.js', 'build-alpha11.ps1', '.github/workflows/build-gridium-windows-alpha11.yml']
   workflow_dispatch:
 permissions:
   contents: read
