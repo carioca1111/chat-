@@ -1,0 +1,1 @@
+Alpha 11.7 Hunt backgrounds are reconstructed deterministically during the build. The bundle SHA-256 is validated before extraction; runtime uses the 12 local WebP files at their original 400x225 dimensions.
