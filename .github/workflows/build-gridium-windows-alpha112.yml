@@ -2,10 +2,10 @@ name: Build Gridium Alpha 11.2 Performance Cleanup
 on:
   pull_request:
     branches: [gridium-next]
-    paths: ['alpha112-*.js', 'alpha112-src/**', 'build-alpha112.ps1', '.github/workflows/build-gridium-windows-alpha112.yml']
+    paths: ['alpha112-*.js', 'alpha112-src/**', 'build-alpha112.ps1', '.github/workflows/build-gridium-windows-alpha112.yml', 'alpha11-sniper-src/test/**']
   push:
     branches: [gridium-alpha11.2-performance-cleanup, gridium-next]
-    paths: ['alpha112-*.js', 'alpha112-src/**', 'build-alpha112.ps1', '.github/workflows/build-gridium-windows-alpha112.yml']
+    paths: ['alpha112-*.js', 'alpha112-src/**', 'build-alpha112.ps1', '.github/workflows/build-gridium-windows-alpha112.yml', 'alpha11-sniper-src/test/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,7 +41,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Gridium-Alpha-11.2-Regression-Diagnostics
-          path: gridium-build/regression-output.txt
+          path: |
+            gridium-build/regression-output.txt
+            gridium-build/main.js
+            gridium-build/renderer.js
+            gridium-build/preload.js
+            gridium-build/sniper-runtime.js
+            gridium-build/shiny-telemetry.js
+            gridium-build/test/*.test.js
           if-no-files-found: warn
           retention-days: 7
       - name: Windows installer
