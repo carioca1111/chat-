@@ -25,6 +25,8 @@ node ./alpha112-shiny-delta.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 Shiny Cloud delta patch failed' }
 node ./alpha112-finalize.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 finalizer failed' }
+node ./alpha112-test-contracts.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 legacy regression contract normalization failed' }
 Copy-Item -Force ./alpha112-src/test/*.test.js ./gridium-build/test/
 foreach ($name in @('main.js','renderer.js','preload.js','network-inspector.js','sniper-runtime.js','shiny-telemetry.js','shiny-ui.js','asset-resolver.js')) {
   node --check (Join-Path './gridium-build' $name)
