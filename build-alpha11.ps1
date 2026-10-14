@@ -9,6 +9,8 @@ node ./apply-alpha11-sniper.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11 Market Sniper integration failed' }
 node ./alpha11-runtime-optimize.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11 Lightning runtime optimization failed' }
+node ./alpha11-ui-hotfix.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11 Sniper UI hotfix failed' }
 Copy-Item -Force ./alpha11-sniper-src/test/*.test.js ./gridium-build/test/
 foreach ($name in @('main.js','renderer.js','preload.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','asset-resolver.js')) {
   node --check (Join-Path './gridium-build' $name)
