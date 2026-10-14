@@ -1,0 +1,49 @@
+name: Build Gridium Alpha 10 Shiny Assistant
+on:
+  pull_request:
+    branches: [gridium-next]
+    paths: ['alpha10-src/**', 'apply-alpha10.js', 'build-alpha10.ps1', '.github/workflows/build-gridium-windows-alpha10.yml']
+  push:
+    branches: [gridium-next]
+    paths: ['alpha10-src/**', 'apply-alpha10.js', 'build-alpha10.ps1', '.github/workflows/build-gridium-windows-alpha10.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble existing app and Shiny Assistant
+        shell: pwsh
+        run: ./build-alpha10.ps1
+      - name: Install build dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile existing Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Full regression suite
+        working-directory: gridium-build
+        run: node --test --test-timeout=30000 test/*.test.js
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.10.exe'
+          if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
+          Get-FileHash $file.FullName -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-10-Windows
+          path: gridium-build/dist/Gridium-Setup-3.0.0-alpha.10.exe
+          if-no-files-found: error
+          retention-days: 30
