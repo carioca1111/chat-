@@ -8,6 +8,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.4 base build failed' }
   node ./apply-alpha115.js ./gridium-build
   if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.5 audit fixes patch failed' }
+  node ./alpha115-hotpath.js ./gridium-build
+  if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.5 hot path optimization failed' }
   if (-not (Test-Path './gridium-build/test')) { New-Item -ItemType Directory -Path './gridium-build/test' | Out-Null }
   Copy-Item -Force ./alpha115-src/test/*.test.js ./gridium-build/test/
   foreach ($name in @('main.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','hunt-intelligence.js','collector.js','alpha-analysis-worker.js','alpha-engine.js')) {
