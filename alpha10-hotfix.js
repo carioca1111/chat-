@@ -8,7 +8,7 @@ const pkgPath=path.join(root,'package.json');
 const htmlPath=path.join(root,'index.html');
 const readJson=file=>JSON.parse(fs.readFileSync(file,'utf8'));
 const writeJson=(file,value)=>fs.writeFileSync(file,JSON.stringify(value,null,2)+'\n');
-const fail=message=>{throw new Error('Alpha 10.1 hotfix: '+message);};
+const fail=message=>{throw new Error('Alpha 10.2 hotfix: '+message);};
 
 if(mode==='prepare'){
   const pkg=readJson(pkgPath);
@@ -20,7 +20,7 @@ if(mode==='prepare'){
   // intentionally the clean 9.16 base so Opportunities is not assembled at all.
   pkg.version='3.0.0-alpha.9.17';
   writeJson(pkgPath,pkg);
-  console.log('Alpha 10.1 hotfix: clean 9.16 base prepared for Shiny integration');
+  console.log('Alpha 10.2 hotfix: clean 9.16 base prepared for Shiny integration');
   process.exit(0);
 }
 
@@ -34,9 +34,9 @@ if(mode==='finalize'){
   if(/data-section="opportunities"/.test(html))fail('Oportunidades tab is still present');
   if(/data-section="alpha"/.test(html))fail('Alpha Terminal tab is still present');
   fs.writeFileSync(htmlPath,html);
-  pkg.version='3.0.0-alpha.10.1';
+  pkg.version='3.0.0-alpha.10.2';
   writeJson(pkgPath,pkg);
-  console.log('Alpha 10.1 hotfix: Alpha Terminal and Oportunidades tabs removed');
+  console.log('Alpha 10.2 hotfix: optimized Shiny Assistant assembled without Alpha/Oportunidades tabs');
   process.exit(0);
 }
 
