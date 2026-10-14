@@ -1,0 +1,40 @@
+name: Diagnose Alpha 11.7 Hunt Base
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gridium-alpha11.7-hunt-visual]
+    paths: ['.github/workflows/diagnose-alpha117-hunt-base.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble Alpha 11.6
+        shell: pwsh
+        run: ./build-alpha116.ps1
+      - name: Export effective Hunt runtime
+        shell: pwsh
+        run: |
+          $out='alpha117-hunt-base'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          foreach ($name in @('package.json','index.html','styles.css','renderer.js','main.js','preload.js','hunt-intelligence.js','hunt-engine.js','collector.js','stats.js','forecast.js','asset-resolver.js','sniper-ui.js','shiny-ui.js')) {
+            $src=Join-Path 'gridium-build' $name
+            if (Test-Path $src) { Copy-Item -Force $src $out }
+          }
+          if (Test-Path 'gridium-build/test') { Copy-Item -Recurse -Force 'gridium-build/test' "$out/test" }
+          Get-ChildItem $out -Recurse | Select-Object FullName,Length | Format-Table -AutoSize
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.6-Hunt-Base
+          path: alpha117-hunt-base
+          if-no-files-found: error
+          retention-days: 7
