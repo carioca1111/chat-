@@ -12,6 +12,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.5 hot path optimization failed' }
   if (-not (Test-Path './gridium-build/test')) { New-Item -ItemType Directory -Path './gridium-build/test' | Out-Null }
   Copy-Item -Force ./alpha115-src/test/*.test.js ./gridium-build/test/
+  node ./alpha115-test-contracts.js ./gridium-build
+  if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.5 regression contract normalization failed' }
   foreach ($name in @('main.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','hunt-intelligence.js','collector.js','alpha-analysis-worker.js','alpha-engine.js')) {
     node --check (Join-Path './gridium-build' $name)
     if ($LASTEXITCODE -ne 0) { throw "Syntax check failed: $name" }
