@@ -57,4 +57,7 @@ main=fn(main,'remotePayload',`function remotePayload(now=Date.now()){
 main=fn(main,'publishRemoteStatus',`function publishRemoteStatus(){if(win&&!win.isDestroyed())win.webContents.send('grid:remote-status',remoteSync.status(settings.remote));void processMobileCommands113();}`);
 write('main.js',main);
 const pkg=JSON.parse(read('package.json'));must(pkg.version==='3.0.0-alpha.11.2','esperava Alpha 11.2, recebeu '+pkg.version);pkg.version='3.0.0-alpha.11.3';write('package.json',JSON.stringify(pkg,null,2)+'\n');
+for(const name of ['test/performance-cleanup.test.js','test/shiny-cloud-integration.test.js','test/sniper-arm-ui.test.js']){
+  const file=path.join(root,name);if(!fs.existsSync(file))continue;let src=fs.readFileSync(file,'utf8');src=src.replaceAll("'3.0.0-alpha.11.2'","'3.0.0-alpha.11.3'").replaceAll('"3.0.0-alpha.11.2"','"3.0.0-alpha.11.3"');fs.writeFileSync(file,src,'utf8');
+}
 console.log('Gridium Alpha 11.3: Mobile Command Center bridge aplicado sem novo timer global.');
