@@ -1,0 +1,37 @@
+name: Diagnose Alpha 11.5 Runtime
+on:
+  push:
+    branches: [gridium-alpha11.5-integrity-fixes]
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Assemble Alpha 11.4
+        shell: pwsh
+        run: ./build-alpha114.ps1
+      - name: Print runtime excerpts
+        shell: pwsh
+        run: |
+          $files = @('main.js','network-inspector.js','hunt-intelligence.js','collector.js','alpha-analysis-worker.js','sniper-runtime.js','sniper-ui.js')
+          $patterns = @('mobileShiny113','shinyCloudCache','waitMarketOutcome','inactive','setFocusSlots','recent(','class HuntIntelligence','observe(','primaryPokemon','accountView','SAMPLE_SCRIPT','itemQty','sumKnown','asset_id','intelligencePass','grid:sniper-manual-buy','queueSniperIntelligence','GRID_SNIPER_QUEUE_GUARD_114')
+          foreach ($f in $files) {
+            $p = Join-Path 'gridium-build' $f
+            Write-Host "===== FILE $f ====="
+            if (-not (Test-Path $p)) { Write-Host 'MISSING'; continue }
+            $lines = Get-Content $p
+            foreach ($pat in $patterns) {
+              $matches = Select-String -Path $p -SimpleMatch $pat
+              foreach ($m in $matches) {
+                $start=[Math]::Max(0,$m.LineNumber-8); $end=[Math]::Min($lines.Count-1,$m.LineNumber+12)
+                Write-Host "--- $pat @ line $($m.LineNumber) ---"
+                for($i=$start;$i -le $end;$i++){ Write-Host (("{0,5}: {1}" -f ($i+1),$lines[$i])) }
+              }
+            }
+          }
