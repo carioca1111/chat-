@@ -4,7 +4,6 @@ Set-Location $PSScriptRoot
 
 ./build-alpha116.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.6 base build failed' }
-
 node ./alpha117-benchmark.js ./gridium-build before ./alpha117-before.json
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 baseline Hunt benchmark failed' }
 
@@ -18,34 +17,39 @@ foreach ($part in $parts) {
 }
 $text = $joined.ToString()
 $zip = Join-Path $env:TEMP 'gridium-alpha117-hunt-backgrounds.zip'
-$stream = [IO.File]::Open($zip, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+$stream = [IO.File]::Open($zip,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
 try {
-  $start = 0
-  for ($i = 0; $i -lt $text.Length; $i++) {
-    if ($text[$i] -ne '=') { continue }
-    while (($i + 1) -lt $text.Length -and $text[$i + 1] -eq '=') { $i++ }
-    $segment = $text.Substring($start, $i - $start + 1)
-    try { $bytes = [Convert]::FromBase64String($segment) }
-    catch { throw "Alpha 11.7: Base64 inválido no bloco iniciado em $start`: $($_.Exception.Message)" }
-    $stream.Write($bytes, 0, $bytes.Length)
-    $start = $i + 1
+  $start=0
+  for($i=0;$i -lt $text.Length;$i++){
+    if($text[$i] -ne '='){continue}
+    while(($i+1)-lt $text.Length -and $text[$i+1]-eq '='){$i++}
+    $segment=$text.Substring($start,$i-$start+1)
+    try{$bytes=[Convert]::FromBase64String($segment)}catch{throw "Alpha 11.7: Base64 inválido no bloco iniciado em $start`: $($_.Exception.Message)"}
+    $stream.Write($bytes,0,$bytes.Length);$start=$i+1
   }
-  if ($start -lt $text.Length) {
-    $segment = $text.Substring($start)
-    $pad = (4 - ($segment.Length % 4)) % 4
-    if ($pad -eq 3) { throw "Alpha 11.7: stream Base64 truncado no final (resto inválido)" }
-    if ($pad -gt 0) { $segment += ('=' * $pad) }
-    try { $bytes = [Convert]::FromBase64String($segment) }
-    catch { throw "Alpha 11.7: Base64 final inválido: $($_.Exception.Message)" }
-    $stream.Write($bytes, 0, $bytes.Length)
+  if($start -lt $text.Length){
+    $segment=$text.Substring($start);$pad=(4-($segment.Length%4))%4
+    if($pad -eq 3){throw 'Alpha 11.7: stream Base64 truncado no final'}
+    if($pad -gt 0){$segment+=('='*$pad)}
+    $bytes=[Convert]::FromBase64String($segment);$stream.Write($bytes,0,$bytes.Length)
   }
-}
-finally { $stream.Dispose() }
-$manifest = (Get-Content './alpha117-assets/hunt-backgrounds.sha256' -Raw).Trim().Split()[0].ToLowerInvariant()
-$actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne $manifest) { throw "Alpha 11.7: hash do pacote de fundos divergente: esperado=$manifest atual=$actual" }
-$bg = './gridium-build/assets/hunt/backgrounds'
-New-Item -ItemType Directory -Force -Path $bg | Out-Null
+}finally{$stream.Dispose()}
+
+Add-Type -AssemblyName System.IO.Compression
+$archive=[IO.Compression.ZipFile]::OpenRead($zip)
+try{
+  $entries=@($archive.Entries | Where-Object { $_.Name -match '^hunt-(beach|cave|default|desert|forest|ice|lake|meadow|mountain|ruins|swamp|volcano)\.webp$' })
+  $expected=@('hunt-beach.webp','hunt-cave.webp','hunt-default.webp','hunt-desert.webp','hunt-forest.webp','hunt-ice.webp','hunt-lake.webp','hunt-meadow.webp','hunt-mountain.webp','hunt-ruins.webp','hunt-swamp.webp','hunt-volcano.webp')
+  $actualNames=@($entries.Name | Sort-Object)
+  if($entries.Count -ne 12 -or (Compare-Object $expected $actualNames)){throw "Alpha 11.7: inventário WebP inválido: $($actualNames -join ', ')"}
+  if(@($entries | Where-Object {$_.Length -lt 1000}).Count){throw 'Alpha 11.7: WebP vazio/truncado no pacote'}
+  Write-Host "Alpha 11.7 asset archive valid: 12 WebP; bytes=$((Get-Item $zip).Length)"
+}finally{$archive.Dispose()}
+$manifest=(Get-Content './alpha117-assets/hunt-backgrounds.sha256' -Raw).Trim().Split()[0].ToLowerInvariant()
+$actual=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "Alpha 11.7 asset SHA expected=$manifest actual=$actual"
+if($actual -ne $manifest){throw "Alpha 11.7: hash do pacote de fundos divergente: esperado=$manifest atual=$actual"}
+$bg='./gridium-build/assets/hunt/backgrounds';New-Item -ItemType Directory -Force -Path $bg|Out-Null
 Expand-Archive -Path $zip -DestinationPath $bg -Force
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
 
@@ -53,11 +57,7 @@ node ./apply-alpha117.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 Hunt visual patch failed' }
 node ./alpha117-harden-isolation.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 current-Pokemon isolation hardening failed' }
-
-foreach ($name in @('main.js','sniper-runtime.js','hunt-intelligence.js','hunt-visual-model.js','hunt-visual.js')) {
-  node --check (Join-Path './gridium-build' $name)
-  if ($LASTEXITCODE -ne 0) { throw "Syntax check failed: $name" }
-}
+foreach ($name in @('main.js','sniper-runtime.js','hunt-intelligence.js','hunt-visual-model.js','hunt-visual.js')) { node --check (Join-Path './gridium-build' $name); if ($LASTEXITCODE -ne 0) { throw "Syntax check failed: $name" } }
 node ./alpha117-benchmark.js ./gridium-build after ./alpha117-after.json
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 optimized Hunt benchmark failed' }
 node ./alpha112-benchmark.js ./gridium-build
