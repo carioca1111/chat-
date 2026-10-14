@@ -3,28 +3,27 @@ const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(process.argv[2]||'gridium-build');
 const file=path.join(root,'sniper-runtime.js');
 let src=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');
-const before=`SniperRuntime.prototype._trim=function(ts=now(),force=false){
-  // preserve 11.4 cleanup, but temporarily protect in-flight/unknown rows from queue eviction
-  const protectedRows=[];for(const [k,row] of this.watch)if(['SENT','UNKNOWN'].includes(row?.state)){protectedRows.push([k,row]);this.watch.delete(k);}
-  try{grid115OriginalTrim.call(this,ts,force);}finally{for(const [k,row] of protectedRows)this.watch.set(k,row);}
-  for(const [k,v] of this.seenSig115||[])if(ts-Number(v?.at||0)>30*60*1000)this.seenSig115.delete(k);
-  for(const [k,r] of this.reservations115||[])if(ts-Number(r?.at||0)>60*60*1000)this.reservations115.delete(k);
-  for(const [k,timer] of this.timers){if(!this.watch.has(k)){clearTimeout(timer);this.timers.delete(k);}}
-};`;
-const after=`SniperRuntime.prototype._trim=function(ts=now(),force=false){
-  // GRID115_PERF_GUARD: auxiliary cleanup stays on the original 1s maintenance cadence.
-  const shouldTrim=force||ts-Number(this.lastTrimAt||0)>=1000;
-  if(!shouldTrim)return;
-  // Preserve 11.4 cleanup, but temporarily protect in-flight/unknown rows from queue eviction.
-  const protectedRows=[];
-  for(const [k,row] of this.watch)if(['SENT','UNKNOWN'].includes(row?.state)){protectedRows.push([k,row]);this.watch.delete(k);}
-  try{grid115OriginalTrim.call(this,ts,true);}finally{for(const [k,row] of protectedRows)this.watch.set(k,row);}
-  for(const [k,v] of this.seenSig115||[])if(ts-Number(v?.at||0)>30*60*1000)this.seenSig115.delete(k);
-  for(const [k,r] of this.reservations115||[])if(ts-Number(r?.at||0)>60*60*1000)this.reservations115.delete(k);
-  for(const [k,timer] of this.timers){if(!this.watch.has(k)){clearTimeout(timer);this.timers.delete(k);}}
-};`;
-if(src.includes('GRID115_PERF_GUARD')){console.log('Alpha 11.5 perf guard already applied.');process.exit(0);}
-if(!src.includes(before))throw new Error('Alpha 11.5 perf hotfix anchor not found');
-src=src.replace(before,after);
+if(src.includes('GRID115_FAST_SEEN_V2')){console.log('Alpha 11.5 hot-path guard already applied.');process.exit(0);}
+
+const sigAnchor="function grid115ListingSig(l={}){return [l.price,l.currency,l.assetType,l.assetId,l.shiny===true?1:0,l.availableAt,l.sellerId??''].join('|');}";
+if(!src.includes(sigAnchor))throw new Error('Alpha 11.5 signature anchor not found');
+src=src.replace(sigAnchor,`${sigAnchor}\n// GRID115_FAST_SEEN_V2: one packed Number replaces the extra signature Map/string allocation.\nconst GRID115_SEEN_FACTOR=4194304;\nfunction grid115SeenHash(l={}){const p=Math.trunc((Number(l.price)||0)*1000)|0,a=(Number(l.availableAt)||0)|0,c=l.currency==='gems'?1:l.currency==='coins'?2:0;return (Math.imul((p^a^c),2654435761)>>>0)&(GRID115_SEEN_FACTOR-1);}\nfunction grid115SeenAt(v){return Number.isFinite(v)&&v>1e15?Math.floor(v/GRID115_SEEN_FACTOR)*1000:Number(v)||0;}\nfunction grid115SeenSig(v){return Number.isFinite(v)&&v>1e15?(v%GRID115_SEEN_FACTOR):-1;}`);
+
+const trimStart=src.indexOf('SniperRuntime.prototype._trim=function(ts=now(),force=false){',src.indexOf('// GRID115_INTEGRITY_RUNTIME'));
+const gateStart=src.indexOf('SniperRuntime.prototype._gateBudget=',trimStart);
+if(trimStart<0||gateStart<0)throw new Error('Alpha 11.5 trim block not found');
+const trim=`SniperRuntime.prototype._trim=function(ts=now(),force=false){\n  // GRID115_PERF_GUARD: maintenance remains on the original 1s cadence, never per listing.\n  const shouldTrim=force||ts-Number(this.lastTrimAt||0)>=1000;if(!shouldTrim)return;\n  const protectedRows=[];for(const [k,row] of this.watch)if(['SENT','UNKNOWN'].includes(row?.state)){protectedRows.push([k,row]);this.watch.delete(k);}\n  // Packed seen entries carry second-resolution time plus a 22-bit change fingerprint.\n  for(const [k,v] of this.seen)if(ts-grid115SeenAt(v)>30*60*1000)this.seen.delete(k);\n  try{grid115OriginalTrim.call(this,ts,true);}finally{for(const [k,row] of protectedRows)this.watch.set(k,row);}\n  for(const [k,r] of this.reservations115||[])if(ts-Number(r?.at||0)>60*60*1000)this.reservations115.delete(k);\n  for(const [k,timer] of this.timers){if(!this.watch.has(k)){clearTimeout(timer);this.timers.delete(k);}}\n};\n`;
+src=src.slice(0,trimStart)+trim+src.slice(gateStart);
+
+const ingestStart=src.indexOf('SniperRuntime.prototype.ingestOne=function(listing,receivedAt=now()){',src.indexOf('// GRID115_INTEGRITY_RUNTIME'));
+const scheduleStart=src.indexOf('SniperRuntime.prototype._schedule=',ingestStart);
+if(ingestStart<0||scheduleStart<0)throw new Error('Alpha 11.5 ingest block not found');
+const ingest=`SniperRuntime.prototype.ingestOne=function(listing,receivedAt=now()){\n  this._trim(receivedAt);const key=listingKey(listing);if(!key)return null;const prev=this.seen.get(key),sig=grid115SeenHash(listing);\n  if(prev!==undefined){if(grid115SeenSig(prev)===sig)return null;const existingClaim=this.claims.get(key);if(existingClaim&&['SENT','UNKNOWN','WON'].includes(existingClaim.state))return null;this.seen.delete(key);}\n  this.seen.set(key,Math.floor((Number(receivedAt)||now())/1000)*GRID115_SEEN_FACTOR+sig);this.metrics.events++;this.metrics.lastEventAt=receivedAt;\n  const evaluation=this._decision(listing,receivedAt);if(evaluation.decision!=='MATCH'){this.metrics.ignored++;return evaluation;}this.metrics.matches++;this.metrics.opportunities++;\n  const route=this._route(listing);if(!route){this.seen.delete(key);this.metrics.ignored++;this._push('BLOCKED','Oportunidade sem conta elegível',{listing:copy(listing),reason:'no-account'});return {...evaluation,reason:'no-account'};}\n  const routed={...listing,sourceSlot:Number(listing.slot),slot:Number(route.slot)},availableAt=Number(listing.availableAt)||0,serverNow=this._serverNow(route.slot,receivedAt);routed.delayMs=availableAt>0?Math.max(0,availableAt-serverNow):0;\n  const row={key,listing:routed,rule:evaluation.rule,state:'CLAIMED',createdAt:receivedAt,updatedAt:receivedAt,account:{slot:route.slot,name:route.name||('Conta '+(route.slot+1))},delayMs:routed.delayMs,timing:{t0:receivedAt,decisionMs:evaluation.decisionMs}};this.claims.set(key,{at:receivedAt,state:'CLAIMED'});this.watch.set(key,row);\n  if(this.mode==='OBSERVE'||this.mode==='SEMI'){row.state=routed.delayMs>0?'WATCHING':'READY';this._push('MATCH',this.mode==='OBSERVE'?'TERIA COMPRADO':'Aguardando confirmação',{listing:copy(routed),state:row.state});return evaluation;}\n  if(this.mode!=='AUTO'||this.killSwitch){row.state='FAILED';return evaluation;}\n  if(routed.delayMs>1&&this.policy.watchBeforeOpen){row.state='PREARMED';this._push('PREARMED','Anúncio pré-armado',{listing:copy(routed),delayMs:routed.delayMs});this._schedule(key,routed.delayMs);}else if(this.policy.buyWhenOpen){row.state='READY';void this._send(key);}return evaluation;\n};\n`;
+src=src.slice(0,ingestStart)+ingest+src.slice(scheduleStart);
+
+// Rule/policy changes should make previously ignored non-claimed listings eligible for fresh evaluation.
+const configureNeedle=`  if(this.policy.buyWhenOpen===false){for(const [key,t] of this.timers){clearTimeout(t);this.timers.delete(key);const row=this.watch.get(key);if(row?.state==='PREARMED'){row.state='WATCHING';row.reason='buy-disabled';row.updatedAt=now();}}}\n  return out;`;
+if(src.includes(configureNeedle))src=src.replace(configureNeedle,`  if(this.policy.buyWhenOpen===false){for(const [key,t] of this.timers){clearTimeout(t);this.timers.delete(key);const row=this.watch.get(key);if(row?.state==='PREARMED'){row.state='WATCHING';row.reason='buy-disabled';row.updatedAt=now();}}}\n  if(patch.rules||patch.intelligence){for(const key of this.seen.keys())if(!this.claims.has(key))this.seen.delete(key);}\n  return out;`);
+
 fs.writeFileSync(file,src,'utf8');
-console.log('Alpha 11.5 perf guard applied: maintenance scans remain outside the per-listing hot path.');
+console.log('Alpha 11.5 hot-path guard applied: compact change fingerprint + 1s maintenance cadence.');
