@@ -1,0 +1,42 @@
+name: Diagnose Alpha 11.5 Runtime
+
+on:
+  push:
+    branches: [gridium-alpha11.5-audit-fixes]
+    paths:
+      - '.github/workflows/diagnose-alpha115-runtime.yml'
+      - 'build-alpha114.ps1'
+      - 'alpha114-long-session.js'
+      - 'alpha113-mobile-bridge.js'
+      - 'alpha112-*.js'
+      - 'apply-alpha11-sniper.js'
+      - 'alpha11-*.js'
+  workflow_dispatch:
+
+jobs:
+  export-runtime:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Assemble audited Alpha 11.4 runtime
+        shell: pwsh
+        run: ./build-alpha114.ps1
+      - name: Verify diagnostic sources
+        shell: pwsh
+        run: |
+          $files = @('main.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','hunt-intelligence.js','collector.js','alpha-analysis-worker.js','alpha-engine.js','package.json')
+          foreach ($f in $files) {
+            if (-not (Test-Path (Join-Path 'gridium-build' $f))) { throw "Missing assembled runtime source: $f" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.4-Assembled-Runtime-Sources
+          path: |
+            gridium-build/*.js
+            gridium-build/package.json
+          retention-days: 3
