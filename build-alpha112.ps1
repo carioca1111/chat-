@@ -3,8 +3,12 @@ $PSNativeCommandUseErrorActionPreference = $true
 Set-Location $PSScriptRoot
 ./build-alpha11.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.1 base build failed' }
+node ./alpha112-publisher-compat.js ./gridium-build pre
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 publisher pre-normalization failed' }
 node ./alpha112-core-performance.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 core performance patch failed' }
+node ./alpha112-publisher-compat.js ./gridium-build post
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 publisher coalescing restore failed' }
 node ./alpha112-sniper-events.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.2 Sniper event patch failed' }
 node ./alpha112-persistence.js ./gridium-build
