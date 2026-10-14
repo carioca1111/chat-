@@ -13,6 +13,8 @@ node ./alpha11-risk-persist.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11 risk persistence patch failed' }
 node ./alpha11-ui-hotfix.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11 Sniper UI hotfix failed' }
+node ./alpha11-arm-hotfix.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.1 Sniper ARM confirmation hotfix failed' }
 Copy-Item -Force ./alpha11-sniper-src/test/*.test.js ./gridium-build/test/
 foreach ($name in @('main.js','renderer.js','preload.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','asset-resolver.js')) {
   node --check (Join-Path './gridium-build' $name)
@@ -20,4 +22,4 @@ foreach ($name in @('main.js','renderer.js','preload.js','network-inspector.js',
 }
 node ./alpha11-sniper-benchmark.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11 Lightning benchmark failed' }
-Write-Host 'Gridium Alpha 11 Market Sniper assembled.'
+Write-Host 'Gridium Alpha 11.1 Market Sniper assembled.'
