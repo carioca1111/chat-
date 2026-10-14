@@ -34,7 +34,7 @@ let runtime=read('sniper-runtime.js');
 runtime=once(runtime,"this.mode='OFF';this.killSwitch=true;this.policy=normalizePolicy({},{});this.lastTrimAt=0;","this.mode='OFF';this.killSwitch=true;this.policy=normalizePolicy({},{});this.lastTrimAt=0;this.persistPending=null;this.persistDrain=null;this.persistTimer=null;",'runtime persist fields');
 runtime=fn(runtime,'save',`save(force=false){
     if(!this.persistenceFile)return Promise.resolve();
-    try{const metrics={...this.metrics,decision:undefined,server:undefined};this.persistPending=JSON.stringify({policy:this.policy,metrics,feed:this.feed.slice(-120)});}catch{return Promise.resolve();}
+    try{const metrics={...this.metrics,decision:undefined,server:undefined},riskRuntime={attemptTimes:[...this.attemptTimes],spend:this.spend.map(x=>({...x})),assetWins:[...this.assetWins.entries()]};this.persistPending=JSON.stringify({policy:this.policy,metrics,feed:this.feed.slice(-120),riskRuntime});}catch{return Promise.resolve();}
     const start=()=>{if(this.persistDrain)return this.persistDrain;const fs=require('fs'),path=require('path');this.persistDrain=(async()=>{while(this.persistPending!==null){const text=this.persistPending;this.persistPending=null;try{await fs.promises.mkdir(path.dirname(this.persistenceFile),{recursive:true});const tmp=this.persistenceFile+'.tmp';await fs.promises.writeFile(tmp,text,'utf8');await fs.promises.rename(tmp,this.persistenceFile);}catch{}}})().finally(()=>{this.persistDrain=null;if(this.persistPending!==null)start();});return this.persistDrain;};
     if(force){if(this.persistTimer){clearTimeout(this.persistTimer);this.persistTimer=null;}return start();}
     if(!this.persistTimer&&!this.persistDrain)this.persistTimer=setTimeout(()=>{this.persistTimer=null;void start();},250);
@@ -45,4 +45,4 @@ runtime=runtime.replace('this.busySlots.clear();this.save();return this.snapshot
 runtime=runtime.replace('finally{this.busySlots.delete(Number(l.slot));const claim=this.claims.get(key);if(claim)claim.state=row.state;this.save();}','finally{this.busySlots.delete(Number(l.slot));const claim=this.claims.get(key);if(claim)claim.state=row.state;void this.save(true);}');
 runtime=runtime.replace('  close(){this.kill(true);this.save();}','  async flush(){if(this.persistTimer){clearTimeout(this.persistTimer);this.persistTimer=null;}await this.save(true);if(this.persistDrain)await this.persistDrain;}\n  close(){this.kill(true);void this.save(true);}');
 write('sniper-runtime.js',runtime);
-console.log('Gridium Alpha 11.2: persistência normal usa fila assíncrona/atomic rename; flush crítico preservado no fechamento e no Sniper.');
+console.log('Gridium Alpha 11.2: persistência normal usa fila assíncrona/atomic rename; risk runtime e flush crítico preservados.');
