@@ -61,3 +61,11 @@ test('fonte do inspector possui caminho rápido e reutiliza pacote parseado',()=
   assert.match(net,/__gridiumGamePacket/);
   assert.match(net,/packet\.t==='campo'\|\|packet\.t==='campo\.init'/);
 });
+
+test('persistência pesada é limitada sem atrasar shiny, configuração ou fechamento',()=>{
+  const src=read('shiny-telemetry.js');
+  assert.match(src,/minSaveInterval\s*=\s*60_000/);
+  assert.match(src,/async save\(force = false\)/);
+  assert.match(src,/!force && this\.lastSavedAt/);
+  assert.ok((src.match(/this\.save\(true\)/g)||[]).length>=3);
+});
