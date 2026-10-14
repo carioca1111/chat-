@@ -1,0 +1,12 @@
+{
+  "name":"Gridium Mobile — Command Center",
+  "short_name":"Gridium",
+  "description":"Central remota do Gridium Desktop",
+  "start_url":"/app/",
+  "scope":"/app/",
+  "display":"standalone",
+  "background_color":"#06080d",
+  "theme_color":"#06080d",
+  "orientation":"portrait-primary",
+  "icons":[{"src":"/app/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
