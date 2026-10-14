@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 ./build-alpha114.ps1
 node ./alpha115-integrity-fixes.js ./gridium-build
+node ./alpha115-perf-hotfix.js ./gridium-build
 
 $testDir = './gridium-build/test'
 New-Item -ItemType Directory -Force -Path $testDir | Out-Null
@@ -19,5 +20,6 @@ foreach ($f in $jsFiles) { node --check (Join-Path './gridium-build' $f) }
 
 # Same-process synthetic guard: Alpha 11.5 must not materially regress the Lightning decision runtime.
 node ./alpha112-benchmark.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host 'Gridium Alpha 11.5 Integrity Fixes assembled.'
