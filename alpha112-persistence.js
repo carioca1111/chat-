@@ -5,7 +5,12 @@ const read=n=>fs.readFileSync(path.join(root,n),'utf8').replace(/\r\n/g,'\n');
 const write=(n,s)=>fs.writeFileSync(path.join(root,n),s,'utf8');
 const must=(c,m)=>{if(!c)throw new Error('Alpha 11.2 persistence: '+m);};
 function once(s,a,b,label){must(s.includes(a),'âncora ausente: '+label);return s.replace(a,b);}
-function bounds(text,name){let start=text.indexOf('function '+name+'(');if(start<0)start=text.indexOf('async function '+name+'(');must(start>=0,name+' ausente');const open=text.indexOf('{',start);let depth=0,q='',esc=false,line=false,block=false;for(let i=open;i<text.length;i++){const c=text[i],n=text[i+1];if(line){if(c==='\n')line=false;continue;}if(block){if(c==='*'&&n==='/'){block=false;i++;}continue;}if(q){if(esc){esc=false;continue;}if(c==='\\'){esc=true;continue;}if(c===q)q='';continue;}if(c==='/'&&n==='/'){line=true;i++;continue;}if(c==='/'&&n==='*'){block=true;i++;continue;}if(c==='"'||c==="'"||c==='`'){q=c;continue;}if(c==='{')depth++;else if(c==='}'&&--depth===0)return {start,end:i+1};}throw new Error('fim '+name+' ausente');}
+function bounds(text,name){
+  let start=text.indexOf('function '+name+'(');if(start<0)start=text.indexOf('async function '+name+'(');
+  if(start<0){const re=new RegExp('(?:^|\\n)\\s*(?:async\\s+)?'+name.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')+'\\s*\\('),m=re.exec(text);if(m){const local=m[0].lastIndexOf(name);start=m.index+local;}}
+  must(start>=0,name+' ausente');const open=text.indexOf('{',start);let depth=0,q='',esc=false,line=false,block=false;
+  for(let i=open;i<text.length;i++){const c=text[i],n=text[i+1];if(line){if(c==='\n')line=false;continue;}if(block){if(c==='*'&&n==='/'){block=false;i++;}continue;}if(q){if(esc){esc=false;continue;}if(c==='\\'){esc=true;continue;}if(c===q)q='';continue;}if(c==='/'&&n==='/'){line=true;i++;continue;}if(c==='/'&&n==='*'){block=true;i++;continue;}if(c==='"'||c==="'"||c==='`'){q=c;continue;}if(c==='{')depth++;else if(c==='}'&&--depth===0)return {start,end:i+1};}throw new Error('fim '+name+' ausente');
+}
 function fn(s,n,r){const b=bounds(s,n);return s.slice(0,b.start)+r+s.slice(b.end);}
 
 let main=read('main.js');
