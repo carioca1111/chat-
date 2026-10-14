@@ -2,10 +2,10 @@ name: Build Gridium Alpha 10.3 Shiny Assistant
 on:
   pull_request:
     branches: [gridium-next]
-    paths: ['alpha10-src/**', 'apply-alpha10.js', 'alpha10-hotfix.js', 'build-alpha10.ps1', '.github/workflows/build-gridium-windows-alpha10.yml']
+    paths: ['alpha10-src/**', 'apply-alpha10.js', 'alpha10-hotfix.js', 'alpha10-freeze-save.js', 'build-alpha10.ps1', '.github/workflows/build-gridium-windows-alpha10.yml']
   push:
     branches: [gridium-next]
-    paths: ['alpha10-src/**', 'apply-alpha10.js', 'alpha10-hotfix.js', 'build-alpha10.ps1', '.github/workflows/build-gridium-windows-alpha10.yml']
+    paths: ['alpha10-src/**', 'apply-alpha10.js', 'alpha10-hotfix.js', 'alpha10-freeze-save.js', 'build-alpha10.ps1', '.github/workflows/build-gridium-windows-alpha10.yml']
   workflow_dispatch:
 permissions:
   contents: read
