@@ -7,9 +7,9 @@ android {
         applicationId 'com.pokegrid.mobile24'
         minSdk 24
         targetSdk 35
-        versionCode 2401
-        versionName '2.4.1'
+        versionCode 3000
+        versionName '3.0.0'
     }
 }
 
-// separate install build
+// Gridium Mobile 3.0 Command Center — mantém applicationId para atualizar a instalação 2.4.x.
