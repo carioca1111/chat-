@@ -79,8 +79,12 @@ jobs:
           $main=Get-Content 'gridium-build/dist/asar-check/main.js' -Raw
           $runtime=Get-Content 'gridium-build/dist/asar-check/sniper-runtime.js' -Raw
           if ($main -notmatch 'alphaEngine\?\.validation') { throw 'Direct validation missing from app.asar' }
-          if ($main -notmatch 'beginMarketOutcomeWait') { throw 'Event-driven outcome waiter missing from app.asar' }
-          if ($main -match 'sleep\(140\)') { throw 'Legacy 140ms confirmation polling found in app.asar' }
+          $waitStart=$main.IndexOf('async function waitMarketOutcome')
+          $waitEnd=$main.IndexOf('function autoSellPrice',$waitStart)
+          if ($waitStart -lt 0 -or $waitEnd -le $waitStart) { throw 'waitMarketOutcome missing from app.asar' }
+          $waitBody=$main.Substring($waitStart,$waitEnd-$waitStart)
+          if ($waitBody -notmatch 'beginMarketOutcomeWait') { throw 'Event-driven outcome waiter missing from waitMarketOutcome in app.asar' }
+          if ($waitBody -match 'sleep\(140\)') { throw 'Legacy 140ms confirmation polling found inside waitMarketOutcome in app.asar' }
           if ($runtime -notmatch 'PREPARED') { throw 'PREPARED dispatch state missing from app.asar' }
           "version=$($pkg.version)" | Set-Content 'gridium-build/asar-verification.txt'
           "directValidation=true" | Add-Content 'gridium-build/asar-verification.txt'
