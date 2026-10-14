@@ -29,7 +29,7 @@ jobs:
         run: |
           $pkg = Get-Content './gridium-build/package.json' -Raw | ConvertFrom-Json
           if ($pkg.version -ne '3.0.0-alpha.11.5') { throw "Unexpected baseline $($pkg.version)" }
-          foreach ($name in @('main.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','market-protocol.js','alpha-engine.js','alpha-analysis-worker.js','hunt-intelligence.js','collector.js','package.json')) {
+          foreach ($name in @('main.js','network-inspector.js','sniper-runtime.js','sniper-ui.js','market-protocol.js','market-live.js','alpha-engine.js','alpha-professional.js','alpha-analysis-worker.js','hunt-intelligence.js','collector.js','package.json')) {
             $path = Join-Path './gridium-build' $name
             if (-not (Test-Path $path)) { throw "Missing baseline file $name" }
             if ($name.EndsWith('.js')) { node --check $path }
@@ -43,7 +43,9 @@ jobs:
             gridium-build/sniper-runtime.js
             gridium-build/sniper-ui.js
             gridium-build/market-protocol.js
+            gridium-build/market-live.js
             gridium-build/alpha-engine.js
+            gridium-build/alpha-professional.js
             gridium-build/alpha-analysis-worker.js
             gridium-build/hunt-intelligence.js
             gridium-build/collector.js
