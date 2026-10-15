@@ -82,12 +82,14 @@ jobs:
           if ($runtime -notmatch 'PREPARED') { throw 'Alpha 11.6 PREPARED state missing' }
           if ($hunt -notmatch 'sem amostra do Pokémon atual') { throw 'Strict current-Pokemon isolation missing' }
           if ($model -notmatch 'legacy=state\.accounts\?\.\[slot\]') { throw 'Live Hunt Intelligence fallback missing' }
-          if ($model -notmatch 'rateFromRecord') { throw 'Current-rate fallback missing' }
+          if ($model -notmatch 'legacyRates=legacy\.current\?\.rates') { throw 'Validated Hunt rate fallback missing' }
+          if ($model -match 'rateFromRecord') { throw 'Accumulated counters must not infer current Hunt rates' }
           if ($store -notmatch 'now-s\.lastAt<=120000') { throw 'Visual presence grace missing' }
           "version=$($pkg.version)" | Set-Content 'gridium-build/alpha118-verification.txt'
           "huntVisual=true" | Add-Content 'gridium-build/alpha118-verification.txt'
           "huntBackgrounds=12" | Add-Content 'gridium-build/alpha118-verification.txt'
           "legacyRuntimeFallback=true" | Add-Content 'gridium-build/alpha118-verification.txt'
+          "unknownRatesStayNull=true" | Add-Content 'gridium-build/alpha118-verification.txt'
           "presenceGraceMs=120000" | Add-Content 'gridium-build/alpha118-verification.txt'
           "currentPokemonIsolation=true" | Add-Content 'gridium-build/alpha118-verification.txt'
           "sniper116Guards=true" | Add-Content 'gridium-build/alpha118-verification.txt'
