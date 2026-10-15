@@ -7,6 +7,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.6 base build failed' }
 node ./alpha117-benchmark.js ./gridium-build before ./alpha117-before.json
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 baseline Hunt benchmark failed' }
 
+# The historical staging was split as text and lost the ZIP central directory.
+# Rebuild the byte stream only as a carrier, then recover local ZIP records and
+# accept an asset solely when its SHA-256 exactly matches the user-supplied WebP.
 $parts = Get-ChildItem './alpha117-assets/hunt-backgrounds.b64' -Filter 'part*' | Sort-Object Name
 if ($parts.Count -lt 2) { throw 'Alpha 11.7: pacote de fundos incompleto' }
 $joined = [Text.StringBuilder]::new()
@@ -16,8 +19,8 @@ foreach ($part in $parts) {
   [void]$joined.Append($clean)
 }
 $text = $joined.ToString()
-$zip = Join-Path $env:TEMP 'gridium-alpha117-hunt-backgrounds.zip'
-$stream = [IO.File]::Open($zip,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
+$carrier = Join-Path $env:TEMP 'gridium-alpha117-hunt-backgrounds.bin'
+$stream = [IO.File]::Open($carrier,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
 try {
   $start=0
   for($i=0;$i -lt $text.Length;$i++){
@@ -34,30 +37,20 @@ try {
     $bytes=[Convert]::FromBase64String($segment);$stream.Write($bytes,0,$bytes.Length)
   }
 }finally{$stream.Dispose()}
-
-Add-Type -AssemblyName System.IO.Compression
-$archive=[IO.Compression.ZipFile]::OpenRead($zip)
-try{
-  $entries=@($archive.Entries | Where-Object { $_.Name -match '^hunt-(beach|cave|default|desert|forest|ice|lake|meadow|mountain|ruins|swamp|volcano)\.webp$' })
-  $expected=@('hunt-beach.webp','hunt-cave.webp','hunt-default.webp','hunt-desert.webp','hunt-forest.webp','hunt-ice.webp','hunt-lake.webp','hunt-meadow.webp','hunt-mountain.webp','hunt-ruins.webp','hunt-swamp.webp','hunt-volcano.webp')
-  $actualNames=@($entries.Name | Sort-Object)
-  if($entries.Count -ne 12 -or (Compare-Object $expected $actualNames)){throw "Alpha 11.7: inventário WebP inválido: $($actualNames -join ', ')"}
-  if(@($entries | Where-Object {$_.Length -lt 1000}).Count){throw 'Alpha 11.7: WebP vazio/truncado no pacote'}
-  Write-Host "Alpha 11.7 asset archive valid: 12 WebP; bytes=$((Get-Item $zip).Length)"
-}finally{$archive.Dispose()}
-$manifest=(Get-Content './alpha117-assets/hunt-backgrounds.sha256' -Raw).Trim().Split()[0].ToLowerInvariant()
-$actual=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Host "Alpha 11.7 asset SHA expected=$manifest actual=$actual"
-if($actual -ne $manifest){throw "Alpha 11.7: hash do pacote de fundos divergente: esperado=$manifest atual=$actual"}
-$bg='./gridium-build/assets/hunt/backgrounds';New-Item -ItemType Directory -Force -Path $bg|Out-Null
-Expand-Archive -Path $zip -DestinationPath $bg -Force
-Remove-Item $zip -Force -ErrorAction SilentlyContinue
+$bg='./gridium-build/assets/hunt/backgrounds'
+New-Item -ItemType Directory -Force -Path $bg | Out-Null
+node ./alpha117-recover-assets.js $carrier $bg
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7: recuperação/validação dos fundos falhou' }
+Remove-Item $carrier -Force -ErrorAction SilentlyContinue
 
 node ./apply-alpha117.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 Hunt visual patch failed' }
 node ./alpha117-harden-isolation.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 current-Pokemon isolation hardening failed' }
-foreach ($name in @('main.js','sniper-runtime.js','hunt-intelligence.js','hunt-visual-model.js','hunt-visual.js')) { node --check (Join-Path './gridium-build' $name); if ($LASTEXITCODE -ne 0) { throw "Syntax check failed: $name" } }
+foreach ($name in @('main.js','sniper-runtime.js','hunt-intelligence.js','hunt-visual-model.js','hunt-visual.js')) {
+  node --check (Join-Path './gridium-build' $name)
+  if ($LASTEXITCODE -ne 0) { throw "Syntax check failed: $name" }
+}
 node ./alpha117-benchmark.js ./gridium-build after ./alpha117-after.json
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.7 optimized Hunt benchmark failed' }
 node ./alpha112-benchmark.js ./gridium-build
