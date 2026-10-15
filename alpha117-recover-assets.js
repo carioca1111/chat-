@@ -2,19 +2,22 @@
 const fs=require('fs'),path=require('path'),zlib=require('zlib'),crypto=require('crypto');
 const src=path.resolve(process.argv[2]||'hunt-backgrounds.zip');
 const out=path.resolve(process.argv[3]||'gridium-build/assets/hunt/backgrounds');
+// Runtime WebPs are the 400x225 attached backgrounds recompressed at WebP q82/method6
+// to avoid shipping the much larger source WebPs. These SHA-256 values are over
+// the runtime derivatives, not the original source files kept by the user.
 const expected={
- 'hunt-beach.webp':'52e96b137dbaf482604a435ef3091cbffb838548ba6225bb4065df73f30ebe6f',
- 'hunt-cave.webp':'3b0d8be6b7c1787a95b37a04716c8696116d4bef7a69c504dc6a9582558b7ea7',
- 'hunt-default.webp':'4f3da648cb9db92320d80ffedf0b378f75ff4670ed5a8ac2c9f1f8069015ac23',
- 'hunt-desert.webp':'6b938b0a1357140d018aa49b71cb182ae0cc58032ecea5c382a3507cfdbb3714',
- 'hunt-forest.webp':'69309db23da9aef695e0f4a35b1b095bb9ee71c3d734890dbfb9d04348fd750c',
- 'hunt-ice.webp':'3082471e82a44ed4e01fdfaf207d36b46169ac2cec258dbae84c5cf9c01d86ec',
- 'hunt-lake.webp':'4552ddb78e1c43e2a47f5a399bd1dc728085d2b9bdf1dc7c00f5121f921a952e',
- 'hunt-meadow.webp':'0f2402e5db2bfb4209366793138730c4cff53e4ef369bd09f5b1c589f843b2dc',
- 'hunt-mountain.webp':'d671b43d5d980190a66783eedb2dfeaab9cc0aeb547ad7ef14453444aede3dda',
- 'hunt-ruins.webp':'6223d10954e5623a515d1edb4aab57ccd4322b5f9a8c227ceac06e587171cc1e',
- 'hunt-swamp.webp':'b9018e03960086220f738cb54916c781e2407f4aff8ae84b2f94378268478fff',
- 'hunt-volcano.webp':'7fb236d05a60a8e17dd9a1c51955b80cb3b101ee52b8988942811350b62c54fe'
+ 'hunt-beach.webp':'a8634fc2868cf25afe9f6438a35feff3a25ca621f64386d15abee6cf624ca2d6',
+ 'hunt-cave.webp':'dd8ea7569106f664cf9c404d754414f524e65b5c4542eedff9affad4741eef24',
+ 'hunt-default.webp':'a275e41daef46aaad3160cafd22a453bba15b45ae49dc210d5201c0d1f18a978',
+ 'hunt-desert.webp':'8b600925bdf2a2005f1a237e3306a08c13a638387a103f35c38184fb707162f0',
+ 'hunt-forest.webp':'235b4045692a369514281aa28687b07e4b737c609373340503e97e6197e7bacb',
+ 'hunt-ice.webp':'1e804aa09bffc34338d62a1f99d3671b21cdee2e9753d51611397afc71754a86',
+ 'hunt-lake.webp':'23ebd89f5095e10878f2f453cdd3beece418ce1373491d9237e16206ff86bb7e',
+ 'hunt-meadow.webp':'936bd9f0d6a09fd9b2975c7e773b92c5ef137d9f6b4986612cf9211991a2a6f5',
+ 'hunt-mountain.webp':'1dc878b506aa1372dd559569ff9186f762e99f1ead773948d7722f31b7ef7264',
+ 'hunt-ruins.webp':'bcdc33c2a0fa64b7d7ba896a052841aa78bdd4c5e8ab97bfe522f7085d487904',
+ 'hunt-swamp.webp':'4412b83f668cb7f47eba5ecda0e37ae799bfeaae69be5c45c522a4b08b91fbe8',
+ 'hunt-volcano.webp':'83bfd6b45320ce4149137ce28646934c55701a4e9385725aa2f78bb0b7864852'
 };
 const b=fs.readFileSync(src);fs.mkdirSync(out,{recursive:true});
 const sig=Buffer.from([0x50,0x4b,0x03,0x04]);
@@ -37,7 +40,6 @@ for(let ix=0;ix<positions.length;ix++){
  const dataStart=nameEnd+extraLen;let dataEnd=compSize?dataStart+compSize:(positions[ix+1]??b.length);if(dataEnd>b.length)continue;
  let packed=b.subarray(dataStart,dataEnd),raw=null;
  try{if(method===0)raw=packed;else if(method===8)raw=zlib.inflateRawSync(packed);else continue}catch(e){
-   // For descriptor-based entries, inflateRaw can tolerate trailing descriptor bytes only on some streams.
    if(!(flags&8))continue;
    try{raw=zlib.inflateRawSync(b.subarray(dataStart,positions[ix+1]??b.length))}catch{continue}
  }
@@ -45,6 +47,6 @@ for(let ix=0;ix<positions.length;ix++){
  const dim=webpSize(raw);if(!dim||dim.w!==400||dim.h!==225)throw new Error(`${base}: dimensões WebP inválidas ${JSON.stringify(dim)}`);
  found.set(base,raw);
 }
-const missing=Object.keys(expected).filter(n=>!found.has(n));if(missing.length)throw new Error(`Alpha 11.7: staging não contém WebP íntegros: ${missing.join(', ')}`);
+const missing=Object.keys(expected).filter(n=>!found.has(n));if(missing.length)throw new Error(`Alpha 11.7: staging não contém derivados WebP íntegros: ${missing.join(', ')}`);
 for(const [name,raw] of [...found].sort())fs.writeFileSync(path.join(out,name),raw);
-console.log(JSON.stringify({ok:true,files:found.size,size:'400x225',sha256:Object.fromEntries(Object.keys(expected).sort().map(k=>[k,expected[k]]))},null,2));
+console.log(JSON.stringify({ok:true,files:found.size,size:'400x225',runtimeDerivative:'WebP q82/method6',sha256:Object.fromEntries(Object.keys(expected).sort().map(k=>[k,expected[k]]))},null,2));
