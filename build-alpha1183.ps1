@@ -23,13 +23,15 @@ if (-not $SkipBefore) {
 
 node ./alpha1183-apply.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.3 hardening patch failed' }
+node ./alpha1183-store-revision-fix.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.3 Hunt cache freshness fix failed' }
 
 foreach ($name in @('hunt-visual-store.js','hunt-visual-model.js','hunt-render-scheduler.js','hunt-visual.js')) {
   node --check (Join-Path './gridium-build' $name)
   if ($LASTEXITCODE -ne 0) { throw "Alpha 11.8.3 syntax check failed: $name" }
 }
 
-node --test --test-timeout=30000 ./gridium-build/test/hunt-performance-hardening.test.js ./gridium-build/test/hunt-performance-type-bg.test.js
+node --test --test-timeout=30000 ./gridium-build/test/hunt-performance-hardening.test.js ./gridium-build/test/hunt-performance-type-bg.test.js ./gridium-build/test/hunt-cache-freshness.test.js
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.3 focused Hunt tests failed' }
 
 node ./alpha1183-hunt-benchmark.js ./gridium-build after ./gridium-build/alpha1183-hunt-after.json
