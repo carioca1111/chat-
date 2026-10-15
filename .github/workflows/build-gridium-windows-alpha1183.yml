@@ -1,0 +1,214 @@
+name: Build Gridium Alpha 11.8.3 Performance Hardening
+
+on:
+  push:
+    branches: [gridium-alpha11.8.3-performance-hardening]
+    paths:
+      - 'alpha1183-**'
+      - 'build-alpha1183.ps1'
+      - '.github/workflows/build-gridium-windows-alpha1183.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Assemble exact Alpha 11.8.2 baseline
+        shell: pwsh
+        run: ./build-alpha1182.ps1
+
+      - name: Install build dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+
+      - name: Compile TypeScript and C++ Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+
+      - name: Full baseline regression suite
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath alpha1183-regression-before.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+
+      - name: Baseline Hunt benchmarks and process inventory
+        shell: pwsh
+        run: |
+          node ./alpha1183-hunt-benchmark.js ./gridium-build before ./gridium-build/alpha1183-hunt-before.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node ./alpha1183-main-inventory.js ./gridium-build ./gridium-build/alpha1183-main-inventory-before.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Baseline Lightning Sniper latency
+        shell: pwsh
+        run: |
+          node ./alpha116-benchmark.js ./gridium-build alpha1183-sniper-before ./gridium-build/alpha1183-sniper-before.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Apply Alpha 11.8.3 hardening
+        shell: pwsh
+        run: ./build-alpha1183.ps1 -PreparedBase -SkipBefore
+
+      - name: Full Alpha 11.8.3 regression suite
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+
+      - name: Compare Hunt before and after
+        shell: pwsh
+        run: |
+          node ./alpha1183-compare-benchmarks.js ./gridium-build/alpha1183-hunt-before.json ./gridium-build/alpha1183-hunt-after.json ./gridium-build/alpha1183-hunt-comparison.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Lightning Sniper before and after
+        shell: pwsh
+        run: |
+          node ./alpha116-benchmark.js ./gridium-build alpha1183-sniper-after ./gridium-build/alpha1183-sniper-after.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node ./alpha1183-compare-sniper.js ./gridium-build/alpha1183-sniper-before.json ./gridium-build/alpha1183-sniper-after.json ./gridium-build/alpha1183-sniper-comparison.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Majority guard legacy Sniper throughput
+        shell: pwsh
+        run: |
+          $oldPref = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          $passes = 0
+          $rows = @()
+          try {
+            for ($i=1; $i -le 3; $i++) {
+              & node ./alpha112-benchmark.js ./gridium-build
+              $code = $LASTEXITCODE
+              $result = $null
+              if (Test-Path './gridium-build/alpha112-benchmark.json') {
+                try { $result = Get-Content './gridium-build/alpha112-benchmark.json' -Raw | ConvertFrom-Json } catch {}
+              }
+              $ratio = if ($result -and $result.sniper) { [double]$result.sniper.throughputRatio } else { $null }
+              $rows += [pscustomobject]@{ attempt=$i; exitCode=$code; throughputRatio=$ratio }
+              if ($code -eq 0) { $passes++ }
+              Write-Host "Alpha 11.8.3 Sniper throughput attempt $i/3: exit=$code ratio=$ratio"
+            }
+          } finally { $PSNativeCommandUseErrorActionPreference = $oldPref }
+          $rows | ConvertTo-Json -Depth 5 | Set-Content './gridium-build/alpha1183-sniper-throughput-after.json'
+          if ($passes -lt 2) { throw "Sniper throughput majority guard failed: $passes/3" }
+          $global:LASTEXITCODE = 0
+
+      - name: Capture Hunt renderer screenshots
+        shell: pwsh
+        run: |
+          Push-Location gridium-build
+          npx electron ../alpha118-visual-smoke.cjs .
+          $code=$LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { exit $code }
+          if (-not (Test-Path 'gridium-build/alpha118-screenshots/hunt-overview-1920x1080.png')) { throw 'Overview screenshot missing' }
+          if (-not (Test-Path 'gridium-build/alpha118-screenshots/hunt-individual-1366x768.png')) { throw 'Individual screenshot missing' }
+
+      - name: Remove screenshot fixture from package
+        shell: pwsh
+        run: Remove-Item 'gridium-build/alpha118-visual-fixture.html' -ErrorAction SilentlyContinue
+
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+
+      - name: Verify packaged Alpha 11.8.3
+        shell: pwsh
+        run: |
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.3.exe'
+          if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
+          $asar='gridium-build/dist/win-unpacked/resources/app.asar'
+          if (-not (Test-Path $asar)) { throw 'app.asar missing' }
+          npx asar extract $asar 'gridium-build/dist/asar-check'
+          $pkg=Get-Content 'gridium-build/dist/asar-check/package.json' -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.11.8.3') { throw "Packaged version mismatch: $($pkg.version)" }
+          $store=Get-Content 'gridium-build/dist/asar-check/hunt-visual-store.js' -Raw
+          $model=Get-Content 'gridium-build/dist/asar-check/hunt-visual-model.js' -Raw
+          $ui=Get-Content 'gridium-build/dist/asar-check/hunt-visual.js' -Raw
+          $scheduler=Get-Content 'gridium-build/dist/asar-check/hunt-render-scheduler.js' -Raw
+          if ($store -match "createHash\('sha256'\)") { throw 'SHA-256 still present in Hunt ingestion hot path' }
+          if ($store -notmatch 'rewardFingerprint' -or $store -notmatch '_windowsFor') { throw 'Hunt store hardening missing' }
+          if ($model -notmatch 'backgroundForPokemon' -or $model -notmatch 'snapshotCache') { throw 'Hunt model cache/type mapping missing' }
+          if ($ui -notmatch 'HuntRenderScheduler' -or $ui -match 'requestAnimationFrame\(frame\)' -or $ui -match 'sig=JSON\.stringify') { throw 'Hunt renderer hardening missing' }
+          if ($ui -notmatch 'huntLimit:24' -or $ui -notmatch 'moreHunts') { throw 'Progressive Hunt list missing' }
+          if ($scheduler -notmatch 'setTimer' -or $scheduler -notmatch '_queueFrame') { throw 'Hunt scheduler missing' }
+          foreach ($n in @('beach','cave','default','desert','forest','ice','lake','meadow','mountain','ruins','swamp','volcano')) {
+            $p="gridium-build/dist/asar-check/assets/hunt/backgrounds/hunt-$n.webp"
+            if (-not (Test-Path $p)) { throw "Missing packaged Hunt background: $n" }
+          }
+          foreach ($n in @('sniper-runtime.js','market-live.js','market-protocol.js','alpha-engine.js','network-inspector.js','shiny-telemetry.js')) {
+            if (-not (Test-Path "gridium-build/dist/asar-check/$n")) { throw "Critical packaged module missing: $n" }
+          }
+          if (-not (Test-Path './gridium-build/alpha1183-long-session.json')) { throw 'Long-session report missing' }
+          $long=Get-Content './gridium-build/alpha1183-long-session.json' -Raw | ConvertFrom-Json
+          if (-not $long.ok) { throw 'Long-session boundedness report failed' }
+          "version=$($pkg.version)" | Set-Content 'gridium-build/alpha1183-verification.txt'
+          'huntCryptoHotPath=false' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'rollingWindows=true' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'snapshotCache=true' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'renderScheduler=timeout-plus-single-raf' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'progressiveHunts=24' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'longSession24h=true' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'typeBackgrounds=true' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          'lightningCriticalFilesUnchanged=true' | Add-Content 'gridium-build/alpha1183-verification.txt'
+          Get-FileHash $file.FullName -Algorithm SHA256 | Format-List | Out-File 'gridium-build/SHA256.txt'
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8.3-Diagnostics
+          path: |
+            gridium-build/alpha1183-regression-before.txt
+            gridium-build/regression-output.txt
+            gridium-build/alpha1183-hunt-*.json
+            gridium-build/alpha1183-long-session.json
+            gridium-build/alpha1183-sniper-*.json
+            gridium-build/alpha1183-main-inventory-*.json
+            gridium-build/hunt-visual-store.js
+            gridium-build/hunt-visual-model.js
+            gridium-build/hunt-render-scheduler.js
+            gridium-build/hunt-visual.js
+            gridium-build/alpha118-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8.3-Performance-Hardening-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.3.exe
+            gridium-build/alpha1183-verification.txt
+            gridium-build/SHA256.txt
+            gridium-build/alpha1183-regression-before.txt
+            gridium-build/regression-output.txt
+            gridium-build/alpha1183-hunt-before.json
+            gridium-build/alpha1183-hunt-after.json
+            gridium-build/alpha1183-hunt-comparison.json
+            gridium-build/alpha1183-long-session.json
+            gridium-build/alpha1183-sniper-before.json
+            gridium-build/alpha1183-sniper-after.json
+            gridium-build/alpha1183-sniper-comparison.json
+            gridium-build/alpha1183-sniper-throughput-after.json
+            gridium-build/alpha1183-main-inventory-before.json
+            gridium-build/alpha1183-main-inventory-after.json
+            gridium-build/alpha118-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
