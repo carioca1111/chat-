@@ -76,4 +76,7 @@ try {
 finally { $PSNativeCommandUseErrorActionPreference = $oldNativePreference }
 $perfResults | ConvertTo-Json -Depth 5 | Set-Content './gridium-build/alpha1181-sniper-guard.json'
 if ($perfPasses -lt 2) { throw "Alpha 11.8.1 Sniper performance guard failed majority sampling: $perfPasses/3 passes" }
+# A tolerated failed sample leaves LASTEXITCODE=1; clear it after majority success
+# so pwsh reports the build result, not the last noisy microbenchmark sample.
+$global:LASTEXITCODE = 0
 Write-Host "Gridium Alpha 11.8.1 Hunt Runtime Fix assembled; Sniper guard passes=$perfPasses/3."
