@@ -1,12 +1,12 @@
-name: Build Gridium Alpha 11.8 Hunt Visual
+name: Build Gridium Alpha 11.8.1 Hunt Runtime Fix
 
 on:
   push:
-    branches: [gridium-alpha11.8-hunt-validated]
-    paths: ['alpha118-**', 'apply-alpha118.js', 'build-alpha118.ps1', '.github/workflows/build-gridium-windows-alpha118.yml']
+    branches: [gridium-alpha11.8.1-hunt-runtime-fix]
+    paths: ['alpha118-**', 'alpha1181-**', 'apply-alpha118.js', 'build-alpha118.ps1', '.github/workflows/build-gridium-windows-alpha118.yml']
   pull_request:
     branches: [gridium-next]
-    paths: ['alpha118-**', 'apply-alpha118.js', 'build-alpha118.ps1', '.github/workflows/build-gridium-windows-alpha118.yml']
+    paths: ['alpha118-**', 'alpha1181-**', 'apply-alpha118.js', 'build-alpha118.ps1', '.github/workflows/build-gridium-windows-alpha118.yml']
   workflow_dispatch:
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Assemble Alpha 11.8 from clean Alpha 11.6
+      - name: Assemble Alpha 11.8.1 from clean Alpha 11.6
         shell: pwsh
         run: ./build-alpha118.ps1
       - name: Install build dependencies
@@ -55,16 +55,16 @@ jobs:
       - name: Windows installer
         working-directory: gridium-build
         run: npx electron-builder --win nsis --publish never
-      - name: Verify Hunt assets and packaged app.asar
+      - name: Verify Hunt runtime fallback and packaged app.asar
         shell: pwsh
         run: |
-          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.exe'
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.1.exe'
           if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
           $asar='gridium-build/dist/win-unpacked/resources/app.asar'
           if (-not (Test-Path $asar)) { throw 'app.asar missing' }
           npx asar extract $asar 'gridium-build/dist/asar-check'
           $pkg=Get-Content 'gridium-build/dist/asar-check/package.json' -Raw | ConvertFrom-Json
-          if ($pkg.version -ne '3.0.0-alpha.11.8') { throw "Packaged version mismatch: $($pkg.version)" }
+          if ($pkg.version -ne '3.0.0-alpha.11.8.1') { throw "Packaged version mismatch: $($pkg.version)" }
           foreach ($n in @('beach','cave','default','desert','forest','ice','lake','meadow','mountain','ruins','swamp','volcano')) {
             $p="gridium-build/dist/asar-check/assets/hunt/backgrounds/hunt-$n.webp"
             if (-not (Test-Path $p)) { throw "Missing packaged Hunt background: $n" }
@@ -74,14 +74,21 @@ jobs:
           $main=Get-Content 'gridium-build/dist/asar-check/main.js' -Raw
           $runtime=Get-Content 'gridium-build/dist/asar-check/sniper-runtime.js' -Raw
           $hunt=Get-Content 'gridium-build/dist/asar-check/hunt-intelligence.js' -Raw
+          $model=Get-Content 'gridium-build/dist/asar-check/hunt-visual-model.js' -Raw
+          $store=Get-Content 'gridium-build/dist/asar-check/hunt-visual-store.js' -Raw
           if ($html -notmatch 'hunt-visual\.js') { throw 'Hunt Visual script missing from app.asar' }
           if ($renderer -notmatch 'HuntVisual\?\.render') { throw 'Hunt render delegate missing from app.asar' }
           if ($main -notmatch 'alphaEngine\?\.validation') { throw 'Alpha 11.6 direct validation guard missing' }
           if ($runtime -notmatch 'PREPARED') { throw 'Alpha 11.6 PREPARED state missing' }
           if ($hunt -notmatch 'sem amostra do Pokémon atual') { throw 'Strict current-Pokemon isolation missing' }
+          if ($model -notmatch 'legacy=state\.accounts\?\.\[slot\]') { throw 'Live Hunt Intelligence fallback missing' }
+          if ($model -notmatch 'rateFromRecord') { throw 'Current-rate fallback missing' }
+          if ($store -notmatch 'now-s\.lastAt<=120000') { throw 'Visual presence grace missing' }
           "version=$($pkg.version)" | Set-Content 'gridium-build/alpha118-verification.txt'
           "huntVisual=true" | Add-Content 'gridium-build/alpha118-verification.txt'
           "huntBackgrounds=12" | Add-Content 'gridium-build/alpha118-verification.txt'
+          "legacyRuntimeFallback=true" | Add-Content 'gridium-build/alpha118-verification.txt'
+          "presenceGraceMs=120000" | Add-Content 'gridium-build/alpha118-verification.txt'
           "currentPokemonIsolation=true" | Add-Content 'gridium-build/alpha118-verification.txt'
           "sniper116Guards=true" | Add-Content 'gridium-build/alpha118-verification.txt'
           Get-FileHash $file.FullName -Algorithm SHA256 | Format-List | Out-File 'gridium-build/SHA256.txt'
@@ -89,13 +96,14 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Alpha-11.8-Diagnostics
+          name: Gridium-Alpha-11.8.1-Diagnostics
           path: |
             gridium-build/regression-output.txt
             alpha118-before.json
             alpha118-after.json
             gridium-build/hunt-intelligence.js
             gridium-build/hunt-visual-model.js
+            gridium-build/hunt-visual-store.js
             gridium-build/hunt-visual.js
             gridium-build/hunt-visual.css
             gridium-build/alpha118-screenshots/*.png
@@ -103,9 +111,9 @@ jobs:
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Alpha-11.8-Hunt-Visual-Windows
+          name: Gridium-Alpha-11.8.1-Hunt-Runtime-Fix-Windows
           path: |
-            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.exe
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.1.exe
             alpha118-before.json
             alpha118-after.json
             gridium-build/alpha112-benchmark.json
