@@ -9,6 +9,8 @@ node ./alpha1182-hunt-perf-type-bg.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.2 Hunt performance/type background patch failed' }
 
 Copy-Item -Force ./alpha1182-src/test/*.test.js ./gridium-build/test/
+node ./alpha1182-test-contracts.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.2 regression contract normalization failed' }
 
 foreach ($name in @('hunt-visual-model.js','hunt-visual.js')) {
   node --check (Join-Path './gridium-build' $name)
