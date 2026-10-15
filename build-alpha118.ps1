@@ -44,6 +44,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8 visual integration failed' }
 node ./alpha1181-runtime-fix.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.1 runtime fallback failed' }
 Copy-Item -Force ./alpha1181-src/test/hunt-runtime-fallback.test.js ./gridium-build/test/
+node ./alpha1181-test-contracts.js ./gridium-build
+if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.1 regression contract normalization failed' }
 node ./alpha116-benchmark.js ./gridium-build after ./alpha118-after.json
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.1 optimized benchmark failed' }
 foreach ($name in @('main.js','renderer.js','hunt-visual-store.js','hunt-visual-model.js','hunt-visual.js')) {
