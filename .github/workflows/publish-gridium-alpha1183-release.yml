@@ -1,0 +1,42 @@
+name: Publish Gridium Alpha 11.8.3 Release
+
+on:
+  push:
+    branches: [gridium-alpha11.8.3-performance-hardening]
+    paths:
+      - '.github/workflows/publish-gridium-alpha1183-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8.3-Performance-Hardening-Windows
+          path: release-files
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 38695680784
+
+      - name: Publish verified installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem -Path 'release-files' -Recurse -Filter 'Gridium-Setup-3.0.0-alpha.11.8.3.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'Verified Alpha 11.8.3 installer not found in source artifact' }
+          $tag = 'gridium-alpha11.8.3'
+          & gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            & gh release upload $tag $exe.FullName --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            $global:LASTEXITCODE = 0
+            & gh release create $tag $exe.FullName --repo $env:GITHUB_REPOSITORY --target 'gridium-alpha11.8.3-performance-hardening' --title 'Gridium Alpha 11.8.3' --notes 'Performance Hardening build validated by GitHub Actions run 38695680784. Full regression, Hunt benchmark comparison, Lightning Sniper guards, visual smoke tests, installer build and packaged app verification passed.'
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
