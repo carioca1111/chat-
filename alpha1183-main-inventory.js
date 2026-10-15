@@ -1,0 +1,8 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(process.argv[2]||'gridium-build'),out=path.resolve(process.argv[3]||path.join(root,'alpha1183-main-inventory.json'));
+const files=['main.js','renderer.js','network-inspector.js','sniper-runtime.js','market-live.js','market-protocol.js','alpha-engine.js','alpha-analysis-worker.js','hunt-visual-store.js','hunt-visual-model.js','hunt-visual.js','hunt-render-scheduler.js','shiny-telemetry.js','shiny-ui.js'].filter(n=>fs.existsSync(path.join(root,n)));
+const patterns={setInterval:/\bsetInterval\s*\(/g,setTimeout:/\bsetTimeout\s*\(/g,requestAnimationFrame:/\brequestAnimationFrame\s*\(/g,ipcOn:/\b(?:ipcMain|ipcRenderer)\.on\s*\(/g,ipcHandle:/\bipcMain\.handle\s*\(/g,webContentsOn:/\bwebContents\.on\s*\(/g,eventOn:/\.on\s*\(/g,addEventListener:/\baddEventListener\s*\(/g,worker:/\b(?:new\s+Worker|worker_threads|fork\s*\()/g,childProcess:/\b(?:spawn|execFile|exec|fork)\s*\(/g};
+const result={version:require(path.join(root,'package.json')).version,at:Date.now(),files:{},totals:{}};for(const k of Object.keys(patterns))result.totals[k]=0;
+for(const name of files){const src=fs.readFileSync(path.join(root,name),'utf8'),row={bytes:Buffer.byteLength(src)};for(const [k,re] of Object.entries(patterns)){re.lastIndex=0;row[k]=(src.match(re)||[]).length;result.totals[k]+=row[k];}result.files[name]=row;}
+result.notes=['Static inventory only: counts call sites, not runtime-active handles.','A count is not evidence that a routine is redundant; removals require consumer/lifecycle proof.'];fs.writeFileSync(out,JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result,null,2));
