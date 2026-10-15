@@ -41,7 +41,7 @@ jobs:
         working-directory: gridium-build
         shell: pwsh
         run: |
-          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath alpha1183-regression-before.txt
+          & node --test --test-concurrency=1 --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath alpha1183-regression-before.txt
           $code = $LASTEXITCODE
           if ($code -ne 0) { exit $code }
 
@@ -67,7 +67,7 @@ jobs:
         working-directory: gridium-build
         shell: pwsh
         run: |
-          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
+          & node --test --test-concurrency=1 --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
           $code = $LASTEXITCODE
           if ($code -ne 0) { exit $code }
 
@@ -144,7 +144,7 @@ jobs:
           $ui=Get-Content 'gridium-build/dist/asar-check/hunt-visual.js' -Raw
           $scheduler=Get-Content 'gridium-build/dist/asar-check/hunt-render-scheduler.js' -Raw
           if ($store -match "createHash\('sha256'\)") { throw 'SHA-256 still present in Hunt ingestion hot path' }
-          if ($store -notmatch 'rewardFingerprint' -or $store -notmatch '_windowsFor') { throw 'Hunt store hardening missing' }
+          if ($store -notmatch 'rewardFingerprint' -or $store -notmatch '_windowsFor' -or $store -notmatch 'dataRevision') { throw 'Hunt store hardening missing' }
           if ($model -notmatch 'backgroundForPokemon' -or $model -notmatch 'snapshotCache') { throw 'Hunt model cache/type mapping missing' }
           if ($ui -notmatch 'HuntRenderScheduler' -or $ui -match 'requestAnimationFrame\(frame\)' -or $ui -match 'sig=JSON\.stringify') { throw 'Hunt renderer hardening missing' }
           if ($ui -notmatch 'huntLimit:24' -or $ui -notmatch 'moreHunts') { throw 'Progressive Hunt list missing' }
