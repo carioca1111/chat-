@@ -27,7 +27,7 @@ jobs:
 
       - name: Assemble exact Alpha 11.8.2 baseline
         shell: pwsh
-        run: ./build-alpha1182.ps1
+        run: ./alpha1183-build-base.ps1
 
       - name: Install build dependencies
         working-directory: gridium-build
@@ -176,6 +176,7 @@ jobs:
         with:
           name: Gridium-Alpha-11.8.3-Diagnostics
           path: |
+            alpha1183-base-assembly-attempts.json
             gridium-build/alpha1183-regression-before.txt
             gridium-build/regression-output.txt
             gridium-build/alpha1183-hunt-*.json
@@ -197,6 +198,7 @@ jobs:
             gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.3.exe
             gridium-build/alpha1183-verification.txt
             gridium-build/SHA256.txt
+            alpha1183-base-assembly-attempts.json
             gridium-build/alpha1183-regression-before.txt
             gridium-build/regression-output.txt
             gridium-build/alpha1183-hunt-before.json
