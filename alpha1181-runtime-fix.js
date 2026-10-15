@@ -6,7 +6,8 @@ const write=(n,s)=>fs.writeFileSync(path.join(root,n),s,'utf8');
 const must=(c,m)=>{if(!c)throw new Error('Alpha 11.8.1 Hunt runtime fix: '+m);};
 function bounds(text,name){
   const start=text.indexOf('function '+name+'(');must(start>=0,name+' ausente');
-  const open=text.indexOf('{',start);let d=0,q='',esc=false,line=false,block=false;
+  const signatureEnd=text.indexOf('){',start);must(signatureEnd>=0,name+' assinatura ausente');
+  const open=signatureEnd+1;let d=0,q='',esc=false,line=false,block=false;
   for(let i=open;i<text.length;i++){
     const c=text[i],n=text[i+1];
     if(line){if(c==='\n')line=false;continue;}
