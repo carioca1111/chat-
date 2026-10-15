@@ -4,6 +4,16 @@ const path=require('node:path');
 const Module=require('node:module');
 const target=path.join(__dirname,'alpha1183-apply.js');
 let src=fs.readFileSync(target,'utf8');
+
+// alpha1183-apply.js generates hunt-visual.js from an outer template literal.
+// Keep the inner "Carregar mais" expression literal until the generated UI runs;
+// otherwise the patch runner evaluates `hunts` while assembling the build.
+const interpolationBug='Carregar mais (${Math.min(24,hunts.length-limit)})';
+const interpolationFix="Carregar mais (${'${'}Math.min(24,hunts.length-limit)})";
+const interpolationHits=src.split(interpolationBug).length-1;
+if(interpolationHits!==1)throw new Error('Alpha 11.8.3 safe apply: progressive Hunt interpolation baseline expected once, got '+interpolationHits);
+src=src.replace(interpolationBug,interpolationFix);
+
 const needle=/function replaceFunction\(text,name,replacement\)\{const b=functionBounds\(text,name\);return text\.slice\(0,b\.start\)\+replacement\+text\.slice\(b\.end\);\}/;
 if(!needle.test(src))throw new Error('Alpha 11.8.3 safe apply: replaceFunction baseline not found exactly once');
 const replacement=`function replaceFunction(text,name,replacement){
