@@ -7,7 +7,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 Set-Location $PSScriptRoot
 
 if (-not $PreparedBase) {
-  ./build-alpha1182.ps1
+  ./alpha1183-build-base.ps1
   if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.2 exact base build failed' }
 }
 
