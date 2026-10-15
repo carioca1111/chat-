@@ -1,0 +1,117 @@
+name: Build Gridium Alpha 11.8 Hunt Visual
+
+on:
+  push:
+    branches: [gridium-alpha11.8-hunt-validated]
+    paths: ['alpha118-**', 'apply-alpha118.js', 'build-alpha118.ps1', '.github/workflows/build-gridium-windows-alpha118.yml']
+  pull_request:
+    branches: [gridium-next]
+    paths: ['alpha118-**', 'apply-alpha118.js', 'build-alpha118.ps1', '.github/workflows/build-gridium-windows-alpha118.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble Alpha 11.8 from clean Alpha 11.6
+        shell: pwsh
+        run: ./build-alpha118.ps1
+      - name: Install build dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile TypeScript and C++ Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Full regression suite
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+      - name: Capture Hunt renderer screenshots
+        shell: pwsh
+        run: |
+          Push-Location gridium-build
+          npx electron ../alpha118-visual-smoke.cjs .
+          $code=$LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { exit $code }
+          if (-not (Test-Path 'gridium-build/alpha118-screenshots/hunt-overview-1920x1080.png')) { throw 'Overview screenshot missing' }
+          if (-not (Test-Path 'gridium-build/alpha118-screenshots/hunt-individual-1366x768.png')) { throw 'Individual screenshot missing' }
+      - name: Remove screenshot fixture from package
+        shell: pwsh
+        run: Remove-Item 'gridium-build/alpha118-visual-fixture.html' -ErrorAction SilentlyContinue
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify Hunt assets and packaged app.asar
+        shell: pwsh
+        run: |
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.exe'
+          if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
+          $asar='gridium-build/dist/win-unpacked/resources/app.asar'
+          if (-not (Test-Path $asar)) { throw 'app.asar missing' }
+          npx asar extract $asar 'gridium-build/dist/asar-check'
+          $pkg=Get-Content 'gridium-build/dist/asar-check/package.json' -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.11.8') { throw "Packaged version mismatch: $($pkg.version)" }
+          foreach ($n in @('beach','cave','default','desert','forest','ice','lake','meadow','mountain','ruins','swamp','volcano')) {
+            $p="gridium-build/dist/asar-check/assets/hunt/backgrounds/hunt-$n.webp"
+            if (-not (Test-Path $p)) { throw "Missing packaged Hunt background: $n" }
+          }
+          $html=Get-Content 'gridium-build/dist/asar-check/index.html' -Raw
+          $renderer=Get-Content 'gridium-build/dist/asar-check/renderer.js' -Raw
+          $main=Get-Content 'gridium-build/dist/asar-check/main.js' -Raw
+          $runtime=Get-Content 'gridium-build/dist/asar-check/sniper-runtime.js' -Raw
+          $hunt=Get-Content 'gridium-build/dist/asar-check/hunt-intelligence.js' -Raw
+          if ($html -notmatch 'hunt-visual\.js') { throw 'Hunt Visual script missing from app.asar' }
+          if ($renderer -notmatch 'HuntVisual\?\.render') { throw 'Hunt render delegate missing from app.asar' }
+          if ($main -notmatch 'alphaEngine\?\.validation') { throw 'Alpha 11.6 direct validation guard missing' }
+          if ($runtime -notmatch 'PREPARED') { throw 'Alpha 11.6 PREPARED state missing' }
+          if ($hunt -notmatch 'sem amostra do Pokémon atual') { throw 'Strict current-Pokemon isolation missing' }
+          "version=$($pkg.version)" | Set-Content 'gridium-build/alpha118-verification.txt'
+          "huntVisual=true" | Add-Content 'gridium-build/alpha118-verification.txt'
+          "huntBackgrounds=12" | Add-Content 'gridium-build/alpha118-verification.txt'
+          "currentPokemonIsolation=true" | Add-Content 'gridium-build/alpha118-verification.txt'
+          "sniper116Guards=true" | Add-Content 'gridium-build/alpha118-verification.txt'
+          Get-FileHash $file.FullName -Algorithm SHA256 | Format-List | Out-File 'gridium-build/SHA256.txt'
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8-Diagnostics
+          path: |
+            gridium-build/regression-output.txt
+            alpha118-before.json
+            alpha118-after.json
+            gridium-build/hunt-intelligence.js
+            gridium-build/hunt-visual-model.js
+            gridium-build/hunt-visual.js
+            gridium-build/hunt-visual.css
+            gridium-build/alpha118-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8-Hunt-Visual-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.exe
+            alpha118-before.json
+            alpha118-after.json
+            gridium-build/alpha112-benchmark.json
+            gridium-build/alpha118-verification.txt
+            gridium-build/SHA256.txt
+            gridium-build/regression-output.txt
+            gridium-build/alpha118-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
