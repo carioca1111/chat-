@@ -1,0 +1,14 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(process.argv[2]||'gridium-build'),file=path.join(root,'hunt-visual-store.js');
+let s=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');
+const must=(c,m)=>{if(!c)throw new Error('Alpha 11.8.3 store revision fix: '+m);};
+const replaceOnce=(from,to,label)=>{const a=s.indexOf(from);must(a>=0,label+' anchor missing');must(s.indexOf(from,a+from.length)<0,label+' anchor not unique');s=s.slice(0,a)+to+s.slice(a+from.length);};
+replaceOnce('for(const key of Object.keys(ev)){','for(const key of Object.keys(ev).sort()){','deterministic reward key ordering');
+replaceOnce("contextKey:'',profileKey:'',viewRevision:0}","contextKey:'',profileKey:'',viewRevision:0,dataRevision:0}",'slot data revision');
+replaceOnce("s.lastAt=at;s.connected=true;const a=this.accounts.get(s.id);a.lastAt=at;\n    if(previousKey!==s.contextKey||previousProfileKey!==s.profileKey||previousHunt!==s.state.huntSlug)this.viewCache[slot]=null;\n    this.dirty=true;this.dirtyVersion++;return true;","s.lastAt=at;s.connected=true;s.dataRevision=(s.dataRevision||0)+1;const a=this.accounts.get(s.id);a.lastAt=at;\n    this.viewCache[slot]=null;\n    this.dirty=true;this.dirtyVersion++;return true;",'accepted frame cache invalidation');
+replaceOnce("const cacheKey=`${end}|${s.contextKey}|${s.profileKey}|${label(s.state.huntSlug)}|${s.started}|${this.catalogRevision}`;","const cacheKey=`${end}|${s.dataRevision||0}|${s.contextKey}|${s.profileKey}|${label(s.state.huntSlug)}|${s.started}|${this.catalogRevision}`;",'view cache revision key');
+must(s.includes('dataRevision=(s.dataRevision||0)+1'),'data revision increment missing');
+must(s.includes('Object.keys(ev).sort()'),'reward fingerprint key order not deterministic');
+fs.writeFileSync(file,s,'utf8');
+console.log('Alpha 11.8.3: Hunt view cache now invalidates on accepted data without stale same-minute metrics.');
