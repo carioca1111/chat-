@@ -3,7 +3,7 @@ name: Build Gridium Alpha 11.8.2 Hunt Performance Type Background
 on:
   push:
     branches: [gridium-alpha11.8.2-hunt-performance-type-bg]
-    paths: ['alpha118-**', 'alpha1181-**', 'alpha1182-**', 'apply-alpha118.js', 'build-alpha118.ps1', 'build-alpha1182.ps1', '.github/workflows/build-gridium-windows-alpha1182.yml']
+    paths: ['alpha118-**', 'alpha1181-**', 'alpha1182-**', 'apply-alpha118.js', 'build-alpha115.ps1', 'build-alpha118.ps1', 'build-alpha1182.ps1', '.github/workflows/build-gridium-windows-alpha1182.yml']
   workflow_dispatch:
 
 permissions:
