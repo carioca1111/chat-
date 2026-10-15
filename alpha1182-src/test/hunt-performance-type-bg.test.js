@@ -3,7 +3,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const M=require('../../hunt-visual-model');
+const M=require('../hunt-visual-model');
 
 function onlineRow(now=Date.now()){return {status:'online',health:'online',record:{nick:'Conta',updated:now,live:{browserOnline:true}}};}
 function intel(types,hunt='forest',now=Date.now()){return {currentHunt:hunt,lastAt:now,identity:{id:'A',nick:'A'},profile:{id:1,speciesId:6,name:'Pokemon',level:80,types},periods:{'60':{minutes:60,hunts:[{huntSlug:hunt,xpPerHour:100,goldPerHour:20,observedMs:1200000,observedMinutes:20,samples:5,confidenceDetails:{score:.5,label:'moderada',observedMinutes:20,samples:5}}]}},series:[]};}
