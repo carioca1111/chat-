@@ -3,6 +3,9 @@ const fs=require('node:fs');
 const path=require('node:path');
 const Module=require('node:module');
 const target=path.join(__dirname,'alpha1183-apply.js');
+const smokePath=path.join(__dirname,'alpha118-visual-smoke.cjs');
+const smoke=fs.readFileSync(smokePath,'utf8');
+if(!smoke.includes('hunt-render-scheduler.js'))throw new Error('Alpha 11.8.3 safe apply: visual smoke fixture must load Hunt render scheduler');
 let src=fs.readFileSync(target,'utf8');
 
 // alpha1183-apply.js generates hunt-visual.js from an outer template literal.
