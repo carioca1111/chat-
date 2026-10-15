@@ -21,7 +21,7 @@ if (-not $SkipBefore) {
   if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.2 main-process inventory failed' }
 }
 
-node ./alpha1183-apply.js ./gridium-build
+node ./alpha1183-apply-safe.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.3 hardening patch failed' }
 node ./alpha1183-store-revision-fix.js ./gridium-build
 if ($LASTEXITCODE -ne 0) { throw 'Alpha 11.8.3 Hunt cache freshness fix failed' }
