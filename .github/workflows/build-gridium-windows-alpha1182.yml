@@ -1,0 +1,108 @@
+name: Build Gridium Alpha 11.8.2 Hunt Performance Type Background
+
+on:
+  push:
+    branches: [gridium-alpha11.8.2-hunt-performance-type-bg]
+    paths: ['alpha118-**', 'alpha1181-**', 'alpha1182-**', 'apply-alpha118.js', 'build-alpha118.ps1', 'build-alpha1182.ps1', '.github/workflows/build-gridium-windows-alpha1182.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble Alpha 11.8.2
+        shell: pwsh
+        run: ./build-alpha1182.ps1
+      - name: Install build dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile TypeScript and C++ Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Full regression suite
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          & node --test --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object -FilePath regression-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+      - name: Capture Hunt renderer screenshots
+        shell: pwsh
+        run: |
+          Push-Location gridium-build
+          npx electron ../alpha118-visual-smoke.cjs .
+          $code=$LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { exit $code }
+          if (-not (Test-Path 'gridium-build/alpha118-screenshots/hunt-overview-1920x1080.png')) { throw 'Overview screenshot missing' }
+          if (-not (Test-Path 'gridium-build/alpha118-screenshots/hunt-individual-1366x768.png')) { throw 'Individual screenshot missing' }
+      - name: Remove screenshot fixture from package
+        shell: pwsh
+        run: Remove-Item 'gridium-build/alpha118-visual-fixture.html' -ErrorAction SilentlyContinue
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify packaged Alpha 11.8.2
+        shell: pwsh
+        run: |
+          $file = Get-Item 'gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.2.exe'
+          if ($file.Length -lt 50000000) { throw 'Installer is incomplete' }
+          $asar='gridium-build/dist/win-unpacked/resources/app.asar'
+          if (-not (Test-Path $asar)) { throw 'app.asar missing' }
+          npx asar extract $asar 'gridium-build/dist/asar-check'
+          $pkg=Get-Content 'gridium-build/dist/asar-check/package.json' -Raw | ConvertFrom-Json
+          if ($pkg.version -ne '3.0.0-alpha.11.8.2') { throw "Packaged version mismatch: $($pkg.version)" }
+          $model=Get-Content 'gridium-build/dist/asar-check/hunt-visual-model.js' -Raw
+          $ui=Get-Content 'gridium-build/dist/asar-check/hunt-visual.js' -Raw
+          $css=Get-Content 'gridium-build/dist/asar-check/hunt-visual.css' -Raw
+          if ($model -notmatch 'backgroundForPokemon') { throw 'Pokemon type background mapping missing' }
+          if ($model -notmatch "fire:'volcano'") { throw 'Fire type landscape mapping missing' }
+          if ($model -notmatch "water:'lake'") { throw 'Water type landscape mapping missing' }
+          if ($ui -notmatch 'requestAnimationFrame\(frame\)') { throw 'Hunt render coalescing missing' }
+          if ($ui -notmatch 'slice\(-60\)') { throw 'Hunt chart cap missing' }
+          if ($ui -notmatch "lastAlerts:''") { throw 'Hunt alerts churn guard missing' }
+          if ($css -notmatch 'Alpha 11\.8\.2 Hunt performance overrides') { throw 'Hunt performance CSS overrides missing' }
+          foreach ($n in @('beach','cave','default','desert','forest','ice','lake','meadow','mountain','ruins','swamp','volcano')) {
+            $p="gridium-build/dist/asar-check/assets/hunt/backgrounds/hunt-$n.webp"
+            if (-not (Test-Path $p)) { throw "Missing packaged Hunt background: $n" }
+          }
+          "version=$($pkg.version)" | Set-Content 'gridium-build/alpha1182-verification.txt'
+          "typeBackgrounds=true" | Add-Content 'gridium-build/alpha1182-verification.txt'
+          "renderCoalescingMs=200" | Add-Content 'gridium-build/alpha1182-verification.txt'
+          "chartPointCap=60" | Add-Content 'gridium-build/alpha1182-verification.txt'
+          "alertsChurnGuard=true" | Add-Content 'gridium-build/alpha1182-verification.txt'
+          Get-FileHash $file.FullName -Algorithm SHA256 | Format-List | Out-File 'gridium-build/SHA256.txt'
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8.2-Diagnostics
+          path: |
+            gridium-build/regression-output.txt
+            gridium-build/hunt-visual-model.js
+            gridium-build/hunt-visual.js
+            gridium-build/hunt-visual.css
+            gridium-build/alpha118-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-Alpha-11.8.2-Hunt-Performance-Type-Background-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.2.exe
+            gridium-build/alpha1182-verification.txt
+            gridium-build/SHA256.txt
+            gridium-build/regression-output.txt
+            gridium-build/alpha118-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
