@@ -27,7 +27,9 @@ main=replaceFunction(main,'performancePlan',`function performancePlan(slot){
   if(profile==='ultra')return {fps:focused?60:(visible?20:6),reduceVisuals:!focused,sampleMs:focused?5000:(visible?10000:15000),visible,focused};
   return {fps:focused?60:(visible?30:15),reduceVisuals:!focused&&!visible,sampleMs:visible?5000:10000,visible,focused};
 }`);
-main=replaceFunction(main,'applyGuestPerformance',`async function applyGuestPerformance(slot,wc,force=false){
+// replaceFunction starts at the `function` token. The 11.8.4 source already has an
+// `async ` prefix, so the replacement deliberately omits it and preserves one modifier.
+main=replaceFunction(main,'applyGuestPerformance',`function applyGuestPerformance(slot,wc,force=false){
   if(!wc||wc.isDestroyed()){performanceApplied.delete(slot);performanceCssKeys.delete(slot);return;}
   const plan=performancePlan(slot),next={wcId:Number(wc.id)||0,fps:plan.fps,reduceVisuals:!!plan.reduceVisuals,backgroundThrottling:settings.liveEcoMode?false:!settings.background,mute:!!settings.mute,zoom:settings.zoom[slot]||1},prev=performanceApplied.get(slot),sameGuestPerformance=(a,b)=>!!a&&a.wcId===b.wcId&&a.fps===b.fps&&a.reduceVisuals===b.reduceVisuals&&a.backgroundThrottling===b.backgroundThrottling&&a.mute===b.mute&&a.zoom===b.zoom;
   if(!force&&sameGuestPerformance(prev,next))return;
