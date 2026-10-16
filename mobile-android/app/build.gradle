@@ -7,9 +7,9 @@ android {
         applicationId 'com.pokegrid.mobile24'
         minSdk 24
         targetSdk 35
-        versionCode 2401
-        versionName '2.4.1'
+        versionCode 2500
+        versionName '2.5.0'
     }
 }
 
-// separate install build
+// Gridium Mobile 2.5: view-only WebRTC mirroring; same application id for in-place upgrade.
