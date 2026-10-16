@@ -33,8 +33,8 @@ test('2x2 grid keeps a stable guest plan while selected account changes',()=>{
   const src=read('main.js');
   const plan=between(src,'function performancePlan','function performanceCSS');
   assert.match(plan,/if\(layout==='grid'\)/);
-  assert.match(plan,/profile==='ultra'\?30:30/);
-  assert.match(plan,/sampleMs:visible\?5000:10000/);
+  assert.match(plan,/profile==='ultra'[^\n]+fps:visible\?30:6/);
+  assert.match(plan,/return \{fps:visible\?30:15,reduceVisuals:!visible,sampleMs:visible\?5000:10000/);
 });
 
 test('performance updates are coalesced away from the click event path',()=>{
