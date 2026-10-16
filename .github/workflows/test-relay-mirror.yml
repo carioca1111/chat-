@@ -1,0 +1,57 @@
+name: Test Gridium Mirror Relay
+on:
+  push:
+    branches: [gridium-relay-mirror-v1.6, main]
+    paths:
+      - 'mirror-relay.js'
+      - 'mirror-relay.test.js'
+      - 'mobile-command-wrapper.js'
+      - 'mobile-command-core.js'
+      - 'server.js'
+      - 'shiny-cloud-wrapper.js'
+      - 'package.json'
+      - '.github/workflows/test-relay-mirror.yml'
+  workflow_dispatch:
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Syntax
+        run: |
+          node --check mirror-relay.js
+          node --check mobile-command-wrapper.js
+          node --check server.js
+      - name: Unit regression
+        run: npm test
+      - name: HTTP integration smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          POKEGRID_TOKEN=test-token PORT=8789 node mobile-command-wrapper.js > relay-smoke.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8789/api/v2/health > health.json; then break; fi
+            sleep 1
+          done
+          grep -q 'mirrorWebRTC' health.json
+          curl -fsS -H 'Authorization: Bearer test-token' http://127.0.0.1:8789/api/v1/mirror/status > mirror-status.json
+          node -e "const x=require('./mirror-status.json'); if(x.demand!==null||!Array.isArray(x.clients))process.exit(1)"
+          code=$(curl -sS -o unauthorized.json -w '%{http_code}' http://127.0.0.1:8789/api/v1/mirror/status)
+          test "$code" = "401"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: relay-mirror-failure-logs
+          path: |
+            relay-smoke.log
+            health.json
+            mirror-status.json
+            unauthorized.json
+          if-no-files-found: ignore
