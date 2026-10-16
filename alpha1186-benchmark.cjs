@@ -27,10 +27,12 @@ app.whenReady().then(async()=>{
   });
   await publisher.loadFile(path.join(root,'mirror-publisher.html'));
   const gridPlans=Array.from({length:4},(_,slot)=>({slot,active:true,w:640,h:360,fps:4,bitrate:280000}));
-  const initReady=new Promise(r=>readyResolve=r),connected=new Promise(r=>connectedResolve=r);publisher.webContents.send('mirror:control',{type:'init',sessionId:'benchmark',iceServers:[],plans:gridPlans});await Promise.race([initReady,wait(5000)]);await Promise.race([connected,wait(5000)]);
+  const timeout=ms=>new Promise((_,reject)=>setTimeout(()=>reject(Error('Benchmark peer connection timeout')),ms));
+  const initReady=new Promise(r=>readyResolve=r),connected=new Promise(r=>connectedResolve=r);publisher.webContents.send('mirror:control',{type:'init',sessionId:'benchmark',iceServers:[],plans:gridPlans});await Promise.race([initReady,timeout(10000)]);await Promise.race([connected,timeout(10000)]);
   const grid=await runProfile('2x2-auto-640x360-4fps',gridPlans,8000);
   const singlePlans=Array.from({length:4},(_,slot)=>slot===0?{slot,active:true,w:1280,h:720,fps:10,bitrate:1000000}:{slot,active:false,w:320,h:180,fps:0,bitrate:20000});
   const single=await runProfile('single-auto-1280x720-10fps',singlePlans,8000);
+  if(!grid.webrtc?.streams?.some(s=>s.framesEncoded>0)||!single.webrtc?.streams?.some(s=>s.framesEncoded>0))throw Error('Benchmark produced no encoded frames');
   const report={kind:'synthetic-ci-webrtc-benchmark',note:'Measures Gridium Electron publisher/encoder path with generated raw frames; excludes the synthetic receiver renderer from CPU/RAM totals. It is not a physical-phone or four-live-account benchmark.',at:new Date().toISOString(),baseline,grid,single};
   fs.writeFileSync(out,JSON.stringify(report,null,2));console.log(JSON.stringify(report));publisher.webContents.send('mirror:control',{type:'destroy'});publisher.destroy();receiver.destroy();app.quit();
 }).catch(fail);

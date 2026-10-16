@@ -33,7 +33,15 @@ jobs:
         run: gradle assembleDebug
       - name: Verify APK
         run: |
-          test -s mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          APK=mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK"
+          unzip -p "$APK" assets/mirror-mobile.js | grep -q 'Espelhamento'
+          unzip -p "$APK" assets/mirror-mobile.css | grep -q 'mirror-grid'
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-validation.txt
+          grep -q "versionName='2.5.0'" mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-validation.txt
           sha256sum mobile-android/app/build/outputs/apk/debug/app-debug.apk | tee mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -41,3 +49,4 @@ jobs:
           path: |
             mobile-android/app/build/outputs/apk/debug/app-debug.apk
             mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-SHA256.txt
+            mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-validation.txt

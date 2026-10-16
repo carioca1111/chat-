@@ -1,8 +1,9 @@
 'use strict';
 (()=>{
+  if(document.getElementById('sec-espelhamento'))return;
   const RELAY='https://pokegrid-relay-209e4eb1d9.onrender.com',BACKOFF=[1000,2000,5000,10000,30000];
   const nav=document.getElementById('nav'),dash=document.getElementById('dash');if(!nav||!dash)return;
-  const navButton=document.createElement('button');navButton.dataset.tab='espelhamento';navButton.innerHTML='<b>▦</b>Espelho';const settingsButton=nav.querySelector('[data-tab="ajustes"]');nav.insertBefore(navButton,settingsButton||null);
+  const navButton=document.createElement('button');navButton.dataset.tab='espelhamento';navButton.innerHTML='<b>▦</b>Espelhamento';const settingsButton=nav.querySelector('[data-tab="ajustes"]');nav.insertBefore(navButton,settingsButton||null);
   const section=document.createElement('section');section.id='sec-espelhamento';section.className='section';section.innerHTML=`
     <div class="card"><div class="mirror-head"><div><div class="muted" style="font-size:11px">ESPELHAMENTO</div><h2 style="margin:3px 0 0">4 contas em tempo real</h2></div><span id="mirrorPcState" class="mirror-pc-state"><i></i><span>PC offline</span></span></div>
     <button id="mirrorBack" class="mirror-back">← Voltar para 2×2</button>
@@ -26,13 +27,13 @@
   function formatRate(b){b=Number(b)||0;return b>=1000000?(b/1000000).toFixed(2)+' Mbps':Math.round(b/1000)+' kbps';}
   async function mirrorApi(path,options={}){const t=token();if(!t){const e=new Error('not-paired');e.status=401;throw e}const r=await fetch(RELAY+path,{...options,headers:{'content-type':'application/json',authorization:'Bearer '+t,...(options.headers||{})},cache:'no-store'});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||String(r.status));e.status=r.status;throw e}return d;}
   function statePayload(extra={}){return {active,suspended,sessionId,profile:profile.value,view,selectedSlot,cellular:isCellular(),saveData:saveData.checked,...extra};}
-  async function sendState(extra={}){const d=await mirrorApi('/api/v1/mirror/mobile/state',{method:'POST',body:JSON.stringify(statePayload(extra))});sessionId=String(d.sessionId||'');iceServers=Array.isArray(d.iceServers)?d.iceServers:iceServers;return d;}
+  async function sendState(extra={}){const gen=generation;const d=await mirrorApi('/api/v1/mirror/mobile/state',{method:'POST',body:JSON.stringify(statePayload(extra))});if(gen!==generation)return d;sessionId=String(d.sessionId||'');iceServers=Array.isArray(d.iceServers)?d.iceServers:iceServers;return d;}
   async function signal(type,payload){if(!sessionId)return;return mirrorApi('/api/v1/mirror/mobile/signal',{method:'POST',body:JSON.stringify({sessionId,type,payload})});}
   function closePeer(){if(pc){try{pc.ontrack=null;pc.onicecandidate=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null;}pendingIce=[];for(let i=0;i<4;i++){try{videos[i].srcObject=null}catch{}tiles[i].dataset.hasVideo='false';}}
   function stopPoll(){try{pollController?.abort()}catch{}pollController=null;}
   function clearRetry(){clearTimeout(retryTimer);retryTimer=null;}
   function expirePairing(){clearRetry();stopPoll();generation++;closePeer();active=false;suspended=false;sessionId='';setPc('Pareamento expirado',false);for(let i=0;i<4;i++)setTile(i,'offline','Offline',false);}
-  function scheduleReconnect(reason){if(!active||suspended||!foreground)return;stopPoll();closePeer();clearRetry();setPc(reason||'Reconectando…',false);for(let i=0;i<4;i++)setTile(i,'connecting','Conectando',false);const wait=BACKOFF[Math.min(retryIndex++,BACKOFF.length-1)];sessionId='';retryTimer=setTimeout(()=>void connect(),wait);}
+  function scheduleReconnect(reason){if(!active||suspended||!foreground)return;generation++;stopPoll();closePeer();clearRetry();setPc(reason||'Reconectando…',false);for(let i=0;i<4;i++)setTile(i,'connecting','Conectando',false);const wait=BACKOFF[Math.min(retryIndex++,BACKOFF.length-1)];sessionId='';retryTimer=setTimeout(()=>void connect(),wait);}
   async function makePeer(offer){
     closePeer();pc=new RTCPeerConnection({iceServers,bundlePolicy:'max-bundle',rtcpMuxPolicy:'require'});const local=pc;
     pc.ontrack=e=>{if(local!==pc)return;let slot=Number(e.transceiver?.mid);if(!Number.isInteger(slot)||slot<0||slot>3)slot=videos.findIndex(v=>!v.srcObject);if(slot<0)slot=0;const stream=e.streams?.[0]||new MediaStream([e.track]);videos[slot].srcObject=stream;setTile(slot,'online','Online',true);e.track.onmute=()=>{if(local===pc)$m('mirrorQuality'+slot).textContent='Pausado'};e.track.onunmute=()=>{if(local===pc)$m('mirrorQuality'+slot).textContent='Recebendo'};};
@@ -42,7 +43,7 @@
   }
   function applyMetrics(m){metrics=m||{};const sys=m?.system||{},rawDelta=m?.cpuDelta,delta=rawDelta==null?NaN:Number(rawDelta);$m('mirrorCpu').textContent=sys.cpu==null?'—':sys.cpu.toFixed?.(1)+'%'+(Number.isFinite(delta)?' ('+(delta>=0?'+':'')+delta.toFixed(1)+'%)':'');$m('mirrorRam').textContent=sys.memoryMB==null?'—':Math.round(sys.memoryMB)+' MB';$m('mirrorUpload').textContent=formatRate(m?.totalBitrate);$m('mirrorCodec').textContent=[m?.codec?.replace?.('video/',''),m?.encoderImplementation].filter(Boolean).join(' · ')||'não exposto';
     for(const a of m?.accounts||[]){const slot=Number(a.slot);if(slot<0||slot>3)continue;$m('mirrorName'+slot).textContent=a.name||('Conta '+(slot+1));if(a.online===false&&!videos[slot].srcObject)setTile(slot,'offline','Offline',false);}
-    for(const s of m?.streams||[]){const slot=Number(s.slot);if(slot<0||slot>3)continue;const q=s.qualityLimitationReason==='bandwidth'?'Rede limitada':s.qualityLimitationReason==='cpu'?'PC reduzindo':'Boa';$m('mirrorQuality'+slot).textContent=(s.codec?.replace?.('video/','')||'Vídeo')+' · '+q;}
+    for(const s of m?.streams||[]){const slot=Number(s.slot);if(slot<0||slot>3)continue;const q=s.qualityLimitationReason==='bandwidth'?'Rede limitada':s.qualityLimitationReason==='cpu'?'PC reduzindo':'Boa';$m('mirrorQuality'+slot).textContent=(s.fps==null?'—':s.fps.toFixed(1))+' FPS · '+formatRate(s.bitrate)+' · '+(s.codec?.replace?.('video/','')||'Vídeo')+' · '+q;}
   }
   async function handleEvent(event){if(!event)return;if(event.type==='offer'){await makePeer(event.payload);return}if(event.type==='ice'){if(pc?.remoteDescription)try{await pc.addIceCandidate(event.payload)}catch{}else pendingIce.push(event.payload);return}if(event.type==='metrics'){applyMetrics(event.payload);return}if(event.type==='bye')scheduleReconnect('PC reiniciando…');}
   async function pollLoop(gen){
@@ -57,7 +58,7 @@
     catch(e){if(gen!==generation)return;if(e.status===401){expirePairing();return}scheduleReconnect('PC indisponível');}
   }
   async function start(){if(active&&!suspended)return;active=true;suspended=false;retryIndex=0;renderNetwork();await connect();}
-  async function stop({suspend=false}={}){clearRetry();stopPoll();generation++;const had=active||sessionId;suspended=suspend;closePeer();if(had&&token())try{await sendState({active:suspend, suspended:suspend})}catch{}if(!suspend){active=false;sessionId='';}setPc(suspend?'Espelhamento suspenso':'PC offline',false);for(let i=0;i<4;i++)setTile(i,'offline',suspend?'Pausado':'Offline',false);}
+  async function stop({suspend=false}={}){clearRetry();stopPoll();generation++;const had=active||sessionId;suspended=suspend;active=suspend;closePeer();if(had&&token())void mirrorApi('/api/v1/mirror/mobile/state',{method:'POST',body:JSON.stringify(statePayload({active:suspend,suspended:suspend}))}).catch(()=>{});if(!suspend)sessionId='';setPc(suspend?'Espelhamento suspenso':'PC offline',false);for(let i=0;i<4;i++)setTile(i,'offline',suspend?'Pausado':'Offline',false);}
   async function updateState(){if(!active||suspended||!foreground)return;try{await sendState()}catch(e){if(e.status===401)expirePairing();else scheduleReconnect('Atualizando…')}}
   function setView(next,slot=selectedSlot){view=next==='single'?'single':'grid';selectedSlot=Math.max(0,Math.min(3,Number(slot)||0));section.classList.toggle('mirror-single',view==='single');tiles.forEach((t,i)=>t.classList.toggle('selected',i===selectedSlot));void updateState();}
   navButton.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===navButton));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x===section));void start();};

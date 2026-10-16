@@ -49,7 +49,7 @@ class MirrorManager{
     this.running=false;for(const c of [...this.controllers])try{c.abort()}catch{}this.controllers.clear();for(const [timer,resolve] of [...this.delays]){clearTimeout(timer);this.delays.delete(timer);try{resolve()}catch{}}
     ipcMain.removeListener('mirror:publisher',this.onPublisher);await this._deactivate('app-stop');
   }
-  _delay(ms){return new Promise(resolve=>{const timer=setTimeout(()=>{this.delays.delete(timer);resolve()},ms);this.delays.set(timer,resolve);});}
+  _delay(ms){if(!this.running)return Promise.resolve();return new Promise(resolve=>{const timer=setTimeout(()=>{this.delays.delete(timer);resolve()},ms);this.delays.set(timer,resolve);});}
   registerGuest(slot,wc){
     slot=Number(slot);if(!Number.isInteger(slot)||slot<0||slot>3||!wc)return;const old=this.guests.get(slot);if(old===wc)return;if(old)this._stopCapture(slot);
     this.guests.set(slot,wc);wc.once?.('destroyed',()=>{if(this.guests.get(slot)===wc){this._stopCapture(slot);this.guests.delete(slot);this._sendMetricsSoon();}});
@@ -108,7 +108,7 @@ class MirrorManager{
     if(!this.publisher||event.sender!==this.publisher.webContents||!this.demand)return;
     if(msg.type==='offer'||msg.type==='ice'){void this._signal(msg.type,msg.payload).catch(()=>{});return;}
     if(msg.type==='connection'){
-      this.connected=msg.state==='connected';if(this.connected){this.backoffIndex=0;this._syncCapture();}else if(['failed','closed'].includes(msg.state)){this._stopAllCapture();}
+      this.connected=msg.state==='connected';if(this.connected){this.backoffIndex=0;this._syncCapture();}else {this._stopAllCapture();}
       return;
     }
     if(msg.type==='stats'){this._processStats(msg.stats||{});return;}
@@ -121,27 +121,38 @@ class MirrorManager{
   }
   _startCapture(slot){
     const wc=this.guests.get(slot);if(!wc||wc.isDestroyed?.())return;const current=this.capture.get(slot);if(current?.wc===wc)return;this._stopCapture(slot);
-    const state={wc,busy:false,lastAt:0,frames:0,dropped:0,startedAt:Date.now(),subscribed:false};this.capture.set(slot,state);
+    const state={wc,busy:false,lastAt:null,quietSince:null,frames:0,dropped:0,startedAt:Date.now(),subscribed:false};this.capture.set(slot,state);
     if(typeof wc.beginFrameSubscription!=='function'){state.unsupported=true;return;}
     try{
-      wc.beginFrameSubscription(true,()=>this._onActivity(slot));state.subscribed=true;
-      // One direct raw capture seeds the canvas. Subsequent captures are repaint-gated.
-      void this._captureNow(slot,true);
+      // Electron 35: onlyDirty=true yields a cropped image. False supplies a
+      // complete NativeImage plus dirtyRect, allowing safe frame dropping.
+      // The first subscription frame seeds the publisher; no second capture.
+      wc.beginFrameSubscription(false,(image,dirtyRect)=>this._onFrame(slot,state,image,dirtyRect));state.subscribed=true;
     }catch{state.unsupported=true;}
   }
   _stopCapture(slot){const state=this.capture.get(Number(slot));if(!state)return;if(state.subscribed&&state.wc&&!state.wc.isDestroyed?.()&&typeof state.wc.endFrameSubscription==='function')try{state.wc.endFrameSubscription()}catch{}this.capture.delete(Number(slot));}
   _stopAllCapture(){for(const slot of [...this.capture.keys()])this._stopCapture(slot);}
-  _onActivity(slot){
-    const state=this.capture.get(slot),plan=this._planFor(slot);if(!state||!plan.active||!this.connected)return;const now=Date.now(),minGap=1000/Math.max(1,plan.fps);
-    if(state.busy||now-state.lastAt<minGap){state.dropped++;return;}void this._captureNow(slot,false);
-  }
-  async _captureNow(slot,seed){
-    const state=this.capture.get(slot),plan=this._planFor(slot),wc=state?.wc;if(!state||state.busy||!plan.active||!wc||wc.isDestroyed?.()||!this.connected)return;
-    state.busy=true;state.lastAt=Date.now();
+  _onFrame(slot,state,image,dirtyRect){
+    const plan=this._planFor(slot);
+    if(this.capture.get(slot)!==state||!this.connected||!this.demand||!plan.active||!image||image.isEmpty?.())return;
+    const now=Date.now(),source=image.getSize();
+    if(!source.width||!source.height)return;
+    const scale=image.getScaleFactors?.()[0]||1;
+    const area=source.width*source.height*scale*scale;
+    const ratio=dirtyRect?Math.max(0,dirtyRect.width)*Math.max(0,dirtyRect.height)/area:1;
+    if(ratio<=0.01){if(state.quietSince===null)state.quietSince=now;}else state.quietSince=null;
+    const fps=state.quietSince!==null&&now-state.quietSince>=2000?1:plan.fps;
+    if(state.busy||(state.lastAt!==null&&now-state.lastAt<1000/Math.max(1,fps))){state.dropped++;return;}
+    state.busy=true;
     try{
-      const image=await wc.capturePage();if(!this.capture.has(slot)||!this.connected||image.isEmpty?.())return;const source=image.getSize(),target=fitSize(source.width,source.height,plan.w,plan.h),scaled=(source.width===target.width&&source.height===target.height)?image:image.resize({...target,quality:'good'}),bitmap=scaled.toBitmap();
+      const target=fitSize(source.width,source.height,plan.w,plan.h);
+      const scaled=(source.width===target.width&&source.height===target.height)?image:image.resize({...target,quality:'good'});
+      // Explicit scaleFactor avoids oversized bitmaps on Windows HiDPI screens.
+      const bitmap=scaled.toBitmap({scaleFactor:1});
       if(bitmap.length!==target.width*target.height*4)throw new Error('unexpected-bitmap-size');
-      this._publisherSend({type:'frame',slot,width:target.width,height:target.height,pixelFormat:this.pixelFormat,bitmap,seed:seed===true,at:Date.now()});state.frames++;
+      if(this._publisherSend({type:'frame',slot,width:target.width,height:target.height,pixelFormat:this.pixelFormat,bitmap,seed:state.frames===0,at:now})){
+        state.lastAt=now;state.frames++;
+      }
     }catch{state.dropped++;}
     finally{state.busy=false;}
   }

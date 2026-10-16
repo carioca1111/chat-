@@ -1,25 +1,54 @@
 'use strict';
+// Real Chromium peers plus four synthetic webContents exercising the sender runtime.
 const {app,BrowserWindow,ipcMain}=require('electron');
 const path=require('node:path');
-let win=null,receiverReady=false,offerSeen=false,videoLines=0,audioLines=0,h264Seen=false,tracks=0,timer=null;
-const plans=Array.from({length:4},(_,slot)=>({slot,active:true,w:320,h:180,fps:2,bitrate:120000}));
-function fail(error){console.error(error);try{win?.destroy()}catch{}app.exit(1)}
+const root=path.resolve(process.argv[2]||'.');
+let manager,receiver,guests=[],timer;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function finish(error){clearTimeout(timer);await manager?.stop();for(const w of guests)if(!w.isDestroyed())w.destroy();if(receiver&&!receiver.isDestroyed())receiver.destroy();if(error)console.error(error);app.exit(error?1:0);}
 app.whenReady().then(async()=>{
-  timer=setTimeout(()=>fail(new Error('WebRTC smoke timeout')),20000);
-  win=new BrowserWindow({show:false,width:32,height:32,webPreferences:{nodeIntegration:true,contextIsolation:false,sandbox:false,backgroundThrottling:false}});
-  ipcMain.on('mirror:publisher',async(e,msg={})=>{
-    if(!win||e.sender!==win.webContents)return;
-    if(msg.type==='error')return fail(new Error('Publisher: '+msg.error));
-    if(msg.type==='offer'&&!offerSeen){
-      offerSeen=true;const sdp=String(msg.payload?.sdp||'');videoLines=(sdp.match(/^m=video/gm)||[]).length;audioLines=(sdp.match(/^m=audio/gm)||[]).length;h264Seen=/H264\/90000/i.test(sdp);
-      try{
-        const answer=await win.webContents.executeJavaScript(`(async()=>{window.__mirrorSmokeReceiver=new RTCPeerConnection({iceServers:[]});window.__mirrorSmokeTracks=[];window.__mirrorSmokeReceiver.ontrack=e=>window.__mirrorSmokeTracks.push(e.track);await window.__mirrorSmokeReceiver.setRemoteDescription(${JSON.stringify(msg.payload)});const a=await window.__mirrorSmokeReceiver.createAnswer();await window.__mirrorSmokeReceiver.setLocalDescription(a);if(window.__mirrorSmokeReceiver.iceGatheringState!=='complete')await new Promise(r=>{const t=setTimeout(r,3000);window.__mirrorSmokeReceiver.onicegatheringstatechange=()=>{if(window.__mirrorSmokeReceiver.iceGatheringState==='complete'){clearTimeout(t);r()}}});return {type:window.__mirrorSmokeReceiver.localDescription.type,sdp:window.__mirrorSmokeReceiver.localDescription.sdp};})()`,true);
-        win.webContents.send('mirror:control',{type:'answer',payload:answer});receiverReady=true;
-        setTimeout(async()=>{try{tracks=await win.webContents.executeJavaScript('window.__mirrorSmokeTracks?.length||0',true);if(videoLines!==4)throw new Error('Expected 4 video m-lines, got '+videoLines);if(audioLines!==0)throw new Error('Audio m-line present');if(!h264Seen)throw new Error('H264 was not offered by Chromium');if(tracks!==4)throw new Error('Expected 4 receiver tracks, got '+tracks);clearTimeout(timer);console.log(JSON.stringify({ok:true,videoLines,audioLines,h264Seen,tracks,receiverReady}));win.webContents.send('mirror:control',{type:'destroy'});win.destroy();app.quit();}catch(err){fail(err)}},1800);
-      }catch(err){fail(err)}
+  timer=setTimeout(()=>void finish(new Error('WebRTC/capture smoke timeout')),45000);
+  const {MirrorManager}=require(path.join(root,'mirror-runtime'));
+  manager=new MirrorManager();manager.running=true;
+  ipcMain.on('mirror:publisher',manager.onPublisher);
+  receiver=new BrowserWindow({show:false,webPreferences:{backgroundThrottling:false}});
+  await receiver.loadURL('data:text/html,<body>receiver</body>');
+  let offer;
+  manager._signal=async(type,payload)=>{
+    if(type==='offer'){
+      offer=payload.sdp;
+      const answer=await receiver.webContents.executeJavaScript(`(async()=>{
+        window.pc=new RTCPeerConnection({iceServers:[]});window.tracks=[];window.channels=0;
+        pc.ondatachannel=()=>window.channels++;
+        pc.ontrack=e=>{tracks.push(e.track);const v=document.createElement('video');v.muted=true;v.autoplay=true;v.srcObject=new MediaStream([e.track]);document.body.appendChild(v);};
+        await pc.setRemoteDescription(${JSON.stringify(payload)});
+        await pc.setLocalDescription(await pc.createAnswer());
+        if(pc.iceGatheringState!=='complete')await new Promise(r=>{const t=setTimeout(r,3000);pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);r()}}});
+        return {type:pc.localDescription.type,sdp:pc.localDescription.sdp};})()`);
+      manager._publisherSend({type:'answer',payload:answer});
+    }else if(type==='ice'){
+      await receiver.webContents.executeJavaScript(`window.pc&&pc.addIceCandidate(${JSON.stringify(payload)}).catch(()=>{})`);
     }
-  });
-  await win.loadFile(path.join(process.argv[2]||'.','mirror-publisher.html'));
-  win.webContents.send('mirror:control',{type:'init',sessionId:'smoke',iceServers:[],plans});
-}).catch(fail);
-app.on('window-all-closed',()=>app.quit());
+    return true;
+  };
+  for(let slot=0;slot<4;slot++){
+    const w=new BrowserWindow({show:true,width:400,height:300,webPreferences:{backgroundThrottling:false}});guests.push(w);
+    await w.loadURL('data:text/html,'+encodeURIComponent(`<body style="background:hsl(${slot*80},70%,40%)"><h1>Conta ${slot+1}</h1><div id="n"></div><script>let n=0;setInterval(()=>document.getElementById('n').textContent=++n,100)</script></body>`));
+    manager.registerGuest(slot,w.webContents);
+  }
+  if(manager.capture.size!==0||manager.publisher!==null)throw Error('Idle sender allocated capture/publisher');
+  await manager._activate({sessionId:'smoke',deviceId:'synthetic',profile:'balanced',view:'grid'});
+  let result;
+  for(let i=0;i<60;i++){
+    await sleep(500);
+    result=await receiver.webContents.executeJavaScript(`(async()=>{if(!window.pc)return {};const r=await pc.getStats();return {state:pc.connectionState,tracks:tracks.length,audio:tracks.filter(t=>t.kind==='audio').length,channels,decoded:[...r.values()].filter(s=>s.type==='inbound-rtp'&&s.kind==='video').map(s=>s.framesDecoded||0)};})()`);
+    if(manager.connected&&result.decoded?.length===4&&result.decoded.every(n=>n>0))break;
+  }
+  if((offer?.match(/^m=video/gm)||[]).length!==4||/^m=(audio|application)/m.test(offer)||!/H264\/90000/i.test(offer))throw Error('Invalid SDP media/codec contract');
+  if(!manager.connected||result.tracks!==4||result.audio!==0||result.channels!==0||result.decoded?.length!==4||!result.decoded.every(n=>n>0))throw Error('Frames did not reach all four receivers: '+JSON.stringify(result));
+  await manager._deactivate('no-viewer');
+  if(manager.capture.size||manager.publisher)throw Error('Capture leaked after disconnect');
+  console.log(JSON.stringify({ok:true,videoTracks:4,audioTracks:0,dataChannels:0,h264Offered:true,decoded:result.decoded,directSubscription:true,idleCaptureCount:manager.capture.size}));
+  await finish();
+}).catch(finish);
+app.on('window-all-closed',()=>{});

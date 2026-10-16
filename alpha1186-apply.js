@@ -17,6 +17,15 @@ if(JSON.stringify(partitions)!==JSON.stringify(html.match(/partition="[^"]+"/g))
 write('main.js',main);
 for(const n of ['mirror-runtime.js','mirror-publisher.html','mirror-publisher.js'])fs.copyFileSync(path.join(__dirname,'alpha1186-src',n),path.join(root,n));
 fs.mkdirSync(path.join(root,'test'),{recursive:true});fs.copyFileSync(path.join(__dirname,'alpha1186-src/test/mirror-runtime.test.js'),path.join(root,'test/mirror-runtime.test.js'));
+// Execute the real mirror lifecycle with the same Electron double as main.js.
+let mainTest=read('test/main.test.js');
+mainTest=once(mainTest," const ctx={URL,require:",` const Module=require('node:module'),originalLoad=Module._load;
+ Module._load=function(name,parent,isMain){return name==='electron'?electron:originalLoad.call(this,name,parent,isMain);};
+ let mirrorModule;try{mirrorModule=require(path.join(root,'mirror-runtime'));}finally{Module._load=originalLoad;}
+ electron.ipcMain.on=()=>{};electron.ipcMain.removeListener=()=>{};
+ const ctx={URL,require:`);
+mainTest=once(mainTest,"name==='electron'?electron:name.startsWith('./')?", "name==='electron'?electron:name==='./mirror-runtime'?mirrorModule:name.startsWith('./')?");
+write('test/main.test.js',mainTest);
 let versionChecksUpdated=0;
 for(const name of fs.readdirSync(path.join(root,'test'))){if(!name.endsWith('.test.js'))continue;const file=path.join(root,'test',name),source=fs.readFileSync(file,'utf8');if(!source.includes(BASE_VERSION))continue;const next=source.split(BASE_VERSION).join(NEXT_VERSION);versionChecksUpdated+=source.split(BASE_VERSION).length-1;fs.writeFileSync(file,next);}
 pkg.version=NEXT_VERSION;pkg.description='Gridium Alpha 11.8.6 — Espelhamento mobile WebRTC sob demanda';write('package.json',JSON.stringify(pkg,null,2)+'\n');
