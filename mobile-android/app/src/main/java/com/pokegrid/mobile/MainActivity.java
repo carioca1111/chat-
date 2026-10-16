@@ -7,6 +7,9 @@ import android.content.*;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.webkit.*;
 
 public class MainActivity extends Activity {
@@ -16,7 +19,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         getWindow().setStatusBarColor(Color.rgb(7,17,31));
         web=new WebView(this);
-        WebSettings s=web.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setAllowFileAccess(false);
+        WebSettings s=web.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setAllowFileAccess(false); s.setMediaPlaybackRequiresUserGesture(false);
         web.addJavascriptInterface(new Bridge(),"Android");
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){
@@ -33,6 +36,18 @@ public class MainActivity extends Activity {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},501);
     }
+    @Override protected void onPause(){
+        if(web!=null){ try{web.evaluateJavascript("window.__gridiumVisibility&&window.__gridiumVisibility(false)",null);}catch(Exception ignored){} web.onPause(); }
+        super.onPause();
+    }
+    @Override protected void onResume(){
+        super.onResume();
+        if(web!=null){ web.onResume(); try{web.evaluateJavascript("window.__gridiumVisibility&&window.__gridiumVisibility(true)",null);}catch(Exception ignored){} }
+    }
+    @Override protected void onDestroy(){
+        if(web!=null){ try{web.evaluateJavascript("window.__gridiumVisibility&&window.__gridiumVisibility(false)",null);}catch(Exception ignored){} web.destroy();web=null; }
+        super.onDestroy();
+    }
     @Override public void onBackPressed(){ if(web!=null&&web.canGoBack()) web.goBack(); else super.onBackPressed(); }
 
     public class Bridge {
@@ -45,6 +60,18 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public boolean notificationsEnabled(){ return getSharedPreferences("pg",MODE_PRIVATE).getBoolean("enabled",true); }
         @JavascriptInterface public String getDetectedCaptures(){ return getSharedPreferences("pg",MODE_PRIVATE).getString("detectedCaptures","[]"); }
+        @JavascriptInterface public String getNetworkType(){
+            try{
+                ConnectivityManager cm=(ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+                if(cm==null)return "unknown";
+                Network network=cm.getActiveNetwork(); if(network==null)return "offline";
+                NetworkCapabilities caps=cm.getNetworkCapabilities(network); if(caps==null)return "unknown";
+                if(caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR))return "cellular";
+                if(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))return "wifi";
+                if(caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))return "ethernet";
+                return "other";
+            }catch(Exception ignored){ return "unknown"; }
+        }
         @JavascriptInterface public void testNotification(){ CaptureMonitorService.showCaptureNotification(MainActivity.this,"Notificações funcionando","",true); }
     }
 }
