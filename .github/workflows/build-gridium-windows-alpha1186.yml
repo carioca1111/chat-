@@ -58,6 +58,12 @@ jobs:
         run: |
           npx electron ../alpha1186-webrtc-smoke.cjs . 2>&1 | Tee-Object alpha1186-webrtc-smoke.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Synthetic sender benchmark
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          npx electron ../alpha1186-benchmark.cjs . alpha1186-benchmark.json 2>&1 | Tee-Object alpha1186-benchmark.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Remove smoke fixtures
         shell: pwsh
         run: |
@@ -87,5 +93,6 @@ jobs:
           path: |
             gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.6.exe
             gridium-build/alpha1186-*.txt
+            gridium-build/alpha1186-benchmark.json
             gridium-build/alpha1184-screenshots/*.png
           if-no-files-found: warn
