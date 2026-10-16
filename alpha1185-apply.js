@@ -10,10 +10,8 @@ function replaceFunction(text,name,replacement){const b=functionBounds(text,name
 const BASE_VERSION='3.0.0-alpha.11.8.4',NEXT_VERSION='3.0.0-alpha.11.8.5';
 const pkg=JSON.parse(read('package.json'));must(pkg.version===BASE_VERSION,'exact Alpha 11.8.4 base expected, current '+pkg.version);
 let main=read('main.js');
-main=replaceOnce(main,
-  "const lastSampleAt=Array(4).fill(0),protocolCursorAt=Array(4).fill(0),performanceCssKeys=new Map();",
-  "const lastSampleAt=Array(4).fill(0),protocolCursorAt=Array(4).fill(0),performanceCssKeys=new Map(),performanceApplied=new Map(),performanceApplyQueues=Array.from({length:4},()=>Promise.resolve());\nlet performanceApplyTimer=null;",
-  'performance cache state');
+must(main.includes('performanceCssKeys'),'performance CSS cache missing from 11.8.4 base');
+main=replaceOnce(main,'function performancePlan(slot){',"const performanceApplied=new Map(),performanceApplyQueues=Array.from({length:4},()=>Promise.resolve());\nlet performanceApplyTimer=null;\nfunction performancePlan(slot){",'performance hotfix state');
 main=replaceFunction(main,'performancePlan',`function performancePlan(slot){
   const profile=settings.performanceProfile||'balanced',visible=performanceView.section==='games'&&performanceView.visibleSlots.includes(Number(slot)),focused=visible&&Number(performanceView.focusedSlot)===Number(slot),layout=performanceView.layout||'grid';
   // In the 2x2 workspace a click only changes the selection. A stable four-guest plan
