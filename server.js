@@ -1,6 +1,7 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const {computeShiny}=require('./shiny-cloud-compute');
+const {MirrorRelay}=require('./mirror-relay');
 const PORT=Number(process.env.PORT)||8787,HOST=process.env.HOST||'0.0.0.0',TOKEN=String(process.env.POKEGRID_TOKEN||'').trim();
 const ROOT=__dirname,PUBLIC=path.join(ROOT,'public'),DATA=process.env.POKEGRID_DATA_DIR||path.join(ROOT,'data'),STORE=path.join(DATA,'store.json');
 if(!TOKEN){console.error('Defina POKEGRID_TOKEN antes de iniciar o relay.');process.exit(1)}
@@ -20,10 +21,12 @@ function json(res,status,data){const out=status===204?'':JSON.stringify(data);re
 function body(req,limit=1048576){return new Promise((ok,bad)=>{let n=0,a=[];req.on('data',c=>{n+=c.length;if(n>limit){bad(new Error('too-large'));req.destroy();return}a.push(c)});req.on('end',()=>ok(Buffer.concat(a).toString()));req.on('error',bad)})}
 function clean(raw){if(!raw||typeof raw!=='object'||!Number.isFinite(Number(raw.at))||!Array.isArray(raw.rows)||!raw.total)return null;return{version:3,at:Number(raw.at),paused:raw.paused===true,total:raw.total,rows:raw.rows.slice(0,4),forecasts:Array.isArray(raw.forecasts)?raw.forecasts.slice(0,4):[],events:Array.isArray(raw.events)?raw.events.slice(0,30):[],server:raw.server&&typeof raw.server==='object'?raw.server:null}}
 function compact(r){return{at:r.at,total:{values:r.total?.values||{},rates:r.total?.rates||{},ms:r.total?.ms||0,accountMs:r.total?.accountMs||0,count:r.total?.count||0},rows:(r.rows||[]).slice(0,4).map(x=>({slot:x.slot,status:x.status,health:x.health,lastChange:x.lastChange,record:x.record?{nick:x.record.nick,values:x.record.values,ms:x.record.ms,since:x.record.since,updated:x.record.updated}:null}))}}
+const mirrorRelay=new MirrorRelay({isAdmin:admin,getDevice:req=>verify(bearer(req)),json,body});
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png'};
 function staticFile(res,u){let rel=u.pathname==='/app/'?'index.html':u.pathname.replace(/^\/app\//,'');if(!rel||rel.includes('..'))return false;const f=path.join(PUBLIC,rel);if(!f.startsWith(PUBLIC)||!fs.existsSync(f)||!fs.statSync(f).isFile())return false;res.writeHead(200,{'content-type':mime[path.extname(f)]||'application/octet-stream','cache-control':path.extname(f)==='.html'?'no-store':'public, max-age=3600'});fs.createReadStream(f).pipe(res);return true}
 const server=http.createServer(async(req,res)=>{const u=new URL(req.url,'http://relay.local');if(req.method==='OPTIONS')return json(res,204,{});
-if(u.pathname==='/health')return json(res,200,{ok:true,hasData:!!store.latest,lastUpdate:store.latest?.at||0,version:'1.5.0',shinyCloud:true});
+if(u.pathname.startsWith('/api/v1/mirror/')){if(await mirrorRelay.handle(req,res,u))return;}
+if(u.pathname==='/health')return json(res,200,{ok:true,hasData:!!store.latest,lastUpdate:store.latest?.at||0,version:'1.6.0',shinyCloud:true,mirrorWebRTC:true});
 if((u.pathname==='/'||u.pathname==='/app')&&req.method==='GET'){res.writeHead(302,{location:'/app/'});return res.end()}
 if(u.pathname.startsWith('/app/')&&req.method==='GET'){if(staticFile(res,u))return;return json(res,404,{error:'not-found'})}
 if(u.pathname==='/api/v1/pair/start'&&req.method==='POST'){if(!admin(req))return json(res,401,{error:'unauthorized'});const code=String(crypto.randomInt(100000,1000000));pair={hash:h(code),expiresAt:Date.now()+600000};return json(res,200,{code,expiresAt:pair.expiresAt})}
@@ -35,5 +38,5 @@ if(u.pathname==='/api/v1/push'&&req.method==='POST'){if(!admin(req))return json(
 if(u.pathname==='/api/v1/latest'&&req.method==='GET'){if(!readAuth(req))return json(res,401,{error:'unauthorized'});return store.latest?json(res,200,store.latest):json(res,404,{error:'no-data'})}
 if(u.pathname==='/api/v1/history'&&req.method==='GET'){if(!readAuth(req))return json(res,401,{error:'unauthorized'});const range=Math.max(3600000,Math.min(691200000,Number(u.searchParams.get('range'))||21600000)),since=Date.now()-range;return json(res,200,{points:store.history.filter(x=>x.at>=since)})}
 return json(res,404,{error:'not-found'})});
-server.listen(PORT,HOST,()=>console.log(`PokeGrid Relay em http://${HOST}:${PORT} · mobile em /app/`));
+server.listen(PORT,HOST,()=>console.log(`PokeGrid Relay em http://${HOST}:${PORT} · mobile em /app/ · mirror WebRTC pronto`));
 process.on('SIGTERM',()=>{try{fs.writeFileSync(STORE,JSON.stringify(store))}catch{}server.close(()=>process.exit(0))});
