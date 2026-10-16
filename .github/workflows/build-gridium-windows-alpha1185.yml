@@ -1,0 +1,76 @@
+name: Build Gridium Alpha 11.8.5 Click Freeze Hotfix
+on:
+  push:
+    branches: [gridium-alpha11.8.5-click-freeze-hotfix]
+    paths: ['alpha1185-**', 'build-alpha1185.ps1', '.github/workflows/build-gridium-windows-alpha1185.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build existing Alpha 11.8.4
+        shell: pwsh
+        run: ./build-alpha1184.ps1
+      - name: Install dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Compile Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Baseline regression
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          node --test --test-concurrency=1 --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object alpha1185-regression-before.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Apply click freeze hotfix
+        shell: pwsh
+        run: ./build-alpha1185.ps1 -PreparedBase
+      - name: Full regression
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          node --test --test-concurrency=1 --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object alpha1185-regression-after.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Accounts visual and interaction smoke
+        working-directory: gridium-build
+        run: npx electron ../alpha1184-visual-smoke.cjs .
+      - name: Remove smoke fixtures
+        shell: pwsh
+        run: Remove-Item gridium-build/accounts-smoke.*
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify package
+        shell: pwsh
+        run: |
+          npx asar extract gridium-build/dist/win-unpacked/resources/app.asar gridium-build/dist/asar-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $p=Get-Content gridium-build/dist/asar-check/package.json -Raw | ConvertFrom-Json
+          if ($p.version -ne '3.0.0-alpha.11.8.5') { throw 'Packaged version mismatch' }
+          $main=Get-Content gridium-build/dist/asar-check/main.js -Raw
+          foreach($needle in @('scheduleGuestPerformance','performanceApplied=new Map()','performanceApplyQueues=Array.from({length:4}')) {
+            if (-not $main.Contains($needle)) { throw "Missing packaged hotfix marker: $needle" }
+          }
+          foreach($name in @('accounts-workspace.js','accounts-workspace.css','sniper-runtime.js','hunt-visual.js','shiny-telemetry.js')) {
+            if (-not (Test-Path "gridium-build/dist/asar-check/$name")) { throw "Missing packaged $name" }
+          }
+          Get-FileHash gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.5.exe -Algorithm SHA256 | Format-List | Out-File gridium-build/alpha1185-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Gridium-Alpha-11.8.5-Click-Freeze-Hotfix-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.5.exe
+            gridium-build/alpha1185-*.txt
+            gridium-build/alpha1184-screenshots/*.png
+          if-no-files-found: warn
