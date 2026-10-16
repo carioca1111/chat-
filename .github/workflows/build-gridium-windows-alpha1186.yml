@@ -4,6 +4,7 @@ on:
     branches: [gridium-alpha11.8.6-mobile-mirroring]
     paths:
       - 'alpha1186-**'
+      - 'alpha1185-**'
       - 'build-alpha1186.ps1'
       - 'mirror-relay.js'
       - 'server.js'

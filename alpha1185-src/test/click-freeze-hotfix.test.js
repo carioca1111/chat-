@@ -44,3 +44,16 @@ test('performance updates are coalesced away from the click event path',()=>{
   assert.match(schedule,/120/);
   assert.match(schedule,/queueGuestPerformance/);
 });
+
+test('Quality caps hidden and minimized guests and grid selection never changes FPS',()=>{
+  const vm=require('node:vm');
+  const src=between(read('main.js'),'function performancePlan','function performanceCSS');
+  const ctx={settings:{performanceProfile:'quality',liveEcoMode:false},performanceView:{section:'games',layout:'grid',visibleSlots:[0,1,2,3],focusedSlot:0},win:{isDestroyed:()=>false,isMinimized:()=>false}};
+  vm.createContext(ctx);vm.runInContext(src,ctx);
+  assert.equal(ctx.performancePlan(0).fps,30);ctx.performanceView.focusedSlot=1;
+  assert.equal(ctx.performancePlan(0).fps,30);
+  ctx.performanceView.visibleSlots=[1];assert.equal(ctx.performancePlan(0).fps,4);
+  ctx.win.isMinimized=()=>true;assert.equal(ctx.performancePlan(1).fps,2);
+  ctx.win.isMinimized=()=>false;ctx.settings.liveEcoMode=true;
+  assert.equal(ctx.performancePlan(1).fps,12);assert.equal(ctx.performancePlan(0).fps,3);
+});

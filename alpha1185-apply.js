@@ -13,17 +13,18 @@ let main=read('main.js');
 must(main.includes('performanceCssKeys'),'performance CSS cache missing from 11.8.4 base');
 main=replaceOnce(main,'function performancePlan(slot){',"const performanceApplied=new Map(),performanceApplyQueues=Array.from({length:4},()=>Promise.resolve());\nlet performanceApplyTimer=null;\nfunction performancePlan(slot){",'performance hotfix state');
 main=replaceFunction(main,'performancePlan',`function performancePlan(slot){
-  const profile=settings.performanceProfile||'balanced',visible=performanceView.section==='games'&&performanceView.visibleSlots.includes(Number(slot)),focused=visible&&Number(performanceView.focusedSlot)===Number(slot),layout=performanceView.layout||'grid';
+  const profile=settings.performanceProfile||'balanced',visible=performanceView.section==='games'&&performanceView.visibleSlots.includes(Number(slot)),focused=visible&&Number(performanceView.focusedSlot)===Number(slot),layout=performanceView.layout||'grid',minimized=!!(win&&!win.isDestroyed?.()&&win.isMinimized?.());
+  if(minimized)return {fps:2,reduceVisuals:true,sampleMs:20000,visible:false,focused:false};
   // In the 2x2 workspace a click only changes the selection. A stable four-guest plan
   // prevents Chromium from rebuilding frame pacing while the user is interacting.
   if(layout==='grid'){
     if(settings.liveEcoMode)return {fps:visible?12:3,reduceVisuals:!visible,sampleMs:visible?10000:15000,visible,focused};
-    if(profile==='quality')return {fps:60,reduceVisuals:false,sampleMs:5000,visible,focused};
+    if(profile==='quality')return {fps:visible?30:4,reduceVisuals:!visible,sampleMs:visible?8000:18000,visible,focused};
     if(profile==='ultra')return {fps:visible?30:6,reduceVisuals:!visible,sampleMs:visible?10000:15000,visible,focused};
     return {fps:visible?30:15,reduceVisuals:!visible,sampleMs:visible?5000:10000,visible,focused};
   }
   if(settings.liveEcoMode){const cap=focused?(layout==='focus'?30:20):(visible?8:3);return {fps:cap,reduceVisuals:!focused,sampleMs:focused?5000:(visible?10000:15000),visible,focused};}
-  if(profile==='quality')return {fps:60,reduceVisuals:false,sampleMs:5000,visible,focused};
+  if(profile==='quality')return {fps:focused?60:(visible?(layout==='duo'?40:30):4),reduceVisuals:!visible,sampleMs:focused?5000:(visible?8000:18000),visible,focused};
   if(profile==='ultra')return {fps:focused?60:(visible?20:6),reduceVisuals:!focused,sampleMs:focused?5000:(visible?10000:15000),visible,focused};
   return {fps:focused?60:(visible?30:15),reduceVisuals:!focused&&!visible,sampleMs:visible?5000:10000,visible,focused};
 }`);
@@ -61,6 +62,13 @@ main=replaceFunction(main,'applySettings',`function applySettings(){
 main=replaceOnce(main,'performanceView={section,layout,focusedSlot,visibleSlots};for(const [slot,wc] of guests)void applyGuestPerformance(slot,wc);','performanceView={section,layout,focusedSlot,visibleSlots};scheduleGuestPerformance();','focus IPC defer');
 write('main.js',main);
 fs.mkdirSync(path.join(root,'test'),{recursive:true});fs.copyFileSync(path.join(__dirname,'alpha1185-src/test/click-freeze-hotfix.test.js'),path.join(root,'test/click-freeze-hotfix.test.js'));
+// Keep inherited assertions behavioral after moving guest setters to a queued task.
+let eco=read('test/alpha911-live-eco.test.js');
+eco=replaceOnce(eco,"assert.ok(main.includes('setBackgroundThrottling(settings.liveEcoMode?false'));", "assert.ok(main.includes('backgroundThrottling:settings.liveEcoMode?false:!settings.background'));assert.ok(main.includes('wc.setBackgroundThrottling(next.backgroundThrottling)'));",'cached eco setter contract');
+write('test/alpha911-live-eco.test.js',eco);
+let mainTest=read('test/main.test.js');
+mainTest=replaceOnce(mainTest,"assert.equal(stop.length,1);assert.equal(guest.throttle,true);", "assert.equal(stop.length,1);await vm.runInNewContext('Promise.all(performanceApplyQueues)',ctx);assert.equal(guest.throttle,true);",'queued settings completion');
+write('test/main.test.js',mainTest);
 let versionChecksUpdated=0;for(const name of fs.readdirSync(path.join(root,'test'))){if(!name.endsWith('.test.js'))continue;const file=path.join(root,'test',name),source=fs.readFileSync(file,'utf8');if(!source.includes(BASE_VERSION))continue;versionChecksUpdated+=source.split(BASE_VERSION).length-1;fs.writeFileSync(file,source.split(BASE_VERSION).join(NEXT_VERSION));}
 pkg.version=NEXT_VERSION;pkg.description='Gridium Alpha 11.8.5 — Hotfix de resposta ao clique e estabilidade dos webviews';write('package.json',JSON.stringify(pkg,null,2)+'\n');
 console.log(`Alpha 11.8.5 click-freeze hotfix applied; focus work deferred/cached; ${versionChecksUpdated} inherited release marker(s) synchronized.`);
