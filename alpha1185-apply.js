@@ -16,9 +16,8 @@ main=replaceOnce(main,
   'performance cache state');
 main=replaceFunction(main,'performancePlan',`function performancePlan(slot){
   const profile=settings.performanceProfile||'balanced',visible=performanceView.section==='games'&&performanceView.visibleSlots.includes(Number(slot)),focused=visible&&Number(performanceView.focusedSlot)===Number(slot),layout=performanceView.layout||'grid';
-  // In the 2x2 workspace a click only changes the purple selection border. Keeping the
-  // four visible guests on one stable plan prevents Chromium from rebuilding frame pacing
-  // for every account switch.
+  // In the 2x2 workspace a click only changes the selection. A stable four-guest plan
+  // prevents Chromium from rebuilding frame pacing while the user is interacting.
   if(layout==='grid'){
     if(settings.liveEcoMode)return {fps:visible?12:3,reduceVisuals:!visible,sampleMs:visible?10000:15000,visible,focused};
     if(profile==='quality')return {fps:60,reduceVisuals:false,sampleMs:5000,visible,focused};
@@ -53,7 +52,12 @@ function scheduleGuestPerformance(delay=120){
   performanceApplyTimer=setTimeout(()=>{performanceApplyTimer=null;for(const [slot,wc] of guests)void queueGuestPerformance(slot,wc);},Math.max(50,Number(delay)||120));
 }
 function applySettings(){`,'performance scheduler');
-main=replaceOnce(main,'for(const [slot,wc] of guests)void applyGuestPerformance(slot,wc);','for(const [slot,wc] of guests)void queueGuestPerformance(slot,wc);','settings performance queue');
+main=replaceFunction(main,'applySettings',`function applySettings(){
+  if(powerId!==null){powerSaveBlocker.stop(powerId);powerId=null;}
+  if(settings.power!=='off')powerId=powerSaveBlocker.start(settings.power==='display'?'prevent-display-sleep':'prevent-app-suspension');
+  networkInspector.configure?.(settings.performanceProfile);
+  for(const [slot,wc] of guests)void queueGuestPerformance(slot,wc);
+}`);
 main=replaceOnce(main,'performanceView={section,layout,focusedSlot,visibleSlots};for(const [slot,wc] of guests)void applyGuestPerformance(slot,wc);','performanceView={section,layout,focusedSlot,visibleSlots};scheduleGuestPerformance();','focus IPC defer');
 write('main.js',main);
 fs.mkdirSync(path.join(root,'test'),{recursive:true});fs.copyFileSync(path.join(__dirname,'alpha1185-src/test/click-freeze-hotfix.test.js'),path.join(root,'test/click-freeze-hotfix.test.js'));
