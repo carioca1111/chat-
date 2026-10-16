@@ -1,17 +1,26 @@
-name: Build Mobile APK
+name: Build Gridium Mobile 2.5 Mirroring
 on:
   workflow_dispatch:
   push:
+    branches: [gridium-alpha11.8.6-mobile-mirroring]
     paths:
       - 'mobile-android/**'
+      - 'mirror-relay.js'
+      - 'test/mirror-relay.test.js'
+      - '.github/workflows/build-mobile-apk.yml'
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile-android
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Mirror JavaScript syntax
+        run: node --check mobile-android/app/src/main/assets/mirror-mobile.js
+      - name: Relay signaling tests
+        run: node --test test/mirror-relay.test.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,8 +28,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - run: gradle assembleDebug
+      - name: Build Android APK
+        working-directory: mobile-android
+        run: gradle assembleDebug
+      - name: Verify APK
+        run: |
+          test -s mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          sha256sum mobile-android/app/build/outputs/apk/debug/app-debug.apk | tee mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PokeGrid-Mobile-2.4-SEPARADO
-          path: mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          name: Gridium-Mobile-2.5-Mirroring
+          path: |
+            mobile-android/app/build/outputs/apk/debug/app-debug.apk
+            mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-SHA256.txt
