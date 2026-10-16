@@ -31,6 +31,7 @@
   function closePeer(){if(pc){try{pc.ontrack=null;pc.onicecandidate=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null;}pendingIce=[];for(let i=0;i<4;i++){try{videos[i].srcObject=null}catch{}tiles[i].dataset.hasVideo='false';}}
   function stopPoll(){try{pollController?.abort()}catch{}pollController=null;}
   function clearRetry(){clearTimeout(retryTimer);retryTimer=null;}
+  function expirePairing(){clearRetry();stopPoll();generation++;closePeer();active=false;suspended=false;sessionId='';setPc('Pareamento expirado',false);for(let i=0;i<4;i++)setTile(i,'offline','Offline',false);}
   function scheduleReconnect(reason){if(!active||suspended||!foreground)return;stopPoll();closePeer();clearRetry();setPc(reason||'Reconectando…',false);for(let i=0;i<4;i++)setTile(i,'connecting','Conectando',false);const wait=BACKOFF[Math.min(retryIndex++,BACKOFF.length-1)];sessionId='';retryTimer=setTimeout(()=>void connect(),wait);}
   async function makePeer(offer){
     closePeer();pc=new RTCPeerConnection({iceServers,bundlePolicy:'max-bundle',rtcpMuxPolicy:'require'});const local=pc;
@@ -39,7 +40,7 @@
     pc.onconnectionstatechange=()=>{if(local!==pc)return;const s=pc.connectionState;if(s==='connected'){retryIndex=0;setPc('PC conectado',true);for(let i=0;i<4;i++)if(videos[i].srcObject)setTile(i,'online','Online',true);}else if(s==='connecting'||s==='new')setPc('Conectando…',false);else if(s==='failed')scheduleReconnect('Falha de stream');else if(s==='disconnected')setTimeout(()=>{if(local===pc&&pc?.connectionState==='disconnected')scheduleReconnect('Reconectando…')},2500);};
     await pc.setRemoteDescription(offer);for(const c of pendingIce.splice(0))try{await pc.addIceCandidate(c)}catch{}const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await signal('answer',{type:pc.localDescription.type,sdp:pc.localDescription.sdp});
   }
-  function applyMetrics(m){metrics=m||{};const sys=m?.system||{},delta=Number(m?.cpuDelta);$m('mirrorCpu').textContent=sys.cpu==null?'—':sys.cpu.toFixed?.(1)+'%'+(Number.isFinite(delta)?' ('+(delta>=0?'+':'')+delta.toFixed(1)+'%)':'');$m('mirrorRam').textContent=sys.memoryMB==null?'—':Math.round(sys.memoryMB)+' MB';$m('mirrorUpload').textContent=formatRate(m?.totalBitrate);$m('mirrorCodec').textContent=[m?.codec?.replace?.('video/',''),m?.encoderImplementation].filter(Boolean).join(' · ')||'não exposto';
+  function applyMetrics(m){metrics=m||{};const sys=m?.system||{},rawDelta=m?.cpuDelta,delta=rawDelta==null?NaN:Number(rawDelta);$m('mirrorCpu').textContent=sys.cpu==null?'—':sys.cpu.toFixed?.(1)+'%'+(Number.isFinite(delta)?' ('+(delta>=0?'+':'')+delta.toFixed(1)+'%)':'');$m('mirrorRam').textContent=sys.memoryMB==null?'—':Math.round(sys.memoryMB)+' MB';$m('mirrorUpload').textContent=formatRate(m?.totalBitrate);$m('mirrorCodec').textContent=[m?.codec?.replace?.('video/',''),m?.encoderImplementation].filter(Boolean).join(' · ')||'não exposto';
     for(const a of m?.accounts||[]){const slot=Number(a.slot);if(slot<0||slot>3)continue;$m('mirrorName'+slot).textContent=a.name||('Conta '+(slot+1));if(a.online===false&&!videos[slot].srcObject)setTile(slot,'offline','Offline',false);}
     for(const s of m?.streams||[]){const slot=Number(s.slot);if(slot<0||slot>3)continue;const q=s.qualityLimitationReason==='bandwidth'?'Rede limitada':s.qualityLimitationReason==='cpu'?'PC reduzindo':'Boa';$m('mirrorQuality'+slot).textContent=(s.codec?.replace?.('video/','')||'Vídeo')+' · '+q;}
   }
@@ -47,17 +48,17 @@
   async function pollLoop(gen){
     while(active&&!suspended&&foreground&&gen===generation&&sessionId){
       try{pollController=new AbortController();const d=await mirrorApi('/api/v1/mirror/mobile/poll?sessionId='+encodeURIComponent(sessionId),{signal:pollController.signal});pollController=null;if(gen!==generation)return;await handleEvent(d.event);}
-      catch(e){pollController=null;if(gen!==generation||!active||suspended||!foreground||e.name==='AbortError')return;if(e.status===401){setPc('Pareamento expirado',false);active=false;return}scheduleReconnect(e.status===409?'Sessão renovando…':'Conexão instável');return;}
+      catch(e){pollController=null;if(gen!==generation||!active||suspended||!foreground||e.name==='AbortError')return;if(e.status===401){expirePairing();return}scheduleReconnect(e.status===409?'Sessão renovando…':'Conexão instável');return;}
     }
   }
   async function connect(){
     if(!active||suspended||!foreground)return;if(!token()){setPc('Pareie o celular',false);return}clearRetry();const gen=++generation;setPc('Conectando…',false);for(let i=0;i<4;i++)setTile(i,'connecting','Conectando',false);
     try{const d=await sendState({active:true,suspended:false});if(gen!==generation)return;iceServers=Array.isArray(d.iceServers)?d.iceServers:[];void pollLoop(gen);}
-    catch(e){if(gen!==generation)return;if(e.status===401){active=false;setPc('Pareamento expirado',false);return}scheduleReconnect('PC indisponível');}
+    catch(e){if(gen!==generation)return;if(e.status===401){expirePairing();return}scheduleReconnect('PC indisponível');}
   }
   async function start(){if(active&&!suspended)return;active=true;suspended=false;retryIndex=0;renderNetwork();await connect();}
   async function stop({suspend=false}={}){clearRetry();stopPoll();generation++;const had=active||sessionId;suspended=suspend;closePeer();if(had&&token())try{await sendState({active:suspend, suspended:suspend})}catch{}if(!suspend){active=false;sessionId='';}setPc(suspend?'Espelhamento suspenso':'PC offline',false);for(let i=0;i<4;i++)setTile(i,'offline',suspend?'Pausado':'Offline',false);}
-  async function updateState(){if(!active||suspended||!foreground)return;try{await sendState()}catch{scheduleReconnect('Atualizando…')}}
+  async function updateState(){if(!active||suspended||!foreground)return;try{await sendState()}catch(e){if(e.status===401)expirePairing();else scheduleReconnect('Atualizando…')}}
   function setView(next,slot=selectedSlot){view=next==='single'?'single':'grid';selectedSlot=Math.max(0,Math.min(3,Number(slot)||0));section.classList.toggle('mirror-single',view==='single');tiles.forEach((t,i)=>t.classList.toggle('selected',i===selectedSlot));void updateState();}
   navButton.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===navButton));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x===section));void start();};
   document.addEventListener('click',e=>{const b=e.target.closest?.('[data-tab]');if(b&&b!==navButton&&active)void stop({suspend:false})});
