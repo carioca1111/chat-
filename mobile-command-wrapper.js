@@ -1,6 +1,7 @@
 'use strict';
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const Core=require('./mobile-command-core');
+const {MirrorRelay}=require('./mirror-relay');
 const TOKEN=String(process.env.POKEGRID_TOKEN||'').trim(),DATA=process.env.POKEGRID_DATA_DIR||path.join(__dirname,'data');
 const LEGACY_STORE=path.join(DATA,'store.json'),MOBILE_STORE=path.join(DATA,'mobile-command-center.json');
 fs.mkdirSync(DATA,{recursive:true});
@@ -11,7 +12,8 @@ function revocations(){try{const x=JSON.parse(fs.readFileSync(LEGACY_STORE,'utf8
 function identity(req){return Core.readIdentity(req,TOKEN,revocations());}
 function json(res,status,data){const out=status===204?'':JSON.stringify(data);res.writeHead(status,{'content-type':'application/json; charset=utf-8','content-length':Buffer.byteLength(out),'cache-control':'no-store','access-control-allow-origin':'*','access-control-allow-headers':'authorization, content-type','access-control-allow-methods':'GET,POST,OPTIONS'});res.end(out);}
 function readBody(req,limit=131072){return new Promise((resolve,reject)=>{let n=0,a=[];req.on('data',c=>{n+=c.length;if(n>limit){reject(new Error('too-large'));return;}a.push(c)});req.on('end',()=>resolve(Buffer.concat(a).toString('utf8')));req.on('error',reject);});}
-function publicState(){const now=Date.now(),latest=state.latest;return {version:2,at:now,pcOnline:!!latest&&now-Number(latest.at||0)<45000,relayOnline:true,snapshot:latest,commands:state.commands.slice(-25).map(Core.commandPublic),capabilities:{stream:true,pwa:true,commands:['sniper-kill','sniper-radar','set-eco-mode','set-performance-profile','reconnect-account'],remoteAutoArm:false}};}
+const mirrorRelay=new MirrorRelay({isAdmin:req=>identity(req)?.kind==='admin',getDevice:req=>{const who=identity(req);return who?.kind==='device'?who:null;},json,body:readBody});
+function publicState(){const now=Date.now(),latest=state.latest;return {version:2,at:now,pcOnline:!!latest&&now-Number(latest.at||0)<45000,relayOnline:true,snapshot:latest,commands:state.commands.slice(-25).map(Core.commandPublic),capabilities:{stream:true,pwa:true,mirrorWebRTC:true,commands:['sniper-kill','sniper-radar','set-eco-mode','set-performance-profile','reconnect-account'],remoteAutoArm:false}};}
 function emit(event,data){const payload=`id: ${++state.seq}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;for(const res of [...clients])try{res.write(payload)}catch{clients.delete(res);}save();}
 function observePush(req){let size=0,chunks=[];req.on('data',c=>{size+=c.length;if(size<=2*1024*1024)chunks.push(c);});req.on('end',()=>{if(size>2*1024*1024)return;try{const projected=Core.projectMobileSnapshot(JSON.parse(Buffer.concat(chunks).toString('utf8')));if(!projected)return;state.latest=projected;save();emit('snapshot',publicState());}catch{}});}
 function queueCommand(raw,who){const clean=Core.sanitizeCommand(raw),row={id:crypto.randomUUID(),...clean,state:'pending',createdAt:Date.now(),device:{id:who.id,name:who.name}};state.commands.push(row);if(state.commands.length>120)state.commands.splice(0,state.commands.length-120);save();emit('command',Core.commandPublic(row));return row;}
@@ -23,9 +25,10 @@ http.createServer=function(options,listener){
   if(typeof options==='function'){listener=options;options=undefined;}
   const wrapped=async(req,res)=>{
     let u;try{u=new URL(req.url,'http://relay.local');}catch{return listener(req,res);}
-    if(req.method==='OPTIONS'&&u.pathname.startsWith('/api/v2/'))return json(res,204,{});
+    if(req.method==='OPTIONS'&&(u.pathname.startsWith('/api/v2/')||u.pathname.startsWith('/api/v1/mirror/')))return json(res,204,{});
+    if(u.pathname.startsWith('/api/v1/mirror/')){if(await mirrorRelay.handle(req,res,u))return;}
     const who=identity(req);
-    if(u.pathname==='/api/v2/health'&&req.method==='GET')return json(res,200,{ok:true,version:'2.0.0',pcOnline:publicState().pcOnline,streamClients:clients.size,lastUpdate:state.latest?.at||0});
+    if(u.pathname==='/api/v2/health'&&req.method==='GET')return json(res,200,{ok:true,version:'2.1.0',pcOnline:publicState().pcOnline,streamClients:clients.size,mirrorWebRTC:true,lastUpdate:state.latest?.at||0});
     if(u.pathname==='/api/v2/state'&&req.method==='GET'){if(!who)return json(res,401,{error:'unauthorized'});return json(res,200,publicState());}
     if(u.pathname==='/api/v2/stream'&&req.method==='GET'){
       if(!who)return json(res,401,{error:'unauthorized'});
