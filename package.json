@@ -1,13 +1,13 @@
 {
   "name": "pokegrid-relay",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
-  "description": "Relay privado do Gridium com Command Center mobile, pareamento, Shiny Cloud e analytics",
+  "description": "Relay privado do Gridium com Command Center mobile, pareamento, Shiny Cloud, analytics e signaling WebRTC",
   "main": "server.js",
   "scripts": {
     "prestart": "npm install --omit=dev --ignore-scripts",
     "start": "node mobile-command-wrapper.js",
-    "test": "node --test mobile-command-core.test.js shiny-cloud-compute.test.js"
+    "test": "node --test mobile-command-core.test.js shiny-cloud-compute.test.js mirror-relay.test.js"
   },
   "engines": {"node": ">=20"},
   "dependencies": {"pg": "^8.13.1"}
