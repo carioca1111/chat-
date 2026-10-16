@@ -4,7 +4,8 @@ const root=path.resolve(process.argv[2]||'gridium-build');
 const read=n=>fs.readFileSync(path.join(root,n),'utf8').replace(/\r\n/g,'\n');
 const write=(n,s)=>fs.writeFileSync(path.join(root,n),s);
 function once(s,a,b){const count=s.split(a).length-1;if(count!==1)throw Error('Alpha1184 expected unique anchor, got '+count+': '+a.slice(0,90));return s.replace(a,b);}
-const pkg=JSON.parse(read('package.json'));if(pkg.version!=='3.0.0-alpha.11.8.3')throw Error('Expected exact 11.8.3 base');
+const BASE_VERSION='3.0.0-alpha.11.8.3',NEXT_VERSION='3.0.0-alpha.11.8.4';
+const pkg=JSON.parse(read('package.json'));if(pkg.version!==BASE_VERSION)throw Error('Expected exact 11.8.3 base');
 let renderer=read('renderer.js');for(const [a,b]of require('./alpha1184-renderer-patches.json'))renderer=once(renderer,a,b);
 let html=read('index.html');const partitions=html.match(/partition="[^"]+"/g);
 html=once(html,'</head>','<link rel="stylesheet" href="accounts-workspace.css">\n</head>');
@@ -14,5 +15,9 @@ if(JSON.stringify(partitions)!==JSON.stringify(html.match(/partition="[^"]+"/g))
 write('renderer.js',renderer);write('index.html',html);
 for(const n of ['accounts-workspace.js','accounts-workspace.css'])fs.copyFileSync(path.join(__dirname,'alpha1184-src',n),path.join(root,n));
 fs.mkdirSync(path.join(root,'test'),{recursive:true});fs.copyFileSync(path.join(__dirname,'alpha1184-src/test/accounts-workspace.test.js'),path.join(root,'test/accounts-workspace.test.js'));
-pkg.version='3.0.0-alpha.11.8.4';pkg.description='Gridium Alpha 11.8.4 — Contas: grade ampla, sessões persistentes e foco eficiente';write('package.json',JSON.stringify(pkg,null,2)+'\n');
-console.log('Alpha 11.8.4 Accounts Workspace applied; session partitions and main process preserved.');
+// Inherited regression tests intentionally pin package.json. This release changes only that
+// expected release marker; keep every behavioural assertion untouched.
+let versionChecksUpdated=0;
+for(const name of fs.readdirSync(path.join(root,'test'))){if(!name.endsWith('.test.js'))continue;const file=path.join(root,'test',name),source=fs.readFileSync(file,'utf8');if(!source.includes(BASE_VERSION))continue;const next=source.split(BASE_VERSION).join(NEXT_VERSION);versionChecksUpdated+=(source.split(BASE_VERSION).length-1);fs.writeFileSync(file,next);}
+pkg.version=NEXT_VERSION;pkg.description='Gridium Alpha 11.8.4 — Contas: grade ampla, sessões persistentes e foco eficiente';write('package.json',JSON.stringify(pkg,null,2)+'\n');
+console.log(`Alpha 11.8.4 Accounts Workspace applied; session partitions and main process preserved; ${versionChecksUpdated} inherited release marker(s) synchronized.`);
