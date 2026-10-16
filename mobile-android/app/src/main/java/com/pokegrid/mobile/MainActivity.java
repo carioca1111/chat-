@@ -11,10 +11,25 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.webkit.*;
+import org.json.JSONObject;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     static final String RELAY = "https://pokegrid-relay-209e4eb1d9.onrender.com";
     WebView web;
+    private String readAsset(String name){
+        try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            byte[] buf=new byte[8192];int n;while((n=in.read(buf))>0)out.write(buf,0,n);return out.toString(StandardCharsets.UTF_8.name());
+        }catch(Exception ignored){return "";}
+    }
+    private void injectMirrorAssets(WebView v){
+        try{
+            String css=readAsset("mirror-mobile.css"),js=readAsset("mirror-mobile.js");
+            if(!css.isEmpty())v.evaluateJavascript("(function(){if(document.getElementById('gridiumMirrorCss'))return;var s=document.createElement('style');s.id='gridiumMirrorCss';s.textContent="+JSONObject.quote(css)+";document.head.appendChild(s)})()",null);
+            if(!js.isEmpty())v.evaluateJavascript(js,null);
+        }catch(Exception ignored){}
+    }
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
         getWindow().setStatusBarColor(Color.rgb(7,17,31));
@@ -30,6 +45,7 @@ public class MainActivity extends Activity {
                 super.onPageFinished(v,url);
                 String js="(function(){try{if(window.__pgCapturePatch)return;window.__pgCapturePatch=1;var old=window.renderPokemon;window.renderPokemon=async function(){await old();try{var raw=Android.getDetectedCaptures();var arr=JSON.parse(raw||'[]');var box=document.getElementById('pokemonList');if(!box||!arr.length)return;if(box.querySelector('.empty'))box.innerHTML='';arr.slice(0,50).forEach(function(e){var d=document.createElement('div');d.className='poke';d.innerHTML='<div style=\"width:64px;height:64px;border-radius:16px;background:#081421;display:grid;place-items:center;font-size:28px\">?</div><div><b>Pokémon não identificado</b><small class=\"muted\">'+(e.account||'Conta')+' · '+(e.count||1)+((e.count||1)==1?' captura':' capturas')+'</small><div><span class=\"tag\">Detectado pelo contador</span><span class=\"tag muted\">Qualidade: sem dados</span></div></div><small class=\"muted\">'+(typeof ago==='function'?ago(e.at):'')+'</small>';box.appendChild(d);});}catch(e){}};var p=document.querySelector('#sec-pokemon p');if(p)p.textContent='Detecta capturas pelo contador de cada conta. O nome do Pokémon aparece quando essa informação existir nos dados do PC.';}catch(e){}})();";
                 v.evaluateJavascript(js,null);
+                injectMirrorAssets(v);
             }
         });
         setContentView(web); web.loadUrl("file:///android_asset/index.html");
