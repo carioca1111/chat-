@@ -10,7 +10,6 @@ const PROFILE={
   auto:{grid:{w:640,h:360,fps:4,bitrate:280000},single:{w:1280,h:720,fps:10,bitrate:1000000}}
 };
 
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,Number(n)||0));
 function fitSize(width,height,maxW,maxH){
   width=Math.max(1,Number(width)||1);height=Math.max(1,Number(height)||1);
@@ -41,12 +40,16 @@ function buildPlan(demand,adaptiveLevel=0){
 class MirrorManager{
   constructor({getRemote,getAccounts,logger=()=>{}}={}){
     this.getRemote=getRemote||(()=>({}));this.getAccounts=getAccounts||(()=>[]);this.logger=logger;
-    this.guests=new Map();this.capture=new Map();this.publisher=null;this.publisherReady=false;this.connected=false;this.running=false;this.abort=null;
-    this.demand=null;this.iceServers=[];this.pixelFormat=detectBitmapFormat();this.adaptiveLevel=0;this.overloadSamples=0;this.baseline=null;this.lastMetrics=null;this.backoffIndex=0;
+    this.guests=new Map();this.capture=new Map();this.publisher=null;this.publisherReady=false;this.connected=false;this.running=false;
+    this.controllers=new Set();this.delays=new Map();this.demand=null;this.iceServers=[];this.pixelFormat=detectBitmapFormat();this.adaptiveLevel=0;this.overloadSamples=0;this.baseline=null;this.lastMetrics=null;this.backoffIndex=0;
     this.onPublisher=this._onPublisher.bind(this);
   }
   start(){if(this.running)return;this.running=true;ipcMain.on('mirror:publisher',this.onPublisher);void this._pollLoop();}
-  async stop(){this.running=false;try{this.abort?.abort()}catch{}ipcMain.removeListener('mirror:publisher',this.onPublisher);await this._deactivate('app-stop');}
+  async stop(){
+    this.running=false;for(const c of [...this.controllers])try{c.abort()}catch{}this.controllers.clear();for(const [timer,resolve] of [...this.delays]){clearTimeout(timer);this.delays.delete(timer);try{resolve()}catch{}}
+    ipcMain.removeListener('mirror:publisher',this.onPublisher);await this._deactivate('app-stop');
+  }
+  _delay(ms){return new Promise(resolve=>{const timer=setTimeout(()=>{this.delays.delete(timer);resolve()},ms);this.delays.set(timer,resolve);});}
   registerGuest(slot,wc){
     slot=Number(slot);if(!Number.isInteger(slot)||slot<0||slot>3||!wc)return;const old=this.guests.get(slot);if(old===wc)return;if(old)this._stopCapture(slot);
     this.guests.set(slot,wc);wc.once?.('destroyed',()=>{if(this.guests.get(slot)===wc){this._stopCapture(slot);this.guests.delete(slot);this._sendMetricsSoon();}});
@@ -57,19 +60,19 @@ class MirrorManager{
   _remote(){const x=this.getRemote?.()||{};return {enabled:x.enabled===true,endpoint:String(x.endpoint||'').replace(/\/+$/,''),token:String(x.token||'')};}
   async _request(route,{method='GET',body=null,timeoutMs=26000}={}){
     const c=this._remote();if(!c.enabled||!c.endpoint||!c.token)throw new Error('remote-disabled');
-    const url=new URL(c.endpoint+route),controller=new AbortController();this.abort=controller;const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+    const url=new URL(c.endpoint+route),controller=new AbortController();this.controllers.add(controller);const timeout=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       const response=await fetch(url,{method,headers:{authorization:'Bearer '+c.token,'content-type':'application/json'},body:body===null?undefined:JSON.stringify(body),signal:controller.signal});
       let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data?.error||('HTTP '+response.status));return data;
-    }finally{clearTimeout(timeout);if(this.abort===controller)this.abort=null;}
+    }finally{clearTimeout(timeout);this.controllers.delete(controller);}
   }
   async _pollLoop(){
     while(this.running){
-      const c=this._remote();if(!c.enabled||!c.endpoint||!c.token){if(this.demand)await this._deactivate('remote-disabled');await sleep(4000);continue;}
+      const c=this._remote();if(!c.enabled||!c.endpoint||!c.token){if(this.demand)await this._deactivate('remote-disabled');await this._delay(4000);continue;}
       try{
         const data=await this._request('/api/v1/mirror/desktop/poll',{timeoutMs:26000});this.backoffIndex=0;this.iceServers=Array.isArray(data.iceServers)?data.iceServers:[];await this._handlePoll(data);
       }catch(error){
-        if(!this.running)break;const wait=BACKOFF[Math.min(this.backoffIndex++,BACKOFF.length-1)];if(this.demand&&String(error?.message)!=='remote-disabled')this.logger('mirror signaling: '+String(error?.message||error));await sleep(wait);
+        if(!this.running)break;const wait=BACKOFF[Math.min(this.backoffIndex++,BACKOFF.length-1)];if(this.demand&&String(error?.message)!=='remote-disabled')this.logger('mirror signaling: '+String(error?.message||error));await this._delay(wait);
       }
     }
   }
@@ -85,7 +88,7 @@ class MirrorManager{
   }
   async _activate(demand){
     await this._deactivate('replace');this.demand={profile:'auto',view:'grid',selectedSlot:0,cellular:false,saveData:true,...demand};this.baseline=this._systemMetrics();this.adaptiveLevel=0;this.overloadSamples=0;
-    const bw=new BrowserWindow({show:false,width:16,height:16,frame:false,skipTaskbar:true,webPreferences:{nodeIntegration:true,contextIsolation:false,sandbox:false,backgroundThrottling:false,audio:false}});this.publisher=bw;this.publisherReady=false;
+    const bw=new BrowserWindow({show:false,width:16,height:16,frame:false,skipTaskbar:true,webPreferences:{nodeIntegration:true,contextIsolation:false,sandbox:false,backgroundThrottling:false}});this.publisher=bw;this.publisherReady=false;
     bw.on('closed',()=>{if(this.publisher===bw){this.publisher=null;this.publisherReady=false;this.connected=false;this._stopAllCapture();}});
     await bw.loadFile(path.join(__dirname,'mirror-publisher.html'));if(!this.running||!this.demand||bw.isDestroyed())return;
     this.publisherReady=true;this._publisherSend({type:'init',sessionId:this.demand.sessionId,iceServers:this.iceServers,plans:buildPlan(this.demand,this.adaptiveLevel)});
@@ -97,7 +100,7 @@ class MirrorManager{
   async _deactivate(reason){
     this.connected=false;this._stopAllCapture();const p=this.publisher;this.publisher=null;this.publisherReady=false;const old=this.demand;this.demand=null;
     if(p&&!p.isDestroyed()){try{p.webContents.send('mirror:control',{type:'destroy',reason})}catch{}try{p.destroy()}catch{}}
-    if(old&&reason!=='replace'&&reason!=='no-viewer'&&reason!=='mobile-bye')try{await this._signal('bye',{reason},old)}catch{}
+    if(old&&!['replace','no-viewer','mobile-bye','app-stop'].includes(reason))try{await this._signal('bye',{reason},old)}catch{}
   }
   _publisherSend(msg){const p=this.publisher;if(!p||p.isDestroyed()||!this.publisherReady)return false;try{p.webContents.send('mirror:control',msg);return true}catch{return false}}
   async _signal(type,payload,demand=this.demand){if(!demand)return false;await this._request('/api/v1/mirror/desktop/signal',{method:'POST',body:{deviceId:demand.deviceId,sessionId:demand.sessionId,type,payload},timeoutMs:8000});return true;}
