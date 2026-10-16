@@ -2,6 +2,7 @@
 const {ipcRenderer}=require('electron');
 let pc=null,plans=[],statsTimer=null,heartbeatTimer=null,lastStatsAt=0,lastBytes=0;
 const previousStreams=new Map();
+let pendingIce=[];
 const slots=Array.from({length:4},(_,slot)=>({slot,canvas:document.getElementById('c'+slot),gl:null,program:null,texture:null,track:null,sender:null,transceiver:null,texW:0,texH:0,pixelFormat:'rgba',lastFrameAt:0}));
 const send=(type,payload)=>ipcRenderer.send('mirror:publisher',{type,payload});
 const vertex=`attribute vec2 a;varying vec2 v;void main(){v=(a+1.0)*0.5;gl_Position=vec4(a,0.0,1.0);}`;
@@ -44,8 +45,8 @@ async function collectStats(){
     const now=Date.now(),seconds=lastStatsAt?Math.max(.1,(now-lastStatsAt)/1000):3,totalBitrate=lastStatsAt?Math.max(0,Math.round((bytes-lastBytes)*8/seconds)):0;lastStatsAt=now;lastBytes=bytes;ipcRenderer.send('mirror:publisher',{type:'stats',stats:{streams,codec,encoderImplementation,totalBitrate}});
   }catch{}
 }
-async function remoteDescription(payload){if(!pc||!payload)return;await pc.setRemoteDescription(payload);}
-async function ice(payload){if(!pc||!payload)return;try{await pc.addIceCandidate(payload)}catch{}}
-function destroy(){clearInterval(statsTimer);clearInterval(heartbeatTimer);statsTimer=null;heartbeatTimer=null;previousStreams.clear();lastStatsAt=0;lastBytes=0;if(pc){try{pc.onicecandidate=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null;}for(const s of slots){try{s.track?.stop()}catch{}s.track=null;s.sender=null;s.transceiver=null;s.lastFrameAt=0;}}
+async function remoteDescription(payload){if(!pc||!payload)return;await pc.setRemoteDescription(payload);for(const c of pendingIce.splice(0))await pc.addIceCandidate(c);}
+async function ice(payload){if(!pc||!payload)return;if(!pc.remoteDescription){pendingIce.push(payload);return;}try{await pc.addIceCandidate(payload)}catch{}}
+function destroy(){pendingIce=[];clearInterval(statsTimer);clearInterval(heartbeatTimer);statsTimer=null;heartbeatTimer=null;previousStreams.clear();lastStatsAt=0;lastBytes=0;if(pc){try{pc.onicecandidate=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null;}for(const s of slots){try{s.track?.stop()}catch{}s.track=null;s.sender=null;s.transceiver=null;s.lastFrameAt=0;}}
 ipcRenderer.on('mirror:control',async(_event,msg={})=>{try{if(msg.type==='init')await init(msg);else if(msg.type==='frame')drawFrame(msg);else if(msg.type==='quality')await applyPlans(msg.plans);else if(msg.type==='answer')await remoteDescription(msg.payload);else if(msg.type==='ice')await ice(msg.payload);else if(msg.type==='destroy')destroy();}catch(error){ipcRenderer.send('mirror:publisher',{type:'error',error:String(error?.message||error)})}});
 window.addEventListener('beforeunload',destroy);

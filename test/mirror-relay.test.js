@@ -49,3 +49,14 @@ test('inactive and expired mobile demand disables capture demand',async()=>{
   h.tick(46000);
   r=await h.call('/api/v1/mirror/status','GET',{admin:true});assert.equal(r.data.demand,null);
 });
+
+test('renewed session discards old offers and ICE, suspended sessions reject signals',async()=>{
+  const h=harness(),device={id:'renew',name:'Android'};
+  let r=await h.call('/api/v1/mirror/mobile/state','POST',{device,payload:{active:true}});const old=r.data.sessionId;
+  await h.call('/api/v1/mirror/desktop/signal','POST',{admin:true,payload:{deviceId:device.id,sessionId:old,type:'offer',payload:{sdp:'old'}}});
+  r=await h.call('/api/v1/mirror/mobile/state','POST',{device,payload:{active:true}});const fresh=r.data.sessionId;assert.notEqual(fresh,old);
+  r=await h.call('/api/v1/mirror/mobile/poll?sessionId='+fresh,'GET',{device});assert.equal(r.data.event,null);
+  await h.call('/api/v1/mirror/mobile/state','POST',{device,payload:{active:true,suspended:true,sessionId:fresh}});
+  r=await h.call('/api/v1/mirror/mobile/signal','POST',{device,payload:{sessionId:fresh,type:'ice',payload:{}}});assert.equal(r.status,409);
+  r=await h.call('/api/v1/mirror/desktop/signal','POST',{admin:true,payload:{deviceId:device.id,sessionId:fresh,type:'offer',payload:{}}});assert.equal(r.status,409);
+});

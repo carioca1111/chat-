@@ -61,6 +61,7 @@ class MirrorRelay{
         const x=await this._read(req,32768),now=this.now(),id=String(device.id),previous=this.clients.get(id),active=x.active===true,suspended=x.suspended===true;
         const sessionId=active&&(previous?.sessionId&&String(x.sessionId||'')===previous.sessionId)?previous.sessionId:(active?crypto.randomUUID():'');
         const c=previous||{deviceId:id,deviceName:String(device.name||'Mobile').slice(0,60),mobileQueue:[]};
+        if(c.sessionId!==sessionId){c.mobileQueue.length=0;this.desktopQueue=this.desktopQueue.filter(e=>e.deviceId!==id);this._wake(c.waiters||(c.waiters=new Set()));}
         Object.assign(c,{sessionId,active,suspended,profile:PROFILES.has(String(x.profile))?String(x.profile):'auto',view:x.view==='single'?'single':'grid',selectedSlot:Math.max(0,Math.min(3,Number(x.selectedSlot)||0)),cellular:x.cellular===true,saveData:x.saveData!==false,lastSeen:now});
         if(!active)c.mobileQueue.length=0;
         this.clients.set(id,c);
@@ -73,7 +74,7 @@ class MirrorRelay{
       const device=this._device(req);if(!device)return json(res,401,{error:'unauthorized'}),true;
       try{
         const x=await this._read(req),c=this.clients.get(String(device.id));
-        if(!c||!c.active||String(x.sessionId||'')!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
+        if(!c||!c.active||c.suspended||String(x.sessionId||'')!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
         if(!SIGNAL_TYPES.has(String(x.type))||String(x.type)==='metrics')return json(res,400,{error:'invalid-signal'}),true;
         c.lastSeen=this.now();this._push(this.desktopQueue,{kind:'signal',deviceId:c.deviceId,sessionId:c.sessionId,type:String(x.type),payload:x.payload??null,at:c.lastSeen});this._wake(this.desktopWaiters);
         return json(res,200,{ok:true}),true;
@@ -82,8 +83,9 @@ class MirrorRelay{
     if(u.pathname==='/api/v1/mirror/mobile/poll'&&req.method==='GET'){
       const device=this._device(req);if(!device)return json(res,401,{error:'unauthorized'}),true;
       const c=this.clients.get(String(device.id)),sessionId=String(u.searchParams.get('sessionId')||'');
-      if(!c||!c.active||!sessionId||sessionId!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
+      if(!c||!c.active||c.suspended||!sessionId||sessionId!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
       c.lastSeen=this.now();const event=await this._wait(c.waiters||(c.waiters=new Set()),()=>c.mobileQueue.shift());
+      if(!c.active||c.suspended||sessionId!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
       return json(res,200,{event:event||null,sessionId:c.sessionId,expiresInMs:ACTIVE_TTL_MS}),true;
     }
     if(u.pathname==='/api/v1/mirror/desktop/poll'&&req.method==='GET'){
@@ -95,7 +97,7 @@ class MirrorRelay{
       if(!this.isAdmin?.(req))return json(res,401,{error:'unauthorized'}),true;
       try{
         const x=await this._read(req),id=String(x.deviceId||''),c=this.clients.get(id);
-        if(!c||!c.active||String(x.sessionId||'')!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
+        if(!c||!c.active||c.suspended||String(x.sessionId||'')!==c.sessionId)return json(res,409,{error:'stale-session'}),true;
         if(!SIGNAL_TYPES.has(String(x.type)))return json(res,400,{error:'invalid-signal'}),true;
         const item={type:String(x.type),payload:x.payload??null,sessionId:c.sessionId,at:this.now()};this._push(c.mobileQueue,item);this._wake(c.waiters||(c.waiters=new Set()));
         return json(res,200,{ok:true}),true;
