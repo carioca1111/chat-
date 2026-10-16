@@ -12,7 +12,7 @@ main=once(main,"const {RemoteSync}=require('./remote-sync');","const {RemoteSync
 main=once(main,'const remoteSync=new RemoteSync();','const remoteSync=new RemoteSync();\nlet mirrorRuntime=null;');
 main=once(main,'guests.set(slot,wc);','guests.set(slot,wc);\n    mirrorRuntime?.registerGuest(slot,wc);');
 main=once(main,'installHandlers();createWindow();applySettings();stats.sampleHistory(Date.now(),true);historyDirty=true;',"installHandlers();mirrorRuntime=new MirrorManager({getRemote:()=>settings.remote,getAccounts:()=>stats?.view()?.rows||[],logger:message=>{if(process.env.GRID_MIRROR_DEBUG==='1')console.log('[mirror]',message);}});mirrorRuntime.start();createWindow();applySettings();stats.sampleHistory(Date.now(),true);historyDirty=true;");
-main=once(main,"app.on('before-quit',()=>{clearInterval(timer);","app.on('before-quit',()=>{void mirrorRuntime?.stop();clearInterval(timer);");
+main=once(main,"app.on('before-quit',async event=>{","app.on('before-quit',async event=>{await mirrorRuntime?.stop();");
 if(JSON.stringify(partitions)!==JSON.stringify(html.match(/partition="[^"]+"/g)))throw Error('Session partitions changed before mirror copy');
 write('main.js',main);
 for(const n of ['mirror-runtime.js','mirror-publisher.html','mirror-publisher.js'])fs.copyFileSync(path.join(__dirname,'alpha1186-src',n),path.join(root,n));
