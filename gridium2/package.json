@@ -1,0 +1,28 @@
+{
+  "name": "gridium-2",
+  "version": "2.0.0-alpha.1",
+  "private": true,
+  "description": "Gridium 2 Alpha 0.1 Core - clean-room Electron runtime for PokeIdle.io",
+  "main": "./out/main/index.js",
+  "author": "Gridium",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dist:win": "npm run build && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "preact": "^10.26.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.1",
+    "electron": "35.7.5",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.1.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.2",
+    "vitest": "^3.0.8"
+  }
+}
