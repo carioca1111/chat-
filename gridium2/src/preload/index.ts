@@ -16,6 +16,7 @@ const api: GridiumApi = {
   setModule: (module: AppModule) => ipcRenderer.invoke('gridium2:set-module', module),
   setAccountZoom: (accountId: AccountId, zoomPercent: number) =>
     ipcRenderer.invoke('gridium2:set-account-zoom', accountId, zoomPercent),
+  scanHuntProfile: (accountId: AccountId) => ipcRenderer.invoke('gridium2:scan-hunt-profile', accountId),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
   accountCommand: (accountId: AccountId, command: AccountCommand) =>
     ipcRenderer.invoke('gridium2:account-command', accountId, command),
