@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type {
   AccountCommand,
   AccountId,
+  AppModule,
   GridiumSnapshot,
   LayoutMode,
   PerformanceMode
@@ -17,12 +18,14 @@ let telemetry: TelemetryService | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
+let activeModule: AppModule = 'accounts'
 
 function currentSnapshot(): GridiumSnapshot {
   return {
     layout,
     selectedAccount,
     performanceMode,
+    activeModule,
     accounts: accounts?.snapshots() ?? [],
     telemetry: telemetry?.getSnapshot() ?? {
       cpuPercent: 0,
@@ -52,6 +55,15 @@ function hostIsActive(): boolean {
 
 function applyLayout(): void {
   if (!mainWindow || !accounts) return
+
+  if (activeModule !== 'accounts') {
+    // Native WebContentsViews always sit above the renderer. Detach them while
+    // Gridium tools are open; the sessions stay alive and background throttling
+    // remains enabled instead of wasting GPU cycles behind the Hunt UI.
+    accounts.applyLayout({}, [], selectedAccount, performanceMode, false)
+    return
+  }
+
   const [width, height] = mainWindow.getContentSize()
   const result = computeLayout({ width, height }, layout, selectedAccount)
   accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive())
@@ -68,6 +80,12 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:set-performance-mode', (_event, next: PerformanceMode) => {
     if (!['auto', 'full'].includes(next)) return
     performanceMode = next
+    applyLayout()
+    publish()
+  })
+  ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
+    if (!['accounts', 'hunt'].includes(next)) return
+    activeModule = next
     applyLayout()
     publish()
   })
@@ -100,7 +118,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.2.1 Individual Zoom',
+    title: 'Gridium 2 — Alpha 0.3 Hunt Intelligence',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
