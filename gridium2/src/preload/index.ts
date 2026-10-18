@@ -1,9 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountCommand, AccountId, GridiumApi, GridiumSnapshot, LayoutMode } from '../shared/contracts'
+import type {
+  AccountCommand,
+  AccountId,
+  GridiumApi,
+  GridiumSnapshot,
+  LayoutMode,
+  PerformanceMode
+} from '../shared/contracts'
 
 const api: GridiumApi = {
   getSnapshot: () => ipcRenderer.invoke('gridium2:get-snapshot'),
   setLayout: (layout: LayoutMode) => ipcRenderer.invoke('gridium2:set-layout', layout),
+  setPerformanceMode: (mode: PerformanceMode) => ipcRenderer.invoke('gridium2:set-performance-mode', mode),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
   accountCommand: (accountId: AccountId, command: AccountCommand) =>
     ipcRenderer.invoke('gridium2:account-command', accountId, command),
