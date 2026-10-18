@@ -54,7 +54,7 @@ export function parseHuntPageText(input: string, now = Date.now()): HuntProfileS
   const field = fieldIndex >= 0 ? text.slice(fieldIndex, fieldIndex + 3600) : text.slice(0, 12000)
   const compact = field.replace(/\s+/g, ' ')
 
-  const active = field.match(/(?:^|\n)(?:TEXT:\s*)?([A-Za-zÀ-ÿ0-9.'’\- ]{2,42}?)\s+(?:Nv|Lv|Lvl|N[ií]vel|Level)\s*[:.]?\s*([\d.]+)/im)
+  const active = field.match(/(?:^|\n)\s*(?:TEXT:\s*)?([A-Za-zÀ-ÿ0-9.'’\- ]{2,42}?)\s+(?:Nv|Lv|Lvl|N[ií]vel|Level)\s*[:.]?\s*([\d.]+)/im)
   const named = compact.match(/(?:ESP[EÉ]CIE|SPECIES|POK[EÉ]MON|NOME)\s*[:=-]\s*([A-Za-zÀ-ÿ0-9.'’\- ]{2,42}?)(?=\s+(?:Nv|Lv|Lvl|N[ií]vel|Level|IV|Q\b|P[1-5]\b)|$)/i)
   const attrNamed = text.match(/(?:DATA-POKEMON(?:-NAME)?|DATA-SPECIES|ALT|TITLE):\s*([A-Za-zÀ-ÿ0-9.'’\- ]{2,42})/i)
   const speciesName = (active?.[1] || named?.[1] || attrNamed?.[1])?.trim().replace(/^[^A-Za-zÀ-ÿ]+/, '') || undefined
