@@ -3,7 +3,8 @@ import type { Session } from 'electron'
 import type { AccountCommand, AccountId, AccountSnapshot, AccountStatus } from '../shared/contracts'
 import type { Rect } from './layout'
 
-const GAME_URL = 'https://pokeidle.io/'
+const GAME_URL = 'https://pokeidle.io/app'
+const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
 
 interface AccountSlot {
   id: AccountId
@@ -18,6 +19,7 @@ interface AccountSlot {
 
 export class AccountRuntime {
   private readonly accounts = new Map<AccountId, AccountSlot>()
+  private readonly authWindows = new Set<BrowserWindow>()
   private disposed = false
 
   constructor(
@@ -89,6 +91,12 @@ export class AccountRuntime {
   destroy(): void {
     if (this.disposed) return
     this.disposed = true
+
+    for (const auth of this.authWindows) {
+      if (!auth.isDestroyed()) auth.close()
+    }
+    this.authWindows.clear()
+
     for (const account of this.accounts.values()) {
       if (account.attached) {
         try {
@@ -105,8 +113,10 @@ export class AccountRuntime {
   private createAccount(id: AccountId): void {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
-    accountSession.setUserAgent(this.chromeUserAgent())
 
+    // Do not spoof Chrome here. Turnstile compares several browser signals and a
+    // hand-written UA can disagree with Chromium client hints / runtime features.
+    // Keeping Electron/Chromium's native UA makes the browser identity consistent.
     const view = new WebContentsView({
       webPreferences: {
         session: accountSession,
@@ -119,10 +129,6 @@ export class AccountRuntime {
     })
 
     view.setBackgroundColor('#0b0d18')
-    view.webContents.setWindowOpenHandler(({ url }) => {
-      this.openAuthWindow(id, url)
-      return { action: 'deny' }
-    })
 
     const account: AccountSlot = {
       id,
@@ -134,6 +140,18 @@ export class AccountRuntime {
       status: 'booting',
       title: 'PokeIdle.io'
     }
+
+    // Let Chromium create the popup itself instead of cancelling window.open and
+    // manually navigating a new BrowserWindow. This preserves opener state,
+    // window features and the owning account partition throughout OAuth.
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      if (!this.isAllowedPopupUrl(url)) return { action: 'deny' }
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: this.authWindowOptions(account)
+      }
+    })
+    view.webContents.on('did-create-window', (childWindow) => this.trackAuthWindow(account, childWindow))
 
     view.webContents.on('did-start-loading', () => this.patchAccount(account, { status: 'loading' }))
     view.webContents.on('did-stop-loading', () => this.patchAccount(account, { status: 'ready' }))
@@ -162,16 +180,13 @@ export class AccountRuntime {
     this.onChanged()
   }
 
-  private openAuthWindow(accountId: AccountId, url: string): void {
-    const account = this.accounts.get(accountId)
-    if (!account || this.disposed) return
-
-    const auth = new BrowserWindow({
+  private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
+    return {
       parent: this.window,
-      width: 560,
-      height: 760,
-      minWidth: 420,
-      minHeight: 620,
+      width: 600,
+      height: 780,
+      minWidth: 460,
+      minHeight: 640,
       autoHideMenuBar: true,
       backgroundColor: '#0b0d18',
       webPreferences: {
@@ -181,29 +196,66 @@ export class AccountRuntime {
         nodeIntegration: false,
         webSecurity: true
       }
-    })
+    }
+  }
 
-    auth.webContents.setWindowOpenHandler(({ url: nestedUrl }) => {
-      void auth.loadURL(nestedUrl)
-      return { action: 'deny' }
-    })
+  private trackAuthWindow(account: AccountSlot, auth: BrowserWindow): void {
+    if (this.disposed || auth.isDestroyed()) {
+      if (!auth.isDestroyed()) auth.close()
+      return
+    }
 
-    const maybeCloseAfterReturn = (_event: Electron.Event, nextUrl: string): void => {
-      if (nextUrl.startsWith('https://pokeidle.io/')) {
+    this.authWindows.add(auth)
+    let visitedExternalProvider = false
+
+    const observeNavigation = (_event: Electron.Event, nextUrl: string): void => {
+      if (!nextUrl || nextUrl === 'about:blank') return
+      if (this.isPokeIdleUrl(nextUrl)) {
+        if (!visitedExternalProvider) return
         setTimeout(() => {
           if (!auth.isDestroyed()) auth.close()
           if (!account.view.webContents.isDestroyed()) account.view.webContents.reload()
-        }, 350)
+        }, 450)
+        return
       }
+      visitedExternalProvider = true
     }
 
-    auth.webContents.on('did-navigate', maybeCloseAfterReturn)
-    auth.webContents.on('did-redirect-navigation', maybeCloseAfterReturn)
-    void auth.loadURL(url)
+    auth.webContents.on('did-navigate', observeNavigation)
+    auth.webContents.on('did-redirect-navigation', observeNavigation)
+
+    // A provider can itself request another popup. Keep the exact same account
+    // session and browser security settings rather than rebuilding URLs by hand.
+    auth.webContents.setWindowOpenHandler(({ url }) => {
+      if (!this.isAllowedPopupUrl(url)) return { action: 'deny' }
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: this.authWindowOptions(account)
+      }
+    })
+    auth.webContents.on('did-create-window', (nestedWindow) => this.trackAuthWindow(account, nestedWindow))
+
+    auth.on('closed', () => {
+      this.authWindows.delete(auth)
+      if (!this.disposed && !account.view.webContents.isDestroyed()) account.view.webContents.focus()
+    })
   }
 
-  private chromeUserAgent(): string {
-    const chrome = process.versions.chrome ?? '134.0.0.0'
-    return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Safari/537.36`
+  private isAllowedPopupUrl(url: string): boolean {
+    if (url === 'about:blank') return true
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+    } catch {
+      return false
+    }
+  }
+
+  private isPokeIdleUrl(url: string): boolean {
+    try {
+      return POKEIDLE_ORIGINS.has(new URL(url).origin)
+    } catch {
+      return false
+    }
   }
 }
