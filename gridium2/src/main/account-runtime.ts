@@ -1,5 +1,8 @@
-import { BrowserWindow, session, WebContentsView } from 'electron'
+import { app, BrowserWindow, session, WebContentsView } from 'electron'
 import type { Session } from 'electron'
+import { readFileSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type {
   AccountCommand,
   AccountId,
@@ -10,6 +13,7 @@ import type {
 } from '../shared/contracts'
 import type { Rect } from './layout'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
+import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
@@ -28,18 +32,24 @@ interface AccountSlot {
   appliedVisualMode: VisualMode
   ecoCssKey: string | null
   visualUpdateRunning: boolean
+  zoomPercent: number
 }
 
 export class AccountRuntime {
   private readonly accounts = new Map<AccountId, AccountSlot>()
   private readonly authWindows = new Set<BrowserWindow>()
+  private readonly zoomFilePath = join(app.getPath('userData'), 'gridium2-account-zoom.json')
+  private zoomWrite: Promise<void> = Promise.resolve()
   private disposed = false
 
   constructor(
     private readonly window: BrowserWindow,
     private readonly onChanged: () => void
   ) {
-    for (const id of [1, 2, 3, 4] as AccountId[]) this.createAccount(id)
+    const storedZoom = this.loadZoomSettings()
+    for (const id of [1, 2, 3, 4] as AccountId[]) {
+      this.createAccount(id, normalizeAccountZoom(storedZoom[id] ?? DEFAULT_ACCOUNT_ZOOM))
+    }
   }
 
   async boot(): Promise<void> {
@@ -56,7 +66,8 @@ export class AccountRuntime {
       canGoBack: account.view.webContents.navigationHistory.canGoBack(),
       canGoForward: account.view.webContents.navigationHistory.canGoForward(),
       attached: account.attached,
-      visualMode: account.desiredVisualMode
+      visualMode: account.desiredVisualMode,
+      zoomPercent: account.zoomPercent
     }))
   }
 
@@ -97,6 +108,19 @@ export class AccountRuntime {
       )
     }
 
+    this.onChanged()
+  }
+
+  setZoom(accountId: AccountId, zoomPercent: number): void {
+    const account = this.accounts.get(accountId)
+    if (!account || account.view.webContents.isDestroyed()) return
+
+    const normalized = normalizeAccountZoom(zoomPercent)
+    if (account.zoomPercent === normalized) return
+
+    account.zoomPercent = normalized
+    account.view.webContents.setZoomFactor(normalized / 100)
+    this.persistZoomSettings()
     this.onChanged()
   }
 
@@ -143,7 +167,7 @@ export class AccountRuntime {
     this.accounts.clear()
   }
 
-  private createAccount(id: AccountId): void {
+  private createAccount(id: AccountId, zoomPercent: number): void {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
 
@@ -161,6 +185,7 @@ export class AccountRuntime {
     })
 
     view.setBackgroundColor('#0b0d18')
+    view.webContents.setZoomFactor(zoomPercent / 100)
 
     const account: AccountSlot = {
       id,
@@ -175,7 +200,8 @@ export class AccountRuntime {
       desiredVisualMode: 'eco',
       appliedVisualMode: 'full',
       ecoCssKey: null,
-      visualUpdateRunning: false
+      visualUpdateRunning: false,
+      zoomPercent
     }
 
     // Let Chromium create the popup itself instead of cancelling window.open and
@@ -195,6 +221,7 @@ export class AccountRuntime {
       this.patchAccount(account, { status: 'loading' })
     })
     view.webContents.on('did-stop-loading', () => {
+      if (!view.webContents.isDestroyed()) view.webContents.setZoomFactor(account.zoomPercent / 100)
       this.patchAccount(account, { status: 'ready' })
       this.requestVisualMode(account, account.desiredVisualMode)
     })
@@ -212,6 +239,7 @@ export class AccountRuntime {
   private async loadAccount(account: AccountSlot): Promise<void> {
     try {
       await account.view.webContents.loadURL(GAME_URL)
+      account.view.webContents.setZoomFactor(account.zoomPercent / 100)
       this.patchAccount(account, { status: 'ready' })
     } catch {
       this.patchAccount(account, { status: 'offline' })
@@ -279,6 +307,33 @@ export class AccountRuntime {
     if (key && !wc.isDestroyed()) {
       void wc.removeInsertedCSS(key).catch(() => undefined)
     }
+  }
+
+  private loadZoomSettings(): Partial<Record<AccountId, number>> {
+    try {
+      const parsed = JSON.parse(readFileSync(this.zoomFilePath, 'utf8')) as Record<string, unknown>
+      const result: Partial<Record<AccountId, number>> = {}
+      for (const id of [1, 2, 3, 4] as AccountId[]) {
+        const value = parsed[String(id)]
+        if (typeof value === 'number') result[id] = normalizeAccountZoom(value)
+      }
+      return result
+    } catch {
+      return {}
+    }
+  }
+
+  private persistZoomSettings(): void {
+    const payload = JSON.stringify(
+      Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.zoomPercent])),
+      null,
+      2
+    )
+
+    this.zoomWrite = this.zoomWrite
+      .catch(() => undefined)
+      .then(() => writeFile(this.zoomFilePath, payload, 'utf8'))
+      .catch(() => undefined)
   }
 
   private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
