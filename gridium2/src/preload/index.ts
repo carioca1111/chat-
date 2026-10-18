@@ -12,6 +12,8 @@ const api: GridiumApi = {
   getSnapshot: () => ipcRenderer.invoke('gridium2:get-snapshot'),
   setLayout: (layout: LayoutMode) => ipcRenderer.invoke('gridium2:set-layout', layout),
   setPerformanceMode: (mode: PerformanceMode) => ipcRenderer.invoke('gridium2:set-performance-mode', mode),
+  setAccountZoom: (accountId: AccountId, zoomPercent: number) =>
+    ipcRenderer.invoke('gridium2:set-account-zoom', accountId, zoomPercent),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
   accountCommand: (accountId: AccountId, command: AccountCommand) =>
     ipcRenderer.invoke('gridium2:account-command', accountId, command),
