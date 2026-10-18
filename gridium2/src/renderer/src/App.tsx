@@ -63,6 +63,7 @@ export function App() {
 
   const setLayout = (mode: LayoutMode) => void window.gridium2.setLayout(mode)
   const setPerformanceMode = (mode: PerformanceMode) => void window.gridium2.setPerformanceMode(mode)
+  const setZoom = (id: AccountId, zoomPercent: number) => void window.gridium2.setAccountZoom(id, zoomPercent)
   const select = (id: AccountId) => void window.gridium2.selectAccount(id)
   const command = (id: AccountId, action: AccountCommand) => void window.gridium2.accountCommand(id, action)
 
@@ -87,26 +88,54 @@ export function App() {
             <div class="skeleton-card poke-card">Preparando as 4 sessões…</div>
           ) : (
             snapshot.accounts.map((account) => (
-              <button
-                class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`}
-                onClick={() => select(account.id)}
-                key={account.id}
-              >
-                <span class="account-orb" aria-hidden="true">{account.id}</span>
-                <span class="account-main">
-                  <span class="account-line">
-                    <b>Conta {account.id}</b>
-                    <small class={`account-status ${account.status}`}>
-                      <i class={`status-dot ${account.status}`} /> {statusLabel[account.status]}
-                    </small>
+              <div class={`account-block ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} key={account.id}>
+                <button
+                  class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`}
+                  onClick={() => select(account.id)}
+                >
+                  <span class="account-orb" aria-hidden="true">{account.id}</span>
+                  <span class="account-main">
+                    <span class="account-line">
+                      <b>Conta {account.id}</b>
+                      <small class={`account-status ${account.status}`}>
+                        <i class={`status-dot ${account.status}`} /> {statusLabel[account.status]}
+                      </small>
+                    </span>
+                    <span class="account-title">{account.title || 'PokeIdle.io'}</span>
+                    <span class="account-meta">
+                      Sessão isolada
+                      {account.visualMode === 'eco' ? ' · ECO' : ' · QUALIDADE'}
+                    </span>
                   </span>
-                  <span class="account-title">{account.title || 'PokeIdle.io'}</span>
-                  <span class="account-meta">
-                    Sessão isolada
-                    {account.visualMode === 'eco' ? ' · ECO' : ' · QUALIDADE'}
-                  </span>
-                </span>
-              </button>
+                </button>
+
+                <div class="account-zoom" aria-label={`Zoom da conta ${account.id}`}>
+                  <span class="zoom-label">AFASTAMENTO</span>
+                  <button
+                    class="zoom-button"
+                    onClick={() => setZoom(account.id, account.zoomPercent - 5)}
+                    disabled={account.zoomPercent <= 50}
+                    title="Afastar mais"
+                  >
+                    −
+                  </button>
+                  <button
+                    class="zoom-value"
+                    onClick={() => setZoom(account.id, 100)}
+                    title="Restaurar para 100%"
+                  >
+                    {account.zoomPercent}%
+                  </button>
+                  <button
+                    class="zoom-button"
+                    onClick={() => setZoom(account.id, account.zoomPercent + 5)}
+                    disabled={account.zoomPercent >= 140}
+                    title="Aproximar"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>
@@ -170,6 +199,11 @@ export function App() {
             </button>
           </div>
 
+          <div class="selected-zoom" title="Afastamento da conta selecionada">
+            <span>ZOOM</span>
+            <b>{selected?.zoomPercent ?? 100}%</b>
+          </div>
+
           <div class="account-controls">
             <Control label="←" title="Voltar" onClick={() => command(snapshot.selectedAccount, 'back')} />
             <Control label="→" title="Avançar" onClick={() => command(snapshot.selectedAccount, 'forward')} />
@@ -183,6 +217,7 @@ export function App() {
         <div class="viewport-ribbon">
           <span class="ribbon-title">CONTA {snapshot.selectedAccount}</span>
           <span>{selected?.title || 'PokeIdle.io'}</span>
+          <span class="ribbon-zoom">ZOOM {selected?.zoomPercent ?? 100}%</span>
           <span class="ribbon-status"><i class={`status-dot ${selected?.status || 'booting'}`} /> {selected ? statusLabel[selected.status] : 'CARREGANDO'}</span>
         </div>
         <div class="empty-message">As telas nativas do PokeIdle são renderizadas sobre esta área.</div>
@@ -191,6 +226,7 @@ export function App() {
       <footer class="statusbar poke-frame">
         <span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span>
         <span>CONTA {snapshot.selectedAccount}</span>
+        <span>ZOOM {selected?.zoomPercent ?? 100}%</span>
         <span>{snapshot.performanceMode === 'auto' ? '⚡ AUTO ECO' : '◆ QUALIDADE TOTAL'}</span>
         <span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span>
       </footer>
