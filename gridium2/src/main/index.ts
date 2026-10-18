@@ -12,6 +12,8 @@ import { AccountRuntime } from './account-runtime'
 import { computeLayout } from './layout'
 import { TelemetryService } from './telemetry'
 
+const HUNT_AUTO_REFRESH_MS = 8000
+
 let mainWindow: BrowserWindow | null = null
 let accounts: AccountRuntime | null = null
 let telemetry: TelemetryService | null = null
@@ -19,6 +21,8 @@ let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
 let activeModule: AppModule = 'accounts'
+let huntPollTimer: ReturnType<typeof setInterval> | null = null
+let huntPollBusy = false
 
 function currentSnapshot(): GridiumSnapshot {
   return {
@@ -58,6 +62,34 @@ function applyLayout(): void {
   accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive())
 }
 
+async function refreshHuntProfiles(): Promise<void> {
+  if (huntPollBusy || activeModule !== 'hunt' || !accounts) return
+  huntPollBusy = true
+  try {
+    await accounts.refreshHuntProfiles()
+    publish()
+  } finally {
+    huntPollBusy = false
+  }
+}
+
+function stopHuntPolling(): void {
+  if (huntPollTimer) clearInterval(huntPollTimer)
+  huntPollTimer = null
+  huntPollBusy = false
+}
+
+function syncHuntPolling(): void {
+  if (activeModule !== 'hunt' || !accounts) {
+    stopHuntPolling()
+    return
+  }
+  if (!huntPollTimer) {
+    void refreshHuntProfiles()
+    huntPollTimer = setInterval(() => void refreshHuntProfiles(), HUNT_AUTO_REFRESH_MS)
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('gridium2:get-snapshot', () => currentSnapshot())
   ipcMain.handle('gridium2:set-layout', (_event, next: LayoutMode) => {
@@ -70,7 +102,10 @@ function registerIpc(): void {
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
     if (!['accounts', 'hunt'].includes(next)) return
-    activeModule = next; applyLayout(); publish()
+    activeModule = next
+    applyLayout()
+    syncHuntPolling()
+    publish()
   })
   ipcMain.handle('gridium2:set-account-zoom', (_event, id: AccountId, zoomPercent: number) => {
     if (![1, 2, 3, 4].includes(id) || !Number.isFinite(zoomPercent)) return
@@ -78,11 +113,18 @@ function registerIpc(): void {
   })
   ipcMain.handle('gridium2:scan-hunt-profile', async (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return null
-    return await accounts?.scanHuntProfile(id) ?? null
+    const result = await accounts?.scanHuntProfile(id, true) ?? null
+    publish()
+    return result
   })
   ipcMain.handle('gridium2:select-account', (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return
-    selectedAccount = id; applyLayout(); publish()
+    selectedAccount = id
+    applyLayout()
+    publish()
+    if (activeModule === 'hunt') {
+      void accounts?.scanHuntProfile(id, true).then(() => publish())
+    }
   })
   ipcMain.handle('gridium2:account-command', async (_event, id: AccountId, command: AccountCommand) => {
     if (![1, 2, 3, 4].includes(id) || !['home', 'reload', 'back', 'forward'].includes(command)) return
@@ -99,7 +141,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.3 Hunt Intelligence',
+    title: 'Gridium 2 — Alpha 0.3.1 Auto Equipped Hunt',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -122,6 +164,7 @@ async function createWindow(): Promise<void> {
   mainWindow.on('show', applyLayout)
   mainWindow.on('hide', applyLayout)
   mainWindow.on('closed', () => {
+    stopHuntPolling()
     telemetry?.stop(); telemetry = null
     accounts?.destroy(); accounts = null
     mainWindow = null
@@ -131,7 +174,11 @@ async function createWindow(): Promise<void> {
   else await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
 
   mainWindow.once('ready-to-show', () => { mainWindow?.show(); applyLayout(); publish() })
-  void accounts.boot().finally(() => { applyLayout(); publish() })
+  void accounts.boot().finally(() => {
+    applyLayout()
+    syncHuntPolling()
+    publish()
+  })
 }
 
 app.whenReady().then(async () => {
@@ -139,5 +186,5 @@ app.whenReady().then(async () => {
   await createWindow()
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
-app.on('before-quit', () => { telemetry?.stop(); accounts?.destroy() })
+app.on('before-quit', () => { stopHuntPolling(); telemetry?.stop(); accounts?.destroy() })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
