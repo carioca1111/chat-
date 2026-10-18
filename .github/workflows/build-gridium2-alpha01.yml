@@ -1,0 +1,57 @@
+name: Build Gridium 2 Alpha 0.1 Core
+
+on:
+  push:
+    branches:
+      - gridium2-alpha0.1-core
+    paths:
+      - 'gridium2/**'
+      - '.github/workflows/build-gridium2-alpha01.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: gridium2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build Electron app
+        run: npm run build
+
+      - name: Build Windows installer
+        run: npx electron-builder --win nsis --x64
+
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.1-Setup.exe" -Recurse | Select-Object -First 1
+          if (-not $installer) { throw "Installer not found" }
+          Write-Host "Installer: $($installer.FullName)"
+          Get-FileHash $installer.FullName -Algorithm SHA256
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-2-Alpha-0.1-Core-Windows
+          path: gridium2/release/Gridium-2-Alpha-0.1-Setup.exe
+          if-no-files-found: error
+          retention-days: 90
