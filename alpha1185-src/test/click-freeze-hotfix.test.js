@@ -14,11 +14,11 @@ test('account focus IPC is deferred instead of reconfiguring four webviews inlin
 });
 
 test('performance application is cached and CSS churn only happens when visual reduction changes',()=>{
-  const src=read('main.js');assert.match(src,/performanceApplied=new Map\(\)/);assert.match(src,/performanceApplyQueues=Array\.from\(\{length:4\}/);const body=between(src,'async function applyGuestPerformance','function queueGuestPerformance');assert.match(body,/sameGuestPerformance/);assert.match(body,/prev\.reduceVisuals!==next\.reduceVisuals/);assert.match(body,/prev\.zoom!==next\.zoom/);assert.doesNotMatch(body,/setFrameRate/);
+  const src=read('main.js');assert.match(src,/performanceApplied=new Map\(\)/);assert.match(src,/performanceApplyQueues=Array\.from\(\{length:4\}/);const body=between(src,'async function applyGuestPerformance','function queueGuestPerformance');assert.match(body,/sameGuestPerformance/);assert.match(body,/prev\.reduceVisuals!==next\.reduceVisuals/);assert.match(body,/prev\.zoom!==next\.zoom/);assert.doesNotMatch(body,/\.setFrameRate\s*\(/);
 });
 
 test('normal account webviews do not use the offscreen-only Electron frame-rate setter',()=>{
-  const src=read('main.js'),body=between(src,'async function applyGuestPerformance','function queueGuestPerformance');assert.doesNotMatch(body,/\.setFrameRate\(/);assert.match(body,/wc\.setBackgroundThrottling\(next\.backgroundThrottling\)/);assert.match(body,/wc\.insertCSS/);
+  const src=read('main.js'),body=between(src,'async function applyGuestPerformance','function queueGuestPerformance');assert.doesNotMatch(body,/\.setFrameRate\s*\(/);assert.match(body,/wc\.setBackgroundThrottling\(next\.backgroundThrottling\)/);assert.match(body,/wc\.insertCSS/);
 });
 
 test('2x2 grid keeps a stable visual policy while selected account changes',()=>{
