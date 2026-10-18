@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
-import { resolve } from 'node:path'
+import { HUNT_DATA_P1 } from '../src/renderer/src/hunt-data-p1'
+import { HUNT_DATA_P2 } from '../src/renderer/src/hunt-data-p2'
+import { HUNT_DATA_P3 } from '../src/renderer/src/hunt-data-p3'
+import { HUNT_DATA_P4 } from '../src/renderer/src/hunt-data-p4'
 
 describe('Hunt current-server dataset', () => {
-  it('contains a valid gzip payload with a broad hunt roster', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/renderer/src/hunt-data.ts'), 'utf8')
-    const match = source.match(/GZIP_BASE64 = `([^`]*)`/s)
-    expect(match).not.toBeNull()
-    const decoded = gunzipSync(Buffer.from(match![1], 'base64')).toString('utf8')
-    const rows = JSON.parse(decoded) as unknown[]
-    expect(rows.length).toBeGreaterThan(1000)
+  it('contains the verified current-server hunt roster', () => {
+    const payload = HUNT_DATA_P1 + HUNT_DATA_P2 + HUNT_DATA_P3 + HUNT_DATA_P4
+    const decoded = gunzipSync(Buffer.from(payload, 'base64')).toString('utf8')
+    const rows = JSON.parse(decoded) as Array<[number, string]>
+    expect(rows).toHaveLength(1052)
+    expect(rows.some((row) => row[0] === 1 && row[1] === 'Bulbasaur')).toBe(true)
+    expect(rows.some((row) => row[0] === 6 && row[1] === 'Charizard')).toBe(true)
   })
 })
