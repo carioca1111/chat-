@@ -15,10 +15,11 @@ import type {
 import type { Rect } from './layout'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
 import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
-import { parseHuntPageText } from './hunt-scan'
+import { HUNT_PROFILE_SCAN_SCRIPT, parseHuntPageText } from './hunt-scan'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
+const HUNT_SCAN_MIN_INTERVAL_MS = 3500
 
 interface AccountSlot {
   id: AccountId
@@ -35,6 +36,9 @@ interface AccountSlot {
   ecoCssKey: string | null
   visualUpdateRunning: boolean
   zoomPercent: number
+  huntProfile: HuntProfileScan | null
+  huntScanAt: number
+  huntScanPromise: Promise<HuntProfileScan | null> | null
 }
 
 export class AccountRuntime {
@@ -69,7 +73,8 @@ export class AccountRuntime {
       canGoForward: account.view.webContents.navigationHistory.canGoForward(),
       attached: account.attached,
       visualMode: account.desiredVisualMode,
-      zoomPercent: account.zoomPercent
+      zoomPercent: account.zoomPercent,
+      huntProfile: account.huntProfile ? { ...account.huntProfile } : null
     }))
   }
 
@@ -126,17 +131,42 @@ export class AccountRuntime {
     this.onChanged()
   }
 
-  async scanHuntProfile(accountId: AccountId): Promise<HuntProfileScan | null> {
+  async scanHuntProfile(accountId: AccountId, force = false): Promise<HuntProfileScan | null> {
     const account = this.accounts.get(accountId)
-    if (!account || account.view.webContents.isDestroyed() || account.status !== 'ready') return null
-    try {
-      const text = await account.view.webContents.executeJavaScript(
-        `(() => String(document.body?.innerText || '').slice(0, 50000))()`,
-        true
-      )
-      return parseHuntPageText(String(text || ''))
-    } catch {
-      return null
+    if (!account || this.disposed || account.view.webContents.isDestroyed()) return null
+    if (account.status !== 'ready') return account.huntProfile
+
+    const now = Date.now()
+    if (!force && account.huntProfile && now - account.huntScanAt < HUNT_SCAN_MIN_INTERVAL_MS) {
+      return account.huntProfile
+    }
+    if (account.huntScanPromise) return account.huntScanPromise
+
+    const previousSignature = huntSignature(account.huntProfile)
+    account.huntScanAt = now
+    account.huntScanPromise = (async () => {
+      try {
+        const text = await account.view.webContents.executeJavaScript(HUNT_PROFILE_SCAN_SCRIPT, true)
+        const scan = parseHuntPageText(String(text || ''))
+        if (!scan) return account.huntProfile
+        account.huntProfile = scan
+        if (huntSignature(scan) !== previousSignature) this.onChanged()
+        return scan
+      } catch {
+        return account.huntProfile
+      } finally {
+        account.huntScanPromise = null
+      }
+    })()
+
+    return account.huntScanPromise
+  }
+
+  async refreshHuntProfiles(): Promise<void> {
+    for (const id of [1, 2, 3, 4] as AccountId[]) {
+      if (this.disposed) return
+      await this.scanHuntProfile(id, false)
+      await delay(60)
     }
   }
 
@@ -171,6 +201,7 @@ export class AccountRuntime {
     this.authWindows.clear()
 
     for (const account of this.accounts.values()) {
+      account.huntScanPromise = null
       if (account.attached) {
         try {
           this.window.contentView.removeChildView(account.view)
@@ -215,7 +246,10 @@ export class AccountRuntime {
       appliedVisualMode: 'full',
       ecoCssKey: null,
       visualUpdateRunning: false,
-      zoomPercent
+      zoomPercent,
+      huntProfile: null,
+      huntScanAt: 0,
+      huntScanPromise: null
     }
 
     view.webContents.setWindowOpenHandler(({ url }) => {
@@ -226,6 +260,8 @@ export class AccountRuntime {
 
     view.webContents.on('did-start-loading', () => {
       this.clearInjectedVisualStyle(account)
+      account.huntProfile = null
+      account.huntScanAt = 0
       this.patchAccount(account, { status: 'loading' })
     })
     view.webContents.on('did-stop-loading', () => {
@@ -368,3 +404,19 @@ export class AccountRuntime {
     try { return POKEIDLE_ORIGINS.has(new URL(url).origin) } catch { return false }
   }
 }
+
+function huntSignature(scan: HuntProfileScan | null): string {
+  if (!scan) return ''
+  return JSON.stringify([
+    scan.trainerLevel ?? null,
+    scan.speciesName ?? null,
+    scan.pokemonLevel ?? null,
+    scan.quality ?? null,
+    scan.potency ?? null,
+    scan.ivTotal ?? null,
+    scan.ivAverage ?? null,
+    scan.shiny ?? null
+  ])
+}
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
