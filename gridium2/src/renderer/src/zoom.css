@@ -1,0 +1,115 @@
+.account-block {
+  display: grid;
+  gap: 3px;
+}
+
+.account-card {
+  min-height: 65px;
+}
+
+.account-zoom {
+  height: 27px;
+  display: grid;
+  grid-template-columns: 1fr 28px 52px 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border: 2px solid var(--line-deep);
+  border-radius: 6px;
+  background: #45242d;
+  box-shadow: inset 0 0 0 1px #7b4145;
+}
+
+.account-block.selected .account-zoom {
+  border-color: #4a1830;
+  box-shadow: inset 0 0 0 1px var(--purple-light);
+}
+
+.zoom-label {
+  color: #d7aaa4;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .05em;
+}
+
+.zoom-button,
+.zoom-value {
+  height: 20px;
+  border: 2px solid #27151d;
+  border-radius: 4px;
+  background: linear-gradient(#6c3342, #48232f);
+  color: white;
+  box-shadow: inset 0 0 0 1px #99505b;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 1px 1px 0 #25121a;
+}
+
+.zoom-button:hover:not(:disabled),
+.zoom-value:hover {
+  filter: brightness(1.15);
+}
+
+.zoom-button:active:not(:disabled),
+.zoom-value:active {
+  transform: translateY(1px);
+}
+
+.zoom-button:disabled {
+  opacity: .34;
+  cursor: default;
+}
+
+.zoom-value {
+  color: #fff7d5;
+  background: linear-gradient(#bf5bd2, #8e329f);
+  box-shadow: inset 0 0 0 1px #e2a1e8;
+  font-size: 9px;
+}
+
+.selected-zoom {
+  height: 40px;
+  min-width: 58px;
+  padding: 4px 7px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #431b28;
+  border-radius: 6px;
+  background: #4f2730;
+  box-shadow: inset 0 0 0 1px #8f4a51;
+  line-height: 1;
+}
+
+.selected-zoom span {
+  color: #d5a8a3;
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: .06em;
+}
+
+.selected-zoom b {
+  color: var(--gold);
+  font-size: 10px;
+}
+
+.ribbon-zoom {
+  margin-left: auto;
+  color: var(--gold);
+  font-weight: 950;
+}
+
+.ribbon-status {
+  margin-left: 0;
+}
+
+@media (max-height: 820px) {
+  .account-card { min-height: 58px; }
+  .account-zoom { height: 24px; }
+  .perf-card { margin-top: 6px; }
+}
+
+@media (max-width: 1280px) {
+  .selected-zoom { display: none; }
+}
