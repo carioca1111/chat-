@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.2",
+  "version": "2.0.0-alpha.2.1",
   "private": true,
-  "description": "Gridium 2 Alpha 0.2 - PokeIdle-inspired desktop UI on the optimized multi-account Core runtime",
+  "description": "Gridium 2 Alpha 0.2.1 - PokeIdle-inspired UI with persistent individual zoom for all four accounts",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
