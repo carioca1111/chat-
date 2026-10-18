@@ -7,6 +7,19 @@ export type AccountCommand = 'home' | 'reload' | 'back' | 'forward'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 
+export interface HuntProfileScan {
+  trainerLevel?: number
+  speciesName?: string
+  pokemonLevel?: number
+  quality?: number
+  potency?: 1 | 2 | 3 | 4 | 5
+  ivTotal?: number
+  ivAverage?: number
+  shiny?: boolean
+  source: 'page'
+  detectedAt: number
+}
+
 export interface AccountSnapshot {
   id: AccountId
   name: string
@@ -18,17 +31,7 @@ export interface AccountSnapshot {
   attached: boolean
   visualMode: VisualMode
   zoomPercent: number
-}
-
-export interface HuntProfileScan {
-  trainerLevel?: number
-  speciesName?: string
-  pokemonLevel?: number
-  quality?: number
-  potency?: 1 | 2 | 3 | 4 | 5
-  ivTotal?: number
-  source: 'page'
-  detectedAt: number
+  huntProfile: HuntProfileScan | null
 }
 
 export interface TelemetrySnapshot {
