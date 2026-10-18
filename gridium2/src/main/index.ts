@@ -1,6 +1,12 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
-import type { AccountCommand, AccountId, GridiumSnapshot, LayoutMode } from '../shared/contracts'
+import type {
+  AccountCommand,
+  AccountId,
+  GridiumSnapshot,
+  LayoutMode,
+  PerformanceMode
+} from '../shared/contracts'
 import { AccountRuntime } from './account-runtime'
 import { computeLayout } from './layout'
 import { TelemetryService } from './telemetry'
@@ -10,11 +16,13 @@ let accounts: AccountRuntime | null = null
 let telemetry: TelemetryService | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
+let performanceMode: PerformanceMode = 'auto'
 
 function currentSnapshot(): GridiumSnapshot {
   return {
     layout,
     selectedAccount,
+    performanceMode,
     accounts: accounts?.snapshots() ?? [],
     telemetry: telemetry?.getSnapshot() ?? {
       cpuPercent: 0,
@@ -32,11 +40,21 @@ function publish(): void {
   mainWindow.webContents.send('gridium2:snapshot', currentSnapshot())
 }
 
+function hostIsActive(): boolean {
+  return Boolean(
+    mainWindow &&
+      !mainWindow.isDestroyed() &&
+      mainWindow.isVisible() &&
+      !mainWindow.isMinimized() &&
+      mainWindow.isFocused()
+  )
+}
+
 function applyLayout(): void {
   if (!mainWindow || !accounts) return
   const [width, height] = mainWindow.getContentSize()
   const result = computeLayout({ width, height }, layout, selectedAccount)
-  accounts.applyLayout(result.bounds, result.visible)
+  accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive())
 }
 
 function registerIpc(): void {
@@ -44,6 +62,12 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:set-layout', (_event, next: LayoutMode) => {
     if (![1, 2, 4].includes(next)) return
     layout = next
+    applyLayout()
+    publish()
+  })
+  ipcMain.handle('gridium2:set-performance-mode', (_event, next: PerformanceMode) => {
+    if (!['auto', 'full'].includes(next)) return
+    performanceMode = next
     applyLayout()
     publish()
   })
@@ -70,7 +94,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#090b14',
-    title: 'Gridium 2 — Alpha 0.1 Core',
+    title: 'Gridium 2 — Alpha 0.1.2 Performance',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -86,6 +110,12 @@ async function createWindow(): Promise<void> {
   mainWindow.on('resize', applyLayout)
   mainWindow.on('maximize', applyLayout)
   mainWindow.on('unmaximize', applyLayout)
+  mainWindow.on('focus', applyLayout)
+  mainWindow.on('blur', applyLayout)
+  mainWindow.on('minimize', applyLayout)
+  mainWindow.on('restore', applyLayout)
+  mainWindow.on('show', applyLayout)
+  mainWindow.on('hide', applyLayout)
   mainWindow.on('closed', () => {
     telemetry?.stop()
     telemetry = null
