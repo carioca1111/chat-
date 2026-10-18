@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AccountCommand,
   AccountId,
+  AppModule,
   GridiumApi,
   GridiumSnapshot,
   LayoutMode,
@@ -12,6 +13,7 @@ const api: GridiumApi = {
   getSnapshot: () => ipcRenderer.invoke('gridium2:get-snapshot'),
   setLayout: (layout: LayoutMode) => ipcRenderer.invoke('gridium2:set-layout', layout),
   setPerformanceMode: (mode: PerformanceMode) => ipcRenderer.invoke('gridium2:set-performance-mode', mode),
+  setModule: (module: AppModule) => ipcRenderer.invoke('gridium2:set-module', module),
   setAccountZoom: (accountId: AccountId, zoomPercent: number) =>
     ipcRenderer.invoke('gridium2:set-account-zoom', accountId, zoomPercent),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
