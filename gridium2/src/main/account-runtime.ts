@@ -2,6 +2,8 @@ import { BrowserWindow, session, WebContentsView } from 'electron'
 import type { Session } from 'electron'
 import type { AccountCommand, AccountId, AccountSnapshot, AccountStatus } from '../shared/contracts'
 import type { Rect } from './layout'
+import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
+import type { PerformanceMode, VisualMode } from './performance-policy'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
@@ -13,8 +15,13 @@ interface AccountSlot {
   session: Session
   view: WebContentsView
   attached: boolean
+  visible: boolean
   status: AccountStatus
   title: string
+  desiredVisualMode: VisualMode
+  appliedVisualMode: VisualMode
+  ecoCssKey: string | null
+  visualUpdateRunning: boolean
 }
 
 export class AccountRuntime {
@@ -42,16 +49,25 @@ export class AccountRuntime {
       title: account.title,
       canGoBack: account.view.webContents.navigationHistory.canGoBack(),
       canGoForward: account.view.webContents.navigationHistory.canGoForward(),
-      attached: account.attached
+      attached: account.attached,
+      visualMode: account.desiredVisualMode
     }))
   }
 
-  applyLayout(bounds: Partial<Record<AccountId, Rect>>, visible: AccountId[]): void {
+  applyLayout(
+    bounds: Partial<Record<AccountId, Rect>>,
+    visible: AccountId[],
+    selectedAccount: AccountId,
+    performanceMode: PerformanceMode,
+    hostActive: boolean
+  ): void {
     if (this.disposed) return
     const visibleSet = new Set(visible)
 
     for (const account of this.accounts.values()) {
       const shouldAttach = visibleSet.has(account.id)
+      account.visible = shouldAttach
+
       if (shouldAttach && !account.attached) {
         this.window.contentView.addChildView(account.view)
         account.attached = true
@@ -62,6 +78,17 @@ export class AccountRuntime {
 
       const rect = bounds[account.id]
       if (shouldAttach && rect) account.view.setBounds(rect)
+
+      this.requestVisualMode(
+        account,
+        resolveVisualMode({
+          accountId: account.id,
+          selectedAccount,
+          visible: shouldAttach,
+          hostActive,
+          performanceMode
+        })
+      )
     }
 
     this.onChanged()
@@ -114,9 +141,8 @@ export class AccountRuntime {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
 
-    // Do not spoof Chrome here. Turnstile compares several browser signals and a
-    // hand-written UA can disagree with Chromium client hints / runtime features.
-    // Keeping Electron/Chromium's native UA makes the browser identity consistent.
+    // Keep Electron/Chromium's native identity so Turnstile sees consistent
+    // browser signals. Do not spoof a Chrome UA here.
     const view = new WebContentsView({
       webPreferences: {
         session: accountSession,
@@ -137,8 +163,13 @@ export class AccountRuntime {
       session: accountSession,
       view,
       attached: false,
+      visible: false,
       status: 'booting',
-      title: 'PokeIdle.io'
+      title: 'PokeIdle.io',
+      desiredVisualMode: 'eco',
+      appliedVisualMode: 'full',
+      ecoCssKey: null,
+      visualUpdateRunning: false
     }
 
     // Let Chromium create the popup itself instead of cancelling window.open and
@@ -153,8 +184,14 @@ export class AccountRuntime {
     })
     view.webContents.on('did-create-window', (childWindow) => this.trackAuthWindow(account, childWindow))
 
-    view.webContents.on('did-start-loading', () => this.patchAccount(account, { status: 'loading' }))
-    view.webContents.on('did-stop-loading', () => this.patchAccount(account, { status: 'ready' }))
+    view.webContents.on('did-start-loading', () => {
+      this.clearInjectedVisualStyle(account)
+      this.patchAccount(account, { status: 'loading' })
+    })
+    view.webContents.on('did-stop-loading', () => {
+      this.patchAccount(account, { status: 'ready' })
+      this.requestVisualMode(account, account.desiredVisualMode)
+    })
     view.webContents.on('did-fail-load', (_event, code) => {
       if (code !== -3) this.patchAccount(account, { status: 'offline' })
     })
@@ -178,6 +215,64 @@ export class AccountRuntime {
   private patchAccount(account: AccountSlot, patch: Partial<Pick<AccountSlot, 'status' | 'title'>>): void {
     Object.assign(account, patch)
     this.onChanged()
+  }
+
+  private requestVisualMode(account: AccountSlot, mode: VisualMode): void {
+    account.desiredVisualMode = mode
+    void this.reconcileVisualMode(account)
+  }
+
+  private async reconcileVisualMode(account: AccountSlot): Promise<void> {
+    if (account.visualUpdateRunning || this.disposed || account.view.webContents.isDestroyed()) return
+    account.visualUpdateRunning = true
+
+    try {
+      const wc = account.view.webContents
+      while (!this.disposed && !wc.isDestroyed() && account.appliedVisualMode !== account.desiredVisualMode) {
+        const target = account.desiredVisualMode
+
+        if (account.ecoCssKey) {
+          const key = account.ecoCssKey
+          account.ecoCssKey = null
+          try {
+            await wc.removeInsertedCSS(key)
+          } catch {
+            // Navigation may have already discarded the previous stylesheet.
+          }
+        }
+
+        if (target === 'eco') {
+          try {
+            const key = await wc.insertCSS(ECO_VISUAL_CSS, { cssOrigin: 'user' })
+            if (this.disposed || wc.isDestroyed()) return
+            account.ecoCssKey = key
+          } catch {
+            // Keep the account functional even if Chromium rejects CSS injection.
+          }
+        }
+
+        account.appliedVisualMode = target
+      }
+    } finally {
+      account.visualUpdateRunning = false
+      if (
+        !this.disposed &&
+        !account.view.webContents.isDestroyed() &&
+        account.appliedVisualMode !== account.desiredVisualMode
+      ) {
+        void this.reconcileVisualMode(account)
+      }
+    }
+  }
+
+  private clearInjectedVisualStyle(account: AccountSlot): void {
+    const wc = account.view.webContents
+    const key = account.ecoCssKey
+    account.ecoCssKey = null
+    account.appliedVisualMode = 'full'
+    if (key && !wc.isDestroyed()) {
+      void wc.removeInsertedCSS(key).catch(() => undefined)
+    }
   }
 
   private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
