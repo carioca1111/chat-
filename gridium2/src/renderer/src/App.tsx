@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AccountCommand, AccountId, GridiumSnapshot, LayoutMode } from '../../shared/contracts'
+import type {
+  AccountCommand,
+  AccountId,
+  GridiumSnapshot,
+  LayoutMode,
+  PerformanceMode
+} from '../../shared/contracts'
 
 const initial: GridiumSnapshot = {
   layout: 4,
   selectedAccount: 1,
+  performanceMode: 'auto',
   accounts: [],
   telemetry: {
     cpuPercent: 0,
@@ -42,6 +49,7 @@ export function App() {
   )
 
   const setLayout = (mode: LayoutMode) => void window.gridium2.setLayout(mode)
+  const setPerformanceMode = (mode: PerformanceMode) => void window.gridium2.setPerformanceMode(mode)
   const select = (id: AccountId) => void window.gridium2.selectAccount(id)
   const command = (id: AccountId, action: AccountCommand) => void window.gridium2.accountCommand(id, action)
 
@@ -52,7 +60,7 @@ export function App() {
           <div class="brand-mark">G2</div>
           <div>
             <strong>Gridium 2</strong>
-            <span>Alpha 0.1 · Core</span>
+            <span>Alpha 0.1.2 · Performance</span>
           </div>
         </div>
 
@@ -70,7 +78,10 @@ export function App() {
                 <span class={`status-dot ${account.status}`} />
                 <span class="account-main">
                   <b>{account.name}</b>
-                  <small>{statusLabel[account.status]}</small>
+                  <small>
+                    {statusLabel[account.status]}
+                    {account.visualMode === 'eco' ? ' · ECO' : ''}
+                  </small>
                 </span>
                 <span class="account-number">0{account.id}</span>
               </button>
@@ -89,7 +100,7 @@ export function App() {
         </div>
 
         <div class="sidebar-footer">
-          <span class="pulse" /> Arquitetura limpa · sem polling de UI
+          <span class="pulse" /> Auto Eco visual {snapshot.performanceMode === 'auto' ? 'ativo' : 'desligado'}
         </div>
       </aside>
 
@@ -107,6 +118,23 @@ export function App() {
           ))}
         </div>
 
+        <div class="layout-picker performance-picker" aria-label="Modo de desempenho">
+          <button
+            class={snapshot.performanceMode === 'auto' ? 'active' : ''}
+            onClick={() => setPerformanceMode('auto')}
+            title="Mantém a conta selecionada em qualidade total e reduz apenas efeitos visuais das demais"
+          >
+            ⚡ Auto Eco
+          </button>
+          <button
+            class={snapshot.performanceMode === 'full' ? 'active' : ''}
+            onClick={() => setPerformanceMode('full')}
+            title="Desativa a otimização visual do Gridium"
+          >
+            Qualidade
+          </button>
+        </div>
+
         <div class="account-controls">
           <Control label="←" title="Voltar" onClick={() => command(snapshot.selectedAccount, 'back')} />
           <Control label="→" title="Avançar" onClick={() => command(snapshot.selectedAccount, 'forward')} />
@@ -122,6 +150,7 @@ export function App() {
       <footer class="statusbar">
         <span><i class="status-ok" /> Gridium Core ativo</span>
         <span>Conta selecionada: {snapshot.selectedAccount}</span>
+        <span>Modo: {snapshot.performanceMode === 'auto' ? 'Auto Eco' : 'Qualidade total'}</span>
         <span>Event loop máx.: {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span>
       </footer>
     </div>
