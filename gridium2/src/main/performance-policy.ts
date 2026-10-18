@@ -1,7 +1,4 @@
-import type { AccountId } from '../shared/contracts'
-
-export type PerformanceMode = 'auto' | 'full'
-export type VisualMode = 'full' | 'eco'
+import type { AccountId, PerformanceMode, VisualMode } from '../shared/contracts'
 
 export interface VisualPolicyInput {
   accountId: AccountId
