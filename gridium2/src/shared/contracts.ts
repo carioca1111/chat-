@@ -20,6 +20,17 @@ export interface AccountSnapshot {
   zoomPercent: number
 }
 
+export interface HuntProfileScan {
+  trainerLevel?: number
+  speciesName?: string
+  pokemonLevel?: number
+  quality?: number
+  potency?: 1 | 2 | 3 | 4 | 5
+  ivTotal?: number
+  source: 'page'
+  detectedAt: number
+}
+
 export interface TelemetrySnapshot {
   cpuPercent: number
   memoryMB: number
@@ -44,6 +55,7 @@ export interface GridiumApi {
   setPerformanceMode: (mode: PerformanceMode) => Promise<void>
   setModule: (module: AppModule) => Promise<void>
   setAccountZoom: (accountId: AccountId, zoomPercent: number) => Promise<void>
+  scanHuntProfile: (accountId: AccountId) => Promise<HuntProfileScan | null>
   selectAccount: (accountId: AccountId) => Promise<void>
   accountCommand: (accountId: AccountId, command: AccountCommand) => Promise<void>
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => () => void
