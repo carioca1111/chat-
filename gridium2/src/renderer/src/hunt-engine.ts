@@ -15,7 +15,7 @@ export interface HuntProfile {
   ivSpDef: number
   ivHp: number
   types: string[]
-  baseStats: number[]
+  baseStats?: number[]
 }
 
 export interface HuntRecommendation {
@@ -35,11 +35,7 @@ export interface HuntRecommendation {
   confidence: 'MODELADO'
 }
 
-export interface RouteStage {
-  fromLevel: number
-  toLevel: number | null
-  hunt: HuntRecommendation
-}
+export interface RouteStage { fromLevel: number; toLevel: number | null; hunt: HuntRecommendation }
 
 const REGION_UNLOCK: Record<string, number> = { Kanto:1, Outland:150, Johto:200, Hoenn:500, Sinnoh:1000, Unova:5000, Kalos:10000, Galar:25000, Paldea:40000, Alola:75000 }
 const POTENCY = [0, 1, 1.05, 1.1, 1.25, 2]
@@ -50,45 +46,44 @@ const TYPE: Record<string, Partial<Record<string, number>>> = {
 const clamp = (n:number,lo:number,hi:number):number => Math.min(hi,Math.max(lo,n))
 const sane = (n:number,fallback:number):number => Number.isFinite(n) ? n : fallback
 
-export function xpPerKill(level:number):number {
-  const l=Math.max(1,Math.floor(level))
-  return Math.round(.6*l*l+8)
-}
+export function xpPerKill(level:number):number { const l=Math.max(1,Math.floor(level)); return Math.round(.6*l*l+8) }
 export function typeEffectiveness(attack:string, defenders:string[]):number { return defenders.reduce((v,t)=>v*(TYPE[attack]?.[t]??1),1) }
 function bestMatchup(playerTypes:string[], enemyTypes:string[]):number { return playerTypes.length ? Math.max(...playerTypes.map((t)=>typeEffectiveness(t,enemyTypes))) : 1 }
 function enemyPressure(enemy:HuntSpecies, playerTypes:string[]):number {
   const [,,enemyTypes,stats,level]=enemy
   const offense=Math.max(stats[1],stats[3])*Math.max(1,level)/100
-  const effectiveness=enemyTypes.length ? Math.max(...enemyTypes.map((t)=>typeEffectiveness(t,playerTypes))) : 1
+  const effectiveness=enemyTypes.length?Math.max(...enemyTypes.map((t)=>typeEffectiveness(t,playerTypes))):1
   return offense*effectiveness*1.8
 }
 function playerPower(profile:HuntProfile, matchup:number):number {
   const q=clamp(sane(profile.quality,1),.8,2)
-  const baseAtk=sane(profile.baseStats[1],100)
-  const baseSpAtk=sane(profile.baseStats[3],100)
-  const atk=(baseAtk+2*clamp(profile.ivAtk,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
-  const spa=(baseSpAtk+2*clamp(profile.ivSpAtk,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
+  const stats=profile.baseStats??[100,100,100,100,100,100]
+  const atk=(sane(stats[1],100)+2*clamp(profile.ivAtk,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
+  const spa=(sane(stats[3],100)+2*clamp(profile.ivSpAtk,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
   const birth=POTENCY[profile.potency]*(profile.shiny?3:1)
   return Math.max(atk,spa)*birth*1.5*matchup
 }
 function durability(profile:HuntProfile):number {
   const q=clamp(sane(profile.quality,1),.8,2)
-  const hp=(sane(profile.baseStats[0],100)+2*clamp(profile.ivHp,1,32))*profile.pokemonLevel/100*Math.pow(q,.95)
-  const def=(sane(profile.baseStats[2],100)+2*clamp(profile.ivDef,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
-  const spDef=(sane(profile.baseStats[4],100)+2*clamp(profile.ivSpDef,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
+  const stats=profile.baseStats??[100,100,100,100,100,100]
+  const hp=(sane(stats[0],100)+2*clamp(profile.ivHp,1,32))*profile.pokemonLevel/100*Math.pow(q,.95)
+  const def=(sane(stats[2],100)+2*clamp(profile.ivDef,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
+  const spDef=(sane(stats[4],100)+2*clamp(profile.ivSpDef,1,32))*profile.pokemonLevel/100*Math.pow(q,.8)
   return Math.max(1,hp*(1+Math.max(def,spDef)/180))
 }
 
 export function rankHunts(data:HuntSpecies[], profile:HuntProfile, objective:HuntObjective='route'):HuntRecommendation[] {
-  const unlocked=data.filter((row)=>row[4]<=profile.trainerLevel&&(REGION_UNLOCK[row[5]]??1)<=profile.trainerLevel)
-  const tank=durability(profile)
+  const playerStats=profile.baseStats??data.find((row)=>row[0]===profile.speciesId)?.[3]??[100,100,100,100,100,100]
+  const resolved={...profile,baseStats:playerStats}
+  const unlocked=data.filter((row)=>row[4]<=resolved.trainerLevel&&(REGION_UNLOCK[row[5]]??1)<=resolved.trainerLevel)
+  const tank=durability(resolved)
   const rows=unlocked.map((enemy):HuntRecommendation=>{
     const [id,name,types,stats,level,region,explicitArea]=enemy
-    const matchup=bestMatchup(profile.types,types)
-    const power=playerPower(profile,matchup)
+    const matchup=bestMatchup(resolved.types,types)
+    const power=playerPower(resolved,matchup)
     const enemyHp=Math.max(1,(stats[0]+32)*level/100*5)
     const ttk=clamp(enemyHp/Math.max(1,power),.18,45)
-    const incoming=enemyPressure(enemy,profile.types)
+    const incoming=enemyPressure(enemy,resolved.types)
     const timeToDanger=incoming>0?tank/incoming*1.4:99
     const safety=clamp(Math.round((timeToDanger/Math.max(.3,ttk))*42),0,100)
     const cycle=Math.max(.8,5.2+ttk)
@@ -96,8 +91,8 @@ export function rankHunts(data:HuntSpecies[], profile:HuntProfile, objective:Hun
     const perKill=xpPerKill(level)
     const xpHour=killsPerHour*perKill
     const safeFactor=.35+.65*(safety/100)
-    const score=objective==='safe' ? safety*1_000_000+xpHour : objective==='xp' ? xpHour*safeFactor : xpHour*safeFactor*(.8+.2*clamp(matchup,.25,2))
-    return { id,name,types,region,area:explicitArea||name,level,killsPerHour,xpPerKill:perKill,trainerXpPerHour:xpHour,pokemonXpPerHour:xpHour,safety,matchup,score,confidence:'MODELADO' }
+    const score=objective==='safe'?safety*1_000_000+xpHour:objective==='xp'?xpHour*safeFactor:xpHour*safeFactor*(.8+.2*clamp(matchup,.25,2))
+    return {id,name,types,region,area:explicitArea||name,level,killsPerHour,xpPerKill:perKill,trainerXpPerHour:xpHour,pokemonXpPerHour:xpHour,safety,matchup,score,confidence:'MODELADO'}
   })
   return rows.sort((a,b)=>b.score-a.score||b.trainerXpPerHour-a.trainerXpPerHour||b.level-a.level)
 }
@@ -109,11 +104,11 @@ export function buildRoute(data:HuntSpecies[], profile:HuntProfile, maxStages=6)
   let lastId=-1
   for(const trainerLevel of checkpoints){
     const best=rankHunts(data,{...profile,trainerLevel},'route')[0]
-    if(!best||best.id===lastId) continue
-    if(stages.length) stages[stages.length-1].toLevel=trainerLevel-1
+    if(!best||best.id===lastId)continue
+    if(stages.length)stages[stages.length-1].toLevel=trainerLevel-1
     stages.push({fromLevel:trainerLevel,toLevel:null,hunt:best})
     lastId=best.id
-    if(stages.length>=maxStages) break
+    if(stages.length>=maxStages)break
   }
   return stages
 }
