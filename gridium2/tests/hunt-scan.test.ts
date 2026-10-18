@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseHuntPageText } from '../src/main/hunt-scan'
+import { HUNT_PROFILE_SCAN_SCRIPT, parseHuntPageText } from '../src/main/hunt-scan'
 
 describe('Hunt profile page scan', () => {
   it('extracts trainer and active pokemon fields from visible game text', () => {
@@ -24,6 +24,28 @@ describe('Hunt profile page scan', () => {
     })
   })
 
+  it('extracts equipped shiny, average IV and labelled fields', () => {
+    const scan = parseHuntPageText(`
+      Treinador Nv 500
+      EQUIPADO
+      TEXT: Gengar Lv 212
+      QUALITY: 1,72
+      POTENCY: P4
+      IV MÉDIO: 28,5
+      SHINY
+    `)
+
+    expect(scan).toMatchObject({
+      trainerLevel: 500,
+      speciesName: 'Gengar',
+      pokemonLevel: 212,
+      quality: 1.72,
+      potency: 4,
+      ivAverage: 28.5,
+      shiny: true
+    })
+  })
+
   it('returns null instead of inventing data for an empty page', () => {
     expect(parseHuntPageText('')).toBeNull()
   })
@@ -34,5 +56,11 @@ describe('Hunt profile page scan', () => {
     expect(scan?.speciesName).toBe('Ivysaur')
     expect(scan?.pokemonLevel).toBe(83)
     expect(scan?.quality).toBeUndefined()
+  })
+
+  it('keeps the injected DOM collector bounded and targeted', () => {
+    expect(HUNT_PROFILE_SCAN_SCRIPT).toContain('count++ >= 120')
+    expect(HUNT_PROFILE_SCAN_SCRIPT).toContain('slice(0, 60000)')
+    expect(HUNT_PROFILE_SCAN_SCRIPT).not.toContain('localStorage')
   })
 })
