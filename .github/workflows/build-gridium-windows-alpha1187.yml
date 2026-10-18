@@ -68,6 +68,12 @@ jobs:
         run: |
           npx electron ../alpha1186-webrtc-smoke.cjs . 2>&1 | Tee-Object alpha1187-webrtc-smoke.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Synthetic main-process preparation benchmark
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          npx electron ../alpha1187-runtime-benchmark.cjs . alpha1187-runtime-benchmark.json 2>&1 | Tee-Object alpha1187-runtime-benchmark.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Synthetic sender benchmark
         working-directory: gridium-build
         shell: pwsh
@@ -102,8 +108,9 @@ jobs:
           foreach($name in @('mirror-runtime.js','mirror-publisher.js','mirror-publisher.html','accounts-workspace.js','accounts-workspace.css','sniper-runtime.js','hunt-visual.js','shiny-telemetry.js')) {
             if (-not (Test-Path "gridium-build/dist/asar-check/$name")) { throw "Missing packaged $name" }
           }
+          $index=Get-Content gridium-build/dist/asar-check/index.html -Raw
           foreach($partition in 1..4) {
-            if (-not ((Get-Content gridium-build/dist/asar-check/index.html -Raw).Contains("persist:pokeidle-account-$partition"))) { throw "Missing persistent account partition $partition" }
+            if (-not $index.Contains("persist:pokeidle-account-$partition")) { throw "Missing persistent account partition $partition" }
           }
           Get-FileHash gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.7.exe -Algorithm SHA256 | Format-List | Out-File gridium-build/alpha1187-SHA256.txt
       - uses: actions/upload-artifact@v4
@@ -114,5 +121,6 @@ jobs:
             gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.7.exe
             gridium-build/alpha1187-*.txt
             gridium-build/alpha1187-benchmark.json
+            gridium-build/alpha1187-runtime-benchmark.json
             gridium-build/alpha1184-screenshots/*.png
           if-no-files-found: warn
