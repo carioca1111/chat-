@@ -93,8 +93,8 @@ async function createWindow(): Promise<void> {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#090b14',
-    title: 'Gridium 2 — Alpha 0.1.2 Performance',
+    backgroundColor: '#a65745',
+    title: 'Gridium 2 — Alpha 0.2 PokeIdle UI',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
