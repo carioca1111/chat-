@@ -8,12 +8,14 @@ import type {
   AccountId,
   AccountSnapshot,
   AccountStatus,
+  HuntProfileScan,
   PerformanceMode,
   VisualMode
 } from '../shared/contracts'
 import type { Rect } from './layout'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
 import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
+import { parseHuntPageText } from './hunt-scan'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
@@ -124,6 +126,20 @@ export class AccountRuntime {
     this.onChanged()
   }
 
+  async scanHuntProfile(accountId: AccountId): Promise<HuntProfileScan | null> {
+    const account = this.accounts.get(accountId)
+    if (!account || account.view.webContents.isDestroyed() || account.status !== 'ready') return null
+    try {
+      const text = await account.view.webContents.executeJavaScript(
+        `(() => String(document.body?.innerText || '').slice(0, 50000))()`,
+        true
+      )
+      return parseHuntPageText(String(text || ''))
+    } catch {
+      return null
+    }
+  }
+
   async command(accountId: AccountId, command: AccountCommand): Promise<void> {
     const account = this.accounts.get(accountId)
     if (!account || account.view.webContents.isDestroyed()) return
@@ -171,8 +187,6 @@ export class AccountRuntime {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
 
-    // Keep Electron/Chromium's native identity so Turnstile sees consistent
-    // browser signals. Do not spoof a Chrome UA here.
     const view = new WebContentsView({
       webPreferences: {
         session: accountSession,
@@ -204,15 +218,9 @@ export class AccountRuntime {
       zoomPercent
     }
 
-    // Let Chromium create the popup itself instead of cancelling window.open and
-    // manually navigating a new BrowserWindow. This preserves opener state,
-    // window features and the owning account partition throughout OAuth.
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (!this.isAllowedPopupUrl(url)) return { action: 'deny' }
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: this.authWindowOptions(account)
-      }
+      return { action: 'allow', overrideBrowserWindowOptions: this.authWindowOptions(account) }
     })
     view.webContents.on('did-create-window', (childWindow) => this.trackAuthWindow(account, childWindow))
 
@@ -264,36 +272,23 @@ export class AccountRuntime {
       const wc = account.view.webContents
       while (!this.disposed && !wc.isDestroyed() && account.appliedVisualMode !== account.desiredVisualMode) {
         const target = account.desiredVisualMode
-
         if (account.ecoCssKey) {
           const key = account.ecoCssKey
           account.ecoCssKey = null
-          try {
-            await wc.removeInsertedCSS(key)
-          } catch {
-            // Navigation may have already discarded the previous stylesheet.
-          }
+          try { await wc.removeInsertedCSS(key) } catch { /* navigation discarded it */ }
         }
-
         if (target === 'eco') {
           try {
             const key = await wc.insertCSS(ECO_VISUAL_CSS, { cssOrigin: 'user' })
             if (this.disposed || wc.isDestroyed()) return
             account.ecoCssKey = key
-          } catch {
-            // Keep the account functional even if Chromium rejects CSS injection.
-          }
+          } catch { /* cosmetic optimization only */ }
         }
-
         account.appliedVisualMode = target
       }
     } finally {
       account.visualUpdateRunning = false
-      if (
-        !this.disposed &&
-        !account.view.webContents.isDestroyed() &&
-        account.appliedVisualMode !== account.desiredVisualMode
-      ) {
+      if (!this.disposed && !account.view.webContents.isDestroyed() && account.appliedVisualMode !== account.desiredVisualMode) {
         void this.reconcileVisualMode(account)
       }
     }
@@ -304,9 +299,7 @@ export class AccountRuntime {
     const key = account.ecoCssKey
     account.ecoCssKey = null
     account.appliedVisualMode = 'full'
-    if (key && !wc.isDestroyed()) {
-      void wc.removeInsertedCSS(key).catch(() => undefined)
-    }
+    if (key && !wc.isDestroyed()) void wc.removeInsertedCSS(key).catch(() => undefined)
   }
 
   private loadZoomSettings(): Partial<Record<AccountId, number>> {
@@ -318,52 +311,26 @@ export class AccountRuntime {
         if (typeof value === 'number') result[id] = normalizeAccountZoom(value)
       }
       return result
-    } catch {
-      return {}
-    }
+    } catch { return {} }
   }
 
   private persistZoomSettings(): void {
-    const payload = JSON.stringify(
-      Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.zoomPercent])),
-      null,
-      2
-    )
-
-    this.zoomWrite = this.zoomWrite
-      .catch(() => undefined)
-      .then(() => writeFile(this.zoomFilePath, payload, 'utf8'))
-      .catch(() => undefined)
+    const payload = JSON.stringify(Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.zoomPercent])), null, 2)
+    this.zoomWrite = this.zoomWrite.catch(() => undefined).then(() => writeFile(this.zoomFilePath, payload, 'utf8')).catch(() => undefined)
   }
 
   private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
     return {
-      parent: this.window,
-      width: 600,
-      height: 780,
-      minWidth: 460,
-      minHeight: 640,
-      autoHideMenuBar: true,
+      parent: this.window, width: 600, height: 780, minWidth: 460, minHeight: 640, autoHideMenuBar: true,
       backgroundColor: '#0b0d18',
-      webPreferences: {
-        session: account.session,
-        contextIsolation: true,
-        sandbox: true,
-        nodeIntegration: false,
-        webSecurity: true
-      }
+      webPreferences: { session: account.session, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true }
     }
   }
 
   private trackAuthWindow(account: AccountSlot, auth: BrowserWindow): void {
-    if (this.disposed || auth.isDestroyed()) {
-      if (!auth.isDestroyed()) auth.close()
-      return
-    }
-
+    if (this.disposed || auth.isDestroyed()) { if (!auth.isDestroyed()) auth.close(); return }
     this.authWindows.add(auth)
     let visitedExternalProvider = false
-
     const observeNavigation = (_event: Electron.Event, nextUrl: string): void => {
       if (!nextUrl || nextUrl === 'about:blank') return
       if (this.isPokeIdleUrl(nextUrl)) {
@@ -376,21 +343,13 @@ export class AccountRuntime {
       }
       visitedExternalProvider = true
     }
-
     auth.webContents.on('did-navigate', observeNavigation)
     auth.webContents.on('did-redirect-navigation', observeNavigation)
-
-    // A provider can itself request another popup. Keep the exact same account
-    // session and browser security settings rather than rebuilding URLs by hand.
     auth.webContents.setWindowOpenHandler(({ url }) => {
       if (!this.isAllowedPopupUrl(url)) return { action: 'deny' }
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: this.authWindowOptions(account)
-      }
+      return { action: 'allow', overrideBrowserWindowOptions: this.authWindowOptions(account) }
     })
     auth.webContents.on('did-create-window', (nestedWindow) => this.trackAuthWindow(account, nestedWindow))
-
     auth.on('closed', () => {
       this.authWindows.delete(auth)
       if (!this.disposed && !account.view.webContents.isDestroyed()) account.view.webContents.focus()
@@ -402,16 +361,10 @@ export class AccountRuntime {
     try {
       const parsed = new URL(url)
       return parsed.protocol === 'https:' || parsed.protocol === 'http:'
-    } catch {
-      return false
-    }
+    } catch { return false }
   }
 
   private isPokeIdleUrl(url: string): boolean {
-    try {
-      return POKEIDLE_ORIGINS.has(new URL(url).origin)
-    } catch {
-      return false
-    }
+    try { return POKEIDLE_ORIGINS.has(new URL(url).origin) } catch { return false }
   }
 }
