@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 0.3 Hunt Intelligence
+name: Build Gridium 2 Alpha 0.3.1 Auto Equipped Hunt
 
 on:
   push:
     branches:
-      - gridium2-alpha0.3-hunt-intelligence
+      - gridium2-alpha0.3.1-auto-equipped-hunt
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha01.yml'
@@ -43,7 +43,7 @@ jobs:
       - name: Verify installer exists
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.3-Setup.exe" -Recurse | Select-Object -First 1
+          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.3.1-Setup.exe" -Recurse | Select-Object -First 1
           if (-not $installer) { throw "Installer not found" }
           Write-Host "Installer: $($installer.FullName)"
           Get-FileHash $installer.FullName -Algorithm SHA256
@@ -51,7 +51,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-0.3-Hunt-Intelligence-Windows
-          path: gridium2/release/Gridium-2-Alpha-0.3-Setup.exe
+          name: Gridium-2-Alpha-0.3.1-Auto-Equipped-Hunt-Windows
+          path: gridium2/release/Gridium-2-Alpha-0.3.1-Setup.exe
           if-no-files-found: error
           retention-days: 90
