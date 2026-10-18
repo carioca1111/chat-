@@ -44,26 +44,15 @@ function publish(): void {
 }
 
 function hostIsActive(): boolean {
-  return Boolean(
-    mainWindow &&
-      !mainWindow.isDestroyed() &&
-      mainWindow.isVisible() &&
-      !mainWindow.isMinimized() &&
-      mainWindow.isFocused()
-  )
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused())
 }
 
 function applyLayout(): void {
   if (!mainWindow || !accounts) return
-
   if (activeModule !== 'accounts') {
-    // Native WebContentsViews always sit above the renderer. Detach them while
-    // Gridium tools are open; the sessions stay alive and background throttling
-    // remains enabled instead of wasting GPU cycles behind the Hunt UI.
     accounts.applyLayout({}, [], selectedAccount, performanceMode, false)
     return
   }
-
   const [width, height] = mainWindow.getContentSize()
   const result = computeLayout({ width, height }, layout, selectedAccount)
   accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive())
@@ -73,39 +62,31 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:get-snapshot', () => currentSnapshot())
   ipcMain.handle('gridium2:set-layout', (_event, next: LayoutMode) => {
     if (![1, 2, 4].includes(next)) return
-    layout = next
-    applyLayout()
-    publish()
+    layout = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-performance-mode', (_event, next: PerformanceMode) => {
     if (!['auto', 'full'].includes(next)) return
-    performanceMode = next
-    applyLayout()
-    publish()
+    performanceMode = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
     if (!['accounts', 'hunt'].includes(next)) return
-    activeModule = next
-    applyLayout()
-    publish()
+    activeModule = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-account-zoom', (_event, id: AccountId, zoomPercent: number) => {
-    if (![1, 2, 3, 4].includes(id)) return
-    if (!Number.isFinite(zoomPercent)) return
-    accounts?.setZoom(id, zoomPercent)
-    publish()
+    if (![1, 2, 3, 4].includes(id) || !Number.isFinite(zoomPercent)) return
+    accounts?.setZoom(id, zoomPercent); publish()
+  })
+  ipcMain.handle('gridium2:scan-hunt-profile', async (_event, id: AccountId) => {
+    if (![1, 2, 3, 4].includes(id)) return null
+    return await accounts?.scanHuntProfile(id) ?? null
   })
   ipcMain.handle('gridium2:select-account', (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return
-    selectedAccount = id
-    applyLayout()
-    publish()
+    selectedAccount = id; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:account-command', async (_event, id: AccountId, command: AccountCommand) => {
-    if (![1, 2, 3, 4].includes(id)) return
-    if (!['home', 'reload', 'back', 'forward'].includes(command)) return
-    await accounts?.command(id, command)
-    publish()
+    if (![1, 2, 3, 4].includes(id) || !['home', 'reload', 'back', 'forward'].includes(command)) return
+    await accounts?.command(id, command); publish()
   })
 }
 
@@ -141,45 +122,22 @@ async function createWindow(): Promise<void> {
   mainWindow.on('show', applyLayout)
   mainWindow.on('hide', applyLayout)
   mainWindow.on('closed', () => {
-    telemetry?.stop()
-    telemetry = null
-    accounts?.destroy()
-    accounts = null
+    telemetry?.stop(); telemetry = null
+    accounts?.destroy(); accounts = null
     mainWindow = null
   })
 
-  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
-    await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
-    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  else await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
-    applyLayout()
-    publish()
-  })
-
-  void accounts.boot().finally(() => {
-    applyLayout()
-    publish()
-  })
+  mainWindow.once('ready-to-show', () => { mainWindow?.show(); applyLayout(); publish() })
+  void accounts.boot().finally(() => { applyLayout(); publish() })
 }
 
 app.whenReady().then(async () => {
   registerIpc()
   await createWindow()
-
-  app.on('activate', async () => {
-    if (BrowserWindow.getAllWindows().length === 0) await createWindow()
-  })
+  app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
-
-app.on('before-quit', () => {
-  telemetry?.stop()
-  accounts?.destroy()
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on('before-quit', () => { telemetry?.stop(); accounts?.destroy() })
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
