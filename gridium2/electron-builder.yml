@@ -1,6 +1,6 @@
 appId: io.gridium.desktop.v2
 productName: Gridium 2
-artifactName: Gridium-2-Alpha-0.2-Setup.${ext}
+artifactName: Gridium-2-Alpha-0.2.1-Setup.${ext}
 asar: true
 compression: maximum
 directories:
