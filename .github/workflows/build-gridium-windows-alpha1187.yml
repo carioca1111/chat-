@@ -1,0 +1,118 @@
+name: Build Gridium Alpha 11.8.7 Performance Hardening
+on:
+  push:
+    branches: [gridium-alpha11.8.7-performance-hardening]
+    paths:
+      - 'alpha1187-**'
+      - 'alpha1186-**'
+      - 'alpha1185-**'
+      - 'build-alpha1187.ps1'
+      - 'build-alpha1186.ps1'
+      - '.github/workflows/build-gridium-windows-alpha1187.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build existing Alpha 11.8.5 layer
+        shell: pwsh
+        run: ./build-alpha1185.ps1
+      - name: Install dependencies
+        working-directory: gridium-build
+        run: npm install --no-audit --no-fund
+      - name: Record Electron environment
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          "Node=$((node --version))" | Tee-Object alpha1187-environment.txt
+          "Electron=$((node -p \"require('electron/package.json').version\"))" | Tee-Object -Append alpha1187-environment.txt
+          "Platform=$([System.Environment]::OSVersion.VersionString)" | Tee-Object -Append alpha1187-environment.txt
+      - name: Compile Sniper engines
+        shell: pwsh
+        run: ./build-sniper-alpha913.ps1
+      - name: Baseline regression
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          node --test --test-concurrency=1 --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object alpha1187-regression-before.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Relay signaling tests
+        run: node --test test/mirror-relay.test.js
+      - name: Apply Alpha 11.8.6 mirroring layer
+        shell: pwsh
+        run: ./build-alpha1186.ps1 -PreparedBase
+      - name: Apply Alpha 11.8.7 performance hardening
+        shell: pwsh
+        run: ./build-alpha1187.ps1 -PreparedBase
+      - name: Full regression
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          node --test --test-concurrency=1 --test-timeout=30000 test/*.test.js 2>&1 | Tee-Object alpha1187-regression-after.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Accounts visual and interaction smoke
+        working-directory: gridium-build
+        run: npx electron ../alpha1184-visual-smoke.cjs .
+      - name: WebRTC four-track and backpressure smoke
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          npx electron ../alpha1186-webrtc-smoke.cjs . 2>&1 | Tee-Object alpha1187-webrtc-smoke.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Synthetic sender benchmark
+        working-directory: gridium-build
+        shell: pwsh
+        run: |
+          npx electron ../alpha1186-benchmark.cjs . alpha1187-benchmark.json 2>&1 | Tee-Object alpha1187-benchmark.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Remove smoke fixtures
+        shell: pwsh
+        run: Remove-Item gridium-build/accounts-smoke.* -ErrorAction SilentlyContinue
+      - name: Windows installer
+        working-directory: gridium-build
+        run: npx electron-builder --win nsis --publish never
+      - name: Verify package
+        shell: pwsh
+        run: |
+          npx asar extract gridium-build/dist/win-unpacked/resources/app.asar gridium-build/dist/asar-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $p=Get-Content gridium-build/dist/asar-check/package.json -Raw | ConvertFrom-Json
+          if ($p.version -ne '3.0.0-alpha.11.8.7') { throw 'Packaged version mismatch' }
+          $main=Get-Content gridium-build/dist/asar-check/main.js -Raw
+          foreach($needle in @('MirrorManager','mirrorRuntime?.registerGuest','mirrorRuntime.start()','performanceApplied=new Map()')) {
+            if (-not $main.Contains($needle)) { throw "Missing packaged performance marker: $needle" }
+          }
+          $runtime=Get-Content gridium-build/dist/asar-check/mirror-runtime.js -Raw
+          foreach($needle in @('FRAME_ACK_TIMEOUT_MS','frame-ack','planCacheKey','stableSamples')) {
+            if (-not $runtime.Contains($needle)) { throw "Missing packaged mirror hardening marker: $needle" }
+          }
+          $publisher=Get-Content gridium-build/dist/asar-check/mirror-publisher.js -Raw
+          foreach($needle in @('frame-ack','pendingPlans','appliedPlanKeys')) {
+            if (-not $publisher.Contains($needle)) { throw "Missing packaged publisher hardening marker: $needle" }
+          }
+          foreach($name in @('mirror-runtime.js','mirror-publisher.js','mirror-publisher.html','accounts-workspace.js','accounts-workspace.css','sniper-runtime.js','hunt-visual.js','shiny-telemetry.js')) {
+            if (-not (Test-Path "gridium-build/dist/asar-check/$name")) { throw "Missing packaged $name" }
+          }
+          foreach($partition in 1..4) {
+            if (-not ((Get-Content gridium-build/dist/asar-check/index.html -Raw).Contains("persist:pokeidle-account-$partition"))) { throw "Missing persistent account partition $partition" }
+          }
+          Get-FileHash gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.7.exe -Algorithm SHA256 | Format-List | Out-File gridium-build/alpha1187-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Gridium-Alpha-11.8.7-Performance-Hardening-Windows
+          path: |
+            gridium-build/dist/Gridium-Setup-3.0.0-alpha.11.8.7.exe
+            gridium-build/alpha1187-*.txt
+            gridium-build/alpha1187-benchmark.json
+            gridium-build/alpha1184-screenshots/*.png
+          if-no-files-found: warn
