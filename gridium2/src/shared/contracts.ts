@@ -16,6 +16,7 @@ export interface AccountSnapshot {
   canGoForward: boolean
   attached: boolean
   visualMode: VisualMode
+  zoomPercent: number
 }
 
 export interface TelemetrySnapshot {
@@ -39,6 +40,7 @@ export interface GridiumApi {
   getSnapshot: () => Promise<GridiumSnapshot>
   setLayout: (layout: LayoutMode) => Promise<void>
   setPerformanceMode: (mode: PerformanceMode) => Promise<void>
+  setAccountZoom: (accountId: AccountId, zoomPercent: number) => Promise<void>
   selectAccount: (accountId: AccountId) => Promise<void>
   accountCommand: (accountId: AccountId, command: AccountCommand) => Promise<void>
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => () => void
