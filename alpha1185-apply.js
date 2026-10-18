@@ -15,8 +15,8 @@ main=replaceOnce(main,'function performancePlan(slot){',"const performanceApplie
 main=replaceFunction(main,'performancePlan',`function performancePlan(slot){
   const profile=settings.performanceProfile||'balanced',visible=performanceView.section==='games'&&performanceView.visibleSlots.includes(Number(slot)),focused=visible&&Number(performanceView.focusedSlot)===Number(slot),layout=performanceView.layout||'grid',minimized=!!(win&&!win.isDestroyed?.()&&win.isMinimized?.());
   if(minimized)return {fps:2,reduceVisuals:true,sampleMs:20000,visible:false,focused:false};
-  // In the 2x2 workspace a click only changes the selection. A stable four-guest plan
-  // prevents Chromium from rebuilding frame pacing while the user is interacting.
+  // fps remains a policy hint for diagnostics only. Normal Gridium webviews are not
+  // offscreen WebContents, so Electron setFrameRate() cannot enforce this value.
   if(layout==='grid'){
     if(settings.liveEcoMode)return {fps:visible?12:3,reduceVisuals:!visible,sampleMs:visible?10000:15000,visible,focused};
     if(profile==='quality')return {fps:visible?30:4,reduceVisuals:!visible,sampleMs:visible?8000:18000,visible,focused};
@@ -32,11 +32,14 @@ main=replaceFunction(main,'performancePlan',`function performancePlan(slot){
 // `async ` prefix, so the replacement deliberately omits it and preserves one modifier.
 main=replaceFunction(main,'applyGuestPerformance',`function applyGuestPerformance(slot,wc,force=false){
   if(!wc||wc.isDestroyed()){performanceApplied.delete(slot);performanceCssKeys.delete(slot);return;}
-  const plan=performancePlan(slot),next={wcId:Number(wc.id)||0,fps:plan.fps,reduceVisuals:!!plan.reduceVisuals,backgroundThrottling:settings.liveEcoMode?false:!settings.background,mute:!!settings.mute,zoom:settings.zoom[slot]||1},prev=performanceApplied.get(slot),sameGuestPerformance=(a,b)=>!!a&&a.wcId===b.wcId&&a.fps===b.fps&&a.reduceVisuals===b.reduceVisuals&&a.backgroundThrottling===b.backgroundThrottling&&a.mute===b.mute&&a.zoom===b.zoom;
+  const plan=performancePlan(slot),next={wcId:Number(wc.id)||0,reduceVisuals:!!plan.reduceVisuals,backgroundThrottling:settings.liveEcoMode?false:!settings.background,mute:!!settings.mute,zoom:settings.zoom[slot]||1},prev=performanceApplied.get(slot),sameGuestPerformance=(a,b)=>!!a&&a.wcId===b.wcId&&a.reduceVisuals===b.reduceVisuals&&a.backgroundThrottling===b.backgroundThrottling&&a.mute===b.mute&&a.zoom===b.zoom;
   if(!force&&sameGuestPerformance(prev,next))return;
+  // backgroundThrottling is kept tied to the user's background/eco setting because
+  // it also throttles JS timers and Page Visibility. Do not use it as a visual-only FPS cap.
   if(force||!prev||prev.wcId!==next.wcId||prev.backgroundThrottling!==next.backgroundThrottling)try{wc.setBackgroundThrottling(next.backgroundThrottling);}catch{}
   if(force||!prev||prev.wcId!==next.wcId||prev.mute!==next.mute)try{wc.setAudioMuted(next.mute);}catch{}
-  if((force||!prev||prev.wcId!==next.wcId||prev.fps!==next.fps)&&typeof wc.setFrameRate==='function')try{wc.setFrameRate(next.fps);}catch{}
+  // Electron setFrameRate() is offscreen-rendering-only; normal account webviews are
+  // intentionally not switched to offscreen mode because that would alter game behavior.
   if(force||!prev||prev.wcId!==next.wcId||prev.reduceVisuals!==next.reduceVisuals){
     const previous=performanceCssKeys.get(slot);if(previous&&typeof wc.removeInsertedCSS==='function')try{await wc.removeInsertedCSS(previous);}catch{}performanceCssKeys.delete(slot);
     const css=performanceCSS(plan);if(css&&typeof wc.insertCSS==='function')try{const key=await wc.insertCSS(css,{cssOrigin:'user'});if(key)performanceCssKeys.set(slot,key);}catch{}
@@ -71,4 +74,4 @@ mainTest=replaceOnce(mainTest,"assert.equal(stop.length,1);assert.equal(guest.th
 write('test/main.test.js',mainTest);
 let versionChecksUpdated=0;for(const name of fs.readdirSync(path.join(root,'test'))){if(!name.endsWith('.test.js'))continue;const file=path.join(root,'test',name),source=fs.readFileSync(file,'utf8');if(!source.includes(BASE_VERSION))continue;versionChecksUpdated+=source.split(BASE_VERSION).length-1;fs.writeFileSync(file,source.split(BASE_VERSION).join(NEXT_VERSION));}
 pkg.version=NEXT_VERSION;pkg.description='Gridium Alpha 11.8.5 — Hotfix de resposta ao clique e estabilidade dos webviews';write('package.json',JSON.stringify(pkg,null,2)+'\n');
-console.log(`Alpha 11.8.5 click-freeze hotfix applied; focus work deferred/cached; ${versionChecksUpdated} inherited release marker(s) synchronized.`);
+console.log(`Alpha 11.8.5 click-freeze hotfix applied; focus work deferred/cached; unsupported normal-webview setFrameRate avoided; ${versionChecksUpdated} inherited release marker(s) synchronized.`);
