@@ -65,7 +65,7 @@ test('lost ACK recovers by timeout and delayed or stale-session ACK cannot relea
 });
 
 test('tiny dirty areas eventually reduce cadence while significant changes restore configured cadence',()=>{
-  const f=captureFixture();connect(f);f.emit();ackLatest(f);f.advance(300);f.emit({width:1,height:1});ackLatest(f);f.advance(2100);f.emit({width:1,height:1});ackLatest(f);const before=f.counts().bitmaps;f.advance(300);f.emit({width:1,height:1});assert.equal(f.counts().bitmaps,before);f.emit({width:640,height:360});assert.equal(f.counts().bitmaps,before);f.advance(300);f.emit({width:640,height:360});assert.equal(f.counts().bitmaps,before+1);f.manager._stopAllCapture();
+  const f=captureFixture();connect(f);f.emit();ackLatest(f);f.advance(300);f.emit({width:1,height:1});ackLatest(f);f.advance(2100);f.emit({width:1,height:1});ackLatest(f);const before=f.counts().bitmaps;f.advance(300);f.emit({width:1,height:1});assert.equal(f.counts().bitmaps,before);f.emit({width:640,height:360});assert.equal(f.counts().bitmaps,before+1);ackLatest(f);f.advance(300);f.emit({width:640,height:360});assert.equal(f.counts().bitmaps,before+2);f.manager._stopAllCapture();
 });
 
 test('plan cache is reused per frame and invalidated only by demand or adaptive changes',()=>{
