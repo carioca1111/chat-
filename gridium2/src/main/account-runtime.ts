@@ -1,9 +1,15 @@
 import { BrowserWindow, session, WebContentsView } from 'electron'
 import type { Session } from 'electron'
-import type { AccountCommand, AccountId, AccountSnapshot, AccountStatus } from '../shared/contracts'
+import type {
+  AccountCommand,
+  AccountId,
+  AccountSnapshot,
+  AccountStatus,
+  PerformanceMode,
+  VisualMode
+} from '../shared/contracts'
 import type { Rect } from './layout'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
-import type { PerformanceMode, VisualMode } from './performance-policy'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
