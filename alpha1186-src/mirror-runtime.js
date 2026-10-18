@@ -1,8 +1,11 @@
 'use strict';
 const path=require('path');
+const {performance}=require('node:perf_hooks');
 const {app,BrowserWindow,ipcMain,nativeImage}=require('electron');
 
 const BACKOFF=[1000,2000,5000,10000,30000];
+const FRAME_ACK_TIMEOUT_MS=1800;
+const MAX_RAW_IPC_BYTES=8*1024*1024;
 const PROFILE={
   economy:{grid:{w:480,h:270,fps:2,bitrate:150000},single:{w:640,h:360,fps:5,bitrate:400000}},
   balanced:{grid:{w:640,h:360,fps:4,bitrate:300000},single:{w:960,h:540,fps:10,bitrate:800000}},
@@ -11,6 +14,7 @@ const PROFILE={
 };
 
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,Number(n)||0));
+const ema=(previous,value,weight=.25)=>previous==null?value:previous*(1-weight)+value*weight;
 function fitSize(width,height,maxW,maxH){
   width=Math.max(1,Number(width)||1);height=Math.max(1,Number(height)||1);
   const scale=Math.min(1,maxW/width,maxH/height);
@@ -18,7 +22,7 @@ function fitSize(width,height,maxW,maxH){
 }
 function detectBitmapFormat(){
   try{
-    const red=nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),b=red.toBitmap();
+    const red=nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),b=red.toBitmap({scaleFactor:1});
     if(b[0]>200&&b[2]<30)return 'rgba';
     if(b[2]>200&&b[0]<30)return 'bgra';
   }catch{}
@@ -36,12 +40,18 @@ function buildPlan(demand,adaptiveLevel=0){
     return p;
   });
 }
+function preparationMode(sourceWidth,sourceHeight,targetWidth,targetHeight){
+  const sourcePixels=Math.max(1,sourceWidth*sourceHeight),targetPixels=Math.max(1,targetWidth*targetHeight),rawBytes=sourcePixels*4;
+  return rawBytes>MAX_RAW_IPC_BYTES||sourcePixels>targetPixels*2.25?'native-resize':'publisher-scale';
+}
+function planSignature(demand,adaptiveLevel){return JSON.stringify([demand?.profile||'auto',demand?.view==='single'?'single':'grid',clamp(demand?.selectedSlot,0,3),demand?.cellular===true,demand?.saveData!==false,adaptiveLevel]);}
 
 class MirrorManager{
-  constructor({getRemote,getAccounts,logger=()=>{}}={}){
-    this.getRemote=getRemote||(()=>({}));this.getAccounts=getAccounts||(()=>[]);this.logger=logger;
+  constructor({getRemote,getAccounts,logger=()=>{},now=()=>Date.now()}={}){
+    this.getRemote=getRemote||(()=>({}));this.getAccounts=getAccounts||(()=>[]);this.logger=logger;this.now=now;
     this.guests=new Map();this.capture=new Map();this.publisher=null;this.publisherReady=false;this.connected=false;this.running=false;
-    this.controllers=new Set();this.delays=new Map();this.demand=null;this.iceServers=[];this.pixelFormat=detectBitmapFormat();this.adaptiveLevel=0;this.overloadSamples=0;this.baseline=null;this.lastMetrics=null;this.backoffIndex=0;
+    this.controllers=new Set();this.delays=new Map();this.demand=null;this.iceServers=[];this.pixelFormat=detectBitmapFormat();this.adaptiveLevel=0;this.overloadSamples=0;this.stableSamples=0;this.baseline=null;this.lastMetrics=null;this.backoffIndex=0;
+    this.plans=[];this.planCacheKey='';this.planBuilds=0;this.sentPlanKey='';this.lastAdaptiveChangeAt=0;this.cpuSamples=[];this.cpuReference=null;this.cpuEma=null;this.lastAckTimeoutTotal=0;this.lastSupersededTotal=0;
     this.onPublisher=this._onPublisher.bind(this);
   }
   start(){if(this.running)return;this.running=true;ipcMain.on('mirror:publisher',this.onPublisher);void this._pollLoop();}
@@ -56,7 +66,7 @@ class MirrorManager{
     if(this.connected)this._syncCapture();
   }
   unregisterGuest(slot,wc){slot=Number(slot);if(!wc||this.guests.get(slot)===wc){this._stopCapture(slot);this.guests.delete(slot);}}
-  status(){return {active:!!this.demand,connected:this.connected,sessionId:this.demand?.sessionId||'',profile:this.demand?.profile||'auto',view:this.demand?.view||'grid',selectedSlot:this.demand?.selectedSlot||0,adaptiveLevel:this.adaptiveLevel,baseline:this.baseline,lastMetrics:this.lastMetrics};}
+  status(){return {active:!!this.demand,connected:this.connected,sessionId:this.demand?.sessionId||'',profile:this.demand?.profile||'auto',view:this.demand?.view||'grid',selectedSlot:this.demand?.selectedSlot||0,adaptiveLevel:this.adaptiveLevel,baseline:this.baseline,lastMetrics:this.lastMetrics,planBuilds:this.planBuilds};}
   _remote(){const x=this.getRemote?.()||{};return {enabled:x.enabled===true,endpoint:String(x.endpoint||'').replace(/\/+$/,''),token:String(x.token||'')};}
   async _request(route,{method='GET',body=null,timeoutMs=26000}={}){
     const c=this._remote();if(!c.enabled||!c.endpoint||!c.token)throw new Error('remote-disabled');
@@ -86,19 +96,29 @@ class MirrorManager{
       else if(event.type==='bye')await this._deactivate('mobile-bye');
     }
   }
+  _resetAdaptive(){
+    this.adaptiveLevel=0;this.overloadSamples=0;this.stableSamples=0;this.lastAdaptiveChangeAt=this.now();this.cpuSamples=[];this.cpuReference=null;this.cpuEma=null;this.lastAckTimeoutTotal=0;this.lastSupersededTotal=0;
+  }
+  _invalidatePlans(){this.planCacheKey='';}
+  _refreshPlans(force=false){
+    if(!this.demand){this.plans=[];this.planCacheKey='';return this.plans;}
+    const key=planSignature(this.demand,this.adaptiveLevel);if(force||key!==this.planCacheKey){this.plans=buildPlan(this.demand,this.adaptiveLevel);this.planCacheKey=key;this.planBuilds++;}
+    return this.plans;
+  }
+  _sendPlans(force=false){const plans=this._refreshPlans();if(!this.demand)return false;if(!force&&this.sentPlanKey===this.planCacheKey)return false;if(this._publisherSend({type:'quality',plans})){this.sentPlanKey=this.planCacheKey;return true;}return false;}
   async _activate(demand){
-    await this._deactivate('replace');this.demand={profile:'auto',view:'grid',selectedSlot:0,cellular:false,saveData:true,...demand};this.baseline=this._systemMetrics();this.adaptiveLevel=0;this.overloadSamples=0;
+    await this._deactivate('replace');this.demand={profile:'auto',view:'grid',selectedSlot:0,cellular:false,saveData:true,...demand};this.baseline=this._systemMetrics();this._resetAdaptive();this._invalidatePlans();this.sentPlanKey='';const plans=this._refreshPlans(true);
     const bw=new BrowserWindow({show:false,width:16,height:16,frame:false,skipTaskbar:true,webPreferences:{nodeIntegration:true,contextIsolation:false,sandbox:false,backgroundThrottling:false}});this.publisher=bw;this.publisherReady=false;
     bw.on('closed',()=>{if(this.publisher===bw){this.publisher=null;this.publisherReady=false;this.connected=false;this._stopAllCapture();}});
     await bw.loadFile(path.join(__dirname,'mirror-publisher.html'));if(!this.running||!this.demand||bw.isDestroyed())return;
-    this.publisherReady=true;this._publisherSend({type:'init',sessionId:this.demand.sessionId,iceServers:this.iceServers,plans:buildPlan(this.demand,this.adaptiveLevel)});
+    this.publisherReady=true;if(this._publisherSend({type:'init',sessionId:this.demand.sessionId,iceServers:this.iceServers,plans}))this.sentPlanKey=this.planCacheKey;
   }
   _updateDemand(next){
-    if(!this.demand)return;const before=JSON.stringify([this.demand.profile,this.demand.view,this.demand.selectedSlot,this.demand.cellular,this.demand.saveData]);Object.assign(this.demand,next);const after=JSON.stringify([this.demand.profile,this.demand.view,this.demand.selectedSlot,this.demand.cellular,this.demand.saveData]);
-    if(before!==after){this._publisherSend({type:'quality',plans:buildPlan(this.demand,this.adaptiveLevel)});if(this.connected)this._syncCapture();}
+    if(!this.demand)return;const before=planSignature(this.demand,this.adaptiveLevel);Object.assign(this.demand,next);const after=planSignature(this.demand,this.adaptiveLevel);
+    if(before!==after){this._invalidatePlans();this._sendPlans();if(this.connected)this._syncCapture();}
   }
   async _deactivate(reason){
-    this.connected=false;this._stopAllCapture();const p=this.publisher;this.publisher=null;this.publisherReady=false;const old=this.demand;this.demand=null;
+    this.connected=false;this._stopAllCapture();const p=this.publisher;this.publisher=null;this.publisherReady=false;const old=this.demand;this.demand=null;this.plans=[];this.planCacheKey='';this.sentPlanKey='';
     if(p&&!p.isDestroyed()){try{p.webContents.send('mirror:control',{type:'destroy',reason})}catch{}try{p.destroy()}catch{}}
     if(old&&!['replace','no-viewer','mobile-bye','app-stop'].includes(reason))try{await this._signal('bye',{reason},old)}catch{}
   }
@@ -107,6 +127,7 @@ class MirrorManager{
   _onPublisher(event,msg={}){
     if(!this.publisher||event.sender!==this.publisher.webContents||!this.demand)return;
     if(msg.type==='offer'||msg.type==='ice'){void this._signal(msg.type,msg.payload).catch(()=>{});return;}
+    if(msg.type==='frame-ack'){this._frameAck(msg);return;}
     if(msg.type==='connection'){
       this.connected=msg.state==='connected';if(this.connected){this.backoffIndex=0;this._syncCapture();}else {this._stopAllCapture();}
       return;
@@ -114,60 +135,81 @@ class MirrorManager{
     if(msg.type==='stats'){this._processStats(msg.stats||{});return;}
     if(msg.type==='error')this.logger('mirror publisher: '+String(msg.error||'unknown'));
   }
-  _planFor(slot){return buildPlan(this.demand,this.adaptiveLevel)[slot]||{active:false,fps:0,w:320,h:180,bitrate:20000};}
+  _planFor(slot){return this._refreshPlans()[slot]||{active:false,fps:0,w:320,h:180,bitrate:20000};}
   _syncCapture(){
-    if(!this.connected||!this.demand){this._stopAllCapture();return;}const plans=buildPlan(this.demand,this.adaptiveLevel);this._publisherSend({type:'quality',plans});
+    if(!this.connected||!this.demand){this._stopAllCapture();return;}const plans=this._refreshPlans();this._sendPlans();
     for(let slot=0;slot<4;slot++){if(plans[slot].active&&this.guests.has(slot))this._startCapture(slot);else this._stopCapture(slot);}
   }
   _startCapture(slot){
-    const wc=this.guests.get(slot);if(!wc||wc.isDestroyed?.())return;const current=this.capture.get(slot);if(current?.wc===wc)return;this._stopCapture(slot);
-    const state={wc,busy:false,lastAt:null,quietSince:null,frames:0,dropped:0,startedAt:Date.now(),subscribed:false};this.capture.set(slot,state);
+    const wc=this.guests.get(slot);if(!wc||wc.isDestroyed?.())return;const current=this.capture.get(slot);if(current?.wc===wc&&current.sessionId===this.demand?.sessionId)return;this._stopCapture(slot);
+    const state={wc,sessionId:String(this.demand?.sessionId||''),nextSeq:1,inFlight:null,pending:null,ackTimer:null,drainHandle:null,lastAt:null,quietSince:null,frames:0,dropped:0,superseded:0,acked:0,ackTimeouts:0,prepareEmaMs:null,ackLagEmaMs:null,consumerEmaMs:null,nativeResizeFrames:0,publisherScaleFrames:0,startedAt:this.now(),subscribed:false};this.capture.set(slot,state);
     if(typeof wc.beginFrameSubscription!=='function'){state.unsupported=true;return;}
     try{
-      // Electron 35: onlyDirty=true yields a cropped image. False supplies a
-      // complete NativeImage plus dirtyRect, allowing safe frame dropping.
-      // The first subscription frame seeds the publisher; no second capture.
       wc.beginFrameSubscription(false,(image,dirtyRect)=>this._onFrame(slot,state,image,dirtyRect));state.subscribed=true;
     }catch{state.unsupported=true;}
   }
-  _stopCapture(slot){const state=this.capture.get(Number(slot));if(!state)return;if(state.subscribed&&state.wc&&!state.wc.isDestroyed?.()&&typeof state.wc.endFrameSubscription==='function')try{state.wc.endFrameSubscription()}catch{}this.capture.delete(Number(slot));}
+  _stopCapture(slot){
+    const state=this.capture.get(Number(slot));if(!state)return;if(state.ackTimer)clearTimeout(state.ackTimer);state.ackTimer=null;if(state.drainHandle)clearImmediate(state.drainHandle);state.drainHandle=null;state.pending=null;state.inFlight=null;
+    if(state.subscribed&&state.wc&&!state.wc.isDestroyed?.()&&typeof state.wc.endFrameSubscription==='function')try{state.wc.endFrameSubscription()}catch{}this.capture.delete(Number(slot));
+  }
   _stopAllCapture(){for(const slot of [...this.capture.keys()])this._stopCapture(slot);}
   _onFrame(slot,state,image,dirtyRect){
-    const plan=this._planFor(slot);
-    if(this.capture.get(slot)!==state||!this.connected||!this.demand||!plan.active||!image||image.isEmpty?.())return;
-    const now=Date.now(),source=image.getSize();
-    if(!source.width||!source.height)return;
-    const scale=image.getScaleFactors?.()[0]||1;
-    const area=source.width*source.height*scale*scale;
-    const ratio=dirtyRect?Math.max(0,dirtyRect.width)*Math.max(0,dirtyRect.height)/area:1;
+    const plan=this._planFor(slot);if(this.capture.get(slot)!==state||state.sessionId!==String(this.demand?.sessionId||'')||!this.connected||!this.demand||!plan.active||!image||image.isEmpty?.())return;
+    const now=this.now(),source=image.getSize?.(1)||image.getSize?.()||{};if(!source.width||!source.height)return;
+    const area=source.width*source.height,ratio=dirtyRect?Math.max(0,dirtyRect.width)*Math.max(0,dirtyRect.height)/Math.max(1,area):1;
     if(ratio<=0.01){if(state.quietSince===null)state.quietSince=now;}else state.quietSince=null;
     const fps=state.quietSince!==null&&now-state.quietSince>=2000?1:plan.fps;
-    if(state.busy||(state.lastAt!==null&&now-state.lastAt<1000/Math.max(1,fps))){state.dropped++;return;}
-    state.busy=true;
+    if(state.lastAt!==null&&now-state.lastAt<1000/Math.max(1,fps)){state.dropped++;return;}
+    const candidate={image,at:now,source};
+    if(state.inFlight){if(state.pending){state.dropped++;state.superseded++;}state.pending=candidate;return;}
+    this._dispatchFrame(slot,state,candidate);
+  }
+  _dispatchFrame(slot,state,candidate){
+    const plan=this._planFor(slot);if(this.capture.get(slot)!==state||state.inFlight||!this.connected||!this.demand||state.sessionId!==String(this.demand.sessionId)||!plan.active||!candidate?.image)return;
+    const started=performance.now();let bitmap=null,sourceWidth=candidate.source?.width||0,sourceHeight=candidate.source?.height||0,target=null,mode='publisher-scale';
     try{
-      const target=fitSize(source.width,source.height,plan.w,plan.h);
-      const scaled=(source.width===target.width&&source.height===target.height)?image:image.resize({...target,quality:'good'});
-      // Explicit scaleFactor avoids oversized bitmaps on Windows HiDPI screens.
-      const bitmap=scaled.toBitmap({scaleFactor:1});
-      if(bitmap.length!==target.width*target.height*4)throw new Error('unexpected-bitmap-size');
-      if(this._publisherSend({type:'frame',slot,width:target.width,height:target.height,pixelFormat:this.pixelFormat,bitmap,seed:state.frames===0,at:now})){
-        state.lastAt=now;state.frames++;
-      }
-    }catch{state.dropped++;}
-    finally{state.busy=false;}
+      target=fitSize(sourceWidth,sourceHeight,plan.w,plan.h);mode=preparationMode(sourceWidth,sourceHeight,target.width,target.height);let prepared=candidate.image;
+      if(mode==='native-resize'&&(sourceWidth!==target.width||sourceHeight!==target.height)){prepared=candidate.image.resize({...target,quality:'good'});sourceWidth=target.width;sourceHeight=target.height;state.nativeResizeFrames++;}else state.publisherScaleFrames++;
+      bitmap=prepared.toBitmap({scaleFactor:1});if(bitmap.length!==sourceWidth*sourceHeight*4)throw new Error('unexpected-bitmap-size');
+    }catch{state.dropped++;return;}
+    const prepareMs=performance.now()-started,seq=state.nextSeq++,sentAt=this.now(),message={type:'frame',sessionId:state.sessionId,slot,seq,sourceWidth,sourceHeight,width:target.width,height:target.height,pixelFormat:this.pixelFormat,bitmap,seed:state.frames===0,at:candidate.at};
+    state.prepareEmaMs=ema(state.prepareEmaMs,prepareMs,.2);
+    if(!this._publisherSend(message)){state.dropped++;return;}
+    state.lastAt=candidate.at;state.frames++;state.inFlight={seq,sentAt,prepareMs,mode};state.ackTimer=setTimeout(()=>this._frameTimeout(slot,state,seq),FRAME_ACK_TIMEOUT_MS);
+  }
+  _frameAck(msg){
+    const slot=Number(msg.slot),state=this.capture.get(slot);if(!state||String(msg.sessionId||'')!==state.sessionId||state.sessionId!==String(this.demand?.sessionId||'')||!state.inFlight||Number(msg.seq)!==state.inFlight.seq)return;
+    if(state.ackTimer)clearTimeout(state.ackTimer);state.ackTimer=null;const lag=Math.max(0,this.now()-state.inFlight.sentAt);state.ackLagEmaMs=ema(state.ackLagEmaMs,lag,.25);if(Number.isFinite(Number(msg.processingMs)))state.consumerEmaMs=ema(state.consumerEmaMs,Math.max(0,Number(msg.processingMs)),.25);if(msg.ok===false)state.dropped++;state.acked++;state.inFlight=null;this._drainPending(slot,state);
+  }
+  _frameTimeout(slot,state,seq){
+    if(this.capture.get(slot)!==state||!state.inFlight||state.inFlight.seq!==seq)return;state.ackTimer=null;state.inFlight=null;state.ackTimeouts++;state.dropped++;this._drainPending(slot,state);
+  }
+  _drainPending(slot,state){
+    if(this.capture.get(slot)!==state||state.inFlight||state.drainHandle||!state.pending)return;const candidate=state.pending;state.pending=null;state.drainHandle=setImmediate(()=>{state.drainHandle=null;if(this.capture.get(slot)===state&&!state.inFlight)this._dispatchFrame(slot,state,candidate);});
   }
   _systemMetrics(){
     try{const rows=app.getAppMetrics?.()||[],cpu=rows.reduce((n,x)=>n+(Number(x.cpu?.percentCPUUsage)||0),0),memoryMB=rows.reduce((n,x)=>n+(Number(x.memory?.workingSetSize)||0),0)/1024;return {cpu:Number(cpu.toFixed(1)),memoryMB:Math.round(memoryMB),processes:rows.length};}catch{return {cpu:null,memoryMB:Math.round(process.memoryUsage().rss/1024/1024),processes:null};}
   }
+  _setAdaptiveLevel(next){
+    next=clamp(next,0,3);if(next===this.adaptiveLevel)return false;this.adaptiveLevel=next;this.lastAdaptiveChangeAt=this.now();this.overloadSamples=0;this.stableSamples=0;this._invalidatePlans();this._sendPlans();if(this.connected)this._syncCapture();return true;
+  }
   _processStats(stats){
-    const system=this._systemMetrics(),delta=this.baseline?.cpu==null||system.cpu==null?null:Number((system.cpu-this.baseline.cpu).toFixed(1));
-    if(delta!==null&&delta>18)this.overloadSamples++;else this.overloadSamples=Math.max(0,this.overloadSamples-1);
-    if(this.overloadSamples>=2&&this.adaptiveLevel<3){this.adaptiveLevel++;this.overloadSamples=0;this._publisherSend({type:'quality',plans:buildPlan(this.demand,this.adaptiveLevel)});this._syncCapture();}
-    const captures=Array.from({length:4},(_,slot)=>{const s=this.capture.get(slot);return {slot,active:!!s,frames:s?.frames||0,dropped:s?.dropped||0};});
+    const now=this.now(),system=this._systemMetrics();if(system.cpu!=null){this.cpuEma=ema(this.cpuEma,system.cpu,.3);this.cpuSamples.push(system.cpu);if(this.cpuSamples.length>5)this.cpuSamples.shift();if(this.cpuReference==null&&this.cpuSamples.length>=3){const sorted=[...this.cpuSamples.slice(0,3)].sort((a,b)=>a-b);this.cpuReference=sorted[1];}}
+    const cpuDelta=this.cpuReference==null||this.cpuEma==null?null:Number((this.cpuEma-this.cpuReference).toFixed(1));
+    const states=[...this.capture.values()],ackTimeoutTotal=states.reduce((n,s)=>n+s.ackTimeouts,0),supersededTotal=states.reduce((n,s)=>n+s.superseded,0),newTimeouts=Math.max(0,ackTimeoutTotal-this.lastAckTimeoutTotal),newSuperseded=Math.max(0,supersededTotal-this.lastSupersededTotal);this.lastAckTimeoutTotal=ackTimeoutTotal;this.lastSupersededTotal=supersededTotal;
+    const maxPrepare=states.reduce((n,s)=>Math.max(n,s.prepareEmaMs||0),0),maxAckLag=states.reduce((n,s)=>Math.max(n,s.ackLagEmaMs||0),0),maxConsumer=states.reduce((n,s)=>Math.max(n,s.consumerEmaMs||0),0),encoderCpu=(stats.streams||[]).some(s=>String(s.qualityLimitationReason||'').toLowerCase()==='cpu');
+    let pressure=0;if(cpuDelta!=null&&cpuDelta>20)pressure++;if(system.cpu!=null&&system.cpu>85)pressure++;if(maxPrepare>22)pressure++;if(maxAckLag>300||maxConsumer>70)pressure++;if(newTimeouts>0||newSuperseded>3)pressure++;if(encoderCpu)pressure+=2;
+    const stable=!encoderCpu&&newTimeouts===0&&newSuperseded<=1&&(cpuDelta==null||cpuDelta<10)&&maxPrepare<12&&maxAckLag<140&&maxConsumer<45;
+    if(pressure>=2){this.overloadSamples++;this.stableSamples=0;}else if(stable){this.stableSamples++;this.overloadSamples=Math.max(0,this.overloadSamples-1);}else{this.overloadSamples=Math.max(0,this.overloadSamples-1);this.stableSamples=0;}
+    if(this.overloadSamples>=2&&this.adaptiveLevel<3&&now-this.lastAdaptiveChangeAt>=6000)this._setAdaptiveLevel(this.adaptiveLevel+1);
+    else if(this.stableSamples>=6&&this.adaptiveLevel>0&&now-this.lastAdaptiveChangeAt>=18000)this._setAdaptiveLevel(this.adaptiveLevel-1);
+    if(stable&&this.adaptiveLevel===0&&this.cpuReference!=null&&this.cpuEma!=null&&this.cpuEma<this.cpuReference)this.cpuReference=ema(this.cpuReference,this.cpuEma,.08);
+    const delta=this.baseline?.cpu==null||system.cpu==null?null:Number((system.cpu-this.baseline.cpu).toFixed(1));
+    const captures=Array.from({length:4},(_,slot)=>{const s=this.capture.get(slot);return {slot,active:!!s,frames:s?.frames||0,dropped:s?.dropped||0,superseded:s?.superseded||0,acked:s?.acked||0,ackTimeouts:s?.ackTimeouts||0,pending:!!s?.pending,inFlightSeq:s?.inFlight?.seq||null,prepareMs:s?.prepareEmaMs==null?null:Number(s.prepareEmaMs.toFixed(2)),ackLagMs:s?.ackLagEmaMs==null?null:Number(s.ackLagEmaMs.toFixed(1)),consumerMs:s?.consumerEmaMs==null?null:Number(s.consumerEmaMs.toFixed(2)),nativeResizeFrames:s?.nativeResizeFrames||0,publisherScaleFrames:s?.publisherScaleFrames||0};});
     const accounts=(this.getAccounts?.()||[]).slice(0,4).map((x,slot)=>({slot,name:x?.record?.nick||`Conta ${slot+1}`,online:x?.health==='online'||x?.record?.live?.browserOnline===true}));
-    this.lastMetrics={at:Date.now(),system,baseline:this.baseline,cpuDelta:delta,adaptiveLevel:this.adaptiveLevel,streams:stats.streams||[],captures,accounts,codec:stats.codec||null,encoderImplementation:stats.encoderImplementation||null,totalBitrate:stats.totalBitrate||0};
+    this.lastMetrics={at:now,system,baseline:this.baseline,cpuDelta:delta,cpuAdaptiveDelta:cpuDelta,adaptiveLevel:this.adaptiveLevel,adaptive:{pressure,overloadSamples:this.overloadSamples,stableSamples:this.stableSamples},planBuilds:this.planBuilds,streams:stats.streams||[],captures,accounts,codec:stats.codec||null,encoderImplementation:stats.encoderImplementation||null,totalBitrate:stats.totalBitrate||0};
     void this._signal('metrics',this.lastMetrics).catch(()=>{});
   }
   _sendMetricsSoon(){if(this.lastMetrics)void this._signal('metrics',{...this.lastMetrics,accounts:(this.getAccounts?.()||[]).slice(0,4)}).catch(()=>{});}
 }
-module.exports={MirrorManager,PROFILE,buildPlan,fitSize,detectBitmapFormat};
+module.exports={MirrorManager,PROFILE,buildPlan,fitSize,detectBitmapFormat,preparationMode,planSignature,FRAME_ACK_TIMEOUT_MS,MAX_RAW_IPC_BYTES};
