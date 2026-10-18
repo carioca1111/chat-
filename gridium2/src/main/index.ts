@@ -71,6 +71,12 @@ function registerIpc(): void {
     applyLayout()
     publish()
   })
+  ipcMain.handle('gridium2:set-account-zoom', (_event, id: AccountId, zoomPercent: number) => {
+    if (![1, 2, 3, 4].includes(id)) return
+    if (!Number.isFinite(zoomPercent)) return
+    accounts?.setZoom(id, zoomPercent)
+    publish()
+  })
   ipcMain.handle('gridium2:select-account', (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return
     selectedAccount = id
