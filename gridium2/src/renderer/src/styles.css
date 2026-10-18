@@ -127,15 +127,15 @@ button { font: inherit; }
   height: 64px;
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 0 16px 0 20px;
+  gap: 10px;
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid #212744;
   background: rgba(12, 15, 29, .98);
   z-index: 5;
 }
-.top-title { min-width: 230px; margin-right: auto; }
+.top-title { min-width: 170px; margin-right: auto; }
 .top-title strong { display: block; font-size: 15px; }
-.top-title span { display: block; margin-top: 3px; max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #7781a4; font-size: 11px; }
+.top-title span { display: block; margin-top: 3px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #7781a4; font-size: 11px; }
 .layout-picker, .account-controls { display: flex; gap: 6px; }
 .layout-picker { padding: 4px; border: 1px solid #22294a; border-radius: 11px; background: #0a0d19; }
 .layout-picker button, .control {
@@ -144,7 +144,8 @@ button { font: inherit; }
   background: transparent;
   cursor: pointer;
 }
-.layout-picker button { min-width: 62px; padding: 7px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+.layout-picker button { min-width: 58px; padding: 7px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+.performance-picker button { min-width: 70px; }
 .layout-picker button.active { color: white; background: linear-gradient(135deg, #7243ef, #9d42ef); box-shadow: 0 4px 14px rgba(124, 61, 239, .23); }
 .control { width: 34px; height: 34px; border: 1px solid #272f53; border-radius: 9px; background: #11162a; font-size: 17px; }
 .control:hover { color: white; border-color: #6f4bd4; }
@@ -172,7 +173,7 @@ button { font: inherit; }
   height: 30px;
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 22px;
   padding: 0 14px;
   color: #697394;
   border-top: 1px solid #1c223b;
@@ -182,3 +183,12 @@ button { font: inherit; }
 }
 .statusbar span:last-child { margin-left: auto; }
 .status-ok { width: 6px; height: 6px; margin-right: 5px; }
+
+@media (max-width: 1280px) {
+  .top-title span { display: none; }
+  .top-title { min-width: 96px; }
+  .topbar { gap: 7px; }
+  .layout-picker button { min-width: 52px; padding-inline: 6px; }
+  .performance-picker button { min-width: 62px; }
+  .statusbar { gap: 12px; }
+}
