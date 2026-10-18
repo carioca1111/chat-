@@ -33,9 +33,12 @@ jobs:
         working-directory: gridium-build
         shell: pwsh
         run: |
-          "Node=$((node --version))" | Tee-Object alpha1187-environment.txt
-          "Electron=$((node -p \"require('electron/package.json').version\"))" | Tee-Object -Append alpha1187-environment.txt
-          "Platform=$([System.Environment]::OSVersion.VersionString)" | Tee-Object -Append alpha1187-environment.txt
+          $nodeVersion = node --version
+          $electronVersion = node -p "require('electron/package.json').version"
+          $platformVersion = [System.Environment]::OSVersion.VersionString
+          "Node=$nodeVersion" | Tee-Object alpha1187-environment.txt
+          "Electron=$electronVersion" | Tee-Object -Append alpha1187-environment.txt
+          "Platform=$platformVersion" | Tee-Object -Append alpha1187-environment.txt
       - name: Compile Sniper engines
         shell: pwsh
         run: ./build-sniper-alpha913.ps1
