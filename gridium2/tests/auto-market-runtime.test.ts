@@ -49,6 +49,7 @@ describe('Gridium 2 AutoMarket server runtime', () => {
   it('does not buy without authoritative inventory', async () => {
     const { rt, send } = runtime()
     rt.setSocketReady(1, true)
+    rt.ingest(1, { t: 'estado', estado: { id: 77, nick: 'Conta Teste', gold: 1_000_000, orbs: 500, servidorAgora: Date.now() } })
     rt.ingest(1, listingPacket())
     rt.updateRule(1, baseRule())
     rt.setMode('auto')
