@@ -1,138 +1,81 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AccountId, HuntProfileScan } from '../../shared/contracts'
+import type { AccountId, HuntProfileScan, HuntProtocolStatus } from '../../shared/contracts'
 import { loadHuntSpecies, type HuntSpecies } from './hunt-data'
 import { buildRoute, rankHunts, type HuntObjective, type HuntProfile } from './hunt-engine'
 
-interface StoredProfile {
-  trainerLevel: number
-  speciesName: string
-  pokemonLevel: number
-  quality: number
-  potency: 1|2|3|4|5
-  shiny: boolean
-  iv: number
-}
-
-const EMPTY_PROFILE: StoredProfile = {
-  trainerLevel: 1,
-  speciesName: '',
-  pokemonLevel: 1,
-  quality: 1,
-  potency: 1,
-  shiny: false,
-  iv: 16
-}
-
-export function HuntView({ accountId, autoScan }: { accountId: AccountId; autoScan?: HuntProfileScan | null }) {
+export function HuntView({
+  accountId,
+  serverProfile,
+  protocolStatus
+}: {
+  accountId: AccountId
+  serverProfile?: HuntProfileScan | null
+  protocolStatus: HuntProtocolStatus
+}) {
   const [data, setData] = useState<HuntSpecies[]>([])
   const [objective, setObjective] = useState<HuntObjective>('route')
-  const [configured, setConfigured] = useState(false)
-  const [scanStatus, setScanStatus] = useState<'idle'|'scanning'|'auto'|'failed'>('idle')
-  const [trainerLevel, setTrainerLevel] = useState(1)
-  const [speciesName, setSpeciesName] = useState('')
-  const [pokemonLevel, setPokemonLevel] = useState(1)
-  const [quality, setQuality] = useState(1)
-  const [potency, setPotency] = useState<1|2|3|4|5>(1)
-  const [shiny, setShiny] = useState(false)
-  const [iv, setIv] = useState(16)
 
   useEffect(() => { void loadHuntSpecies().then(setData) }, [])
 
-  useEffect(() => {
-    const stored = loadStoredProfile(accountId)
-    const next = autoScan ? mergeScan(stored, autoScan) : stored
-    applyStored(next)
-    setConfigured(Boolean(next.speciesName))
-    setScanStatus(autoScan ? 'auto' : 'idle')
-    if (autoScan && next.speciesName) persistProfile(accountId, next)
-  }, [accountId])
+  const species = useMemo(() => {
+    if (!serverProfile) return undefined
+    if (serverProfile.speciesId !== undefined) {
+      const byId = data.find((row) => row[0] === serverProfile.speciesId)
+      if (byId) return byId
+    }
+    const serverName = serverProfile.speciesName?.trim().toLowerCase()
+    return serverName ? data.find((row) => row[1].toLowerCase() === serverName) : undefined
+  }, [data, serverProfile?.speciesId, serverProfile?.speciesName])
 
-  useEffect(() => {
-    if (!autoScan) return
-    const next = mergeScan(currentStored(), autoScan)
-    applyStored(next)
-    setConfigured(Boolean(next.speciesName))
-    setScanStatus('auto')
-    if (next.speciesName) persistProfile(accountId, next)
-  }, [accountId, autoScan?.detectedAt])
+  const missing = useMemo(() => {
+    if (protocolStatus !== 'live') return []
+    const fields: string[] = []
+    if (!serverProfile?.activePokemonId) fields.push('activeId')
+    if (!species) fields.push('espécie')
+    if (serverProfile?.trainerLevel === undefined) fields.push('nível do treinador')
+    if (serverProfile?.pokemonLevel === undefined) fields.push('nível do Pokémon')
+    if (serverProfile?.quality === undefined) fields.push('qualidade')
+    if (serverProfile?.potency === undefined) fields.push('potência')
+    if (serverProfile?.ivAverage === undefined && serverProfile?.ivTotal === undefined) fields.push('IV')
+    if (serverProfile?.shiny === undefined) fields.push('shiny')
+    return fields
+  }, [protocolStatus, serverProfile, species])
 
-  const species = useMemo(
-    () => data.find((row) => row[1].toLowerCase() === speciesName.trim().toLowerCase()),
-    [data, speciesName]
-  )
-
-  const profile = useMemo<HuntProfile | null>(() => species ? {
-    trainerLevel: Math.max(1, trainerLevel),
-    speciesId: species[0],
-    pokemonLevel: Math.max(1, pokemonLevel),
-    quality,
-    potency,
-    shiny,
-    ivAtk: iv,
-    ivSpAtk: iv,
-    ivDef: iv,
-    ivSpDef: iv,
-    ivHp: iv,
-    types: species[2],
-    baseStats: species[3]
-  } : null, [species, trainerLevel, pokemonLevel, quality, potency, shiny, iv])
+  const profile = useMemo<HuntProfile | null>(() => {
+    if (!serverProfile || !species || missing.length) return null
+    const iv = serverProfile.ivAverage ?? (serverProfile.ivTotal! / 6)
+    return {
+      trainerLevel: serverProfile.trainerLevel!,
+      speciesId: species[0],
+      pokemonLevel: serverProfile.pokemonLevel!,
+      quality: serverProfile.quality!,
+      potency: serverProfile.potency!,
+      shiny: serverProfile.shiny!,
+      ivAtk: iv,
+      ivSpAtk: iv,
+      ivDef: iv,
+      ivSpDef: iv,
+      ivHp: iv,
+      types: species[2],
+      baseStats: species[3]
+    }
+  }, [serverProfile, species, missing.join('|')])
 
   const ranking = useMemo(
     () => profile ? rankHunts(data, profile, objective).slice(0, 60) : [],
     [data, profile, objective]
   )
   const route = useMemo(() => profile ? buildRoute(data, profile, 6) : [], [data, profile])
-
-  function currentStored(): StoredProfile {
-    return { trainerLevel, speciesName, pokemonLevel, quality, potency, shiny, iv }
-  }
-
-  function applyStored(next: StoredProfile): void {
-    setTrainerLevel(next.trainerLevel)
-    setSpeciesName(next.speciesName)
-    setPokemonLevel(next.pokemonLevel)
-    setQuality(next.quality)
-    setPotency(next.potency)
-    setShiny(next.shiny)
-    setIv(next.iv)
-  }
-
-  function applyScan(scan: HuntProfileScan): void {
-    const next = mergeScan(currentStored(), scan)
-    applyStored(next)
-    setConfigured(Boolean(next.speciesName))
-    setScanStatus('auto')
-    if (next.speciesName) persistProfile(accountId, next)
-  }
-
-  async function scanAccount(showFailure = true): Promise<void> {
-    setScanStatus('scanning')
-    try {
-      const scan = await window.gridium2.scanHuntProfile(accountId)
-      if (!scan) { setScanStatus(showFailure ? 'failed' : 'idle'); return }
-      applyScan(scan)
-    } catch {
-      setScanStatus(showFailure ? 'failed' : 'idle')
-    }
-  }
-
-  function save(): void {
-    if (!species) return
-    const next = { ...currentStored(), speciesName: species[1] }
-    persistProfile(accountId, next)
-    setSpeciesName(species[1])
-    setConfigured(true)
-    setScanStatus('idle')
-  }
-
   const best = ranking[0]
-  const lastRead = autoScan?.detectedAt ? new Date(autoScan.detectedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null
+  const displayName = species?.[1] ?? serverProfile?.speciesName ?? (serverProfile?.speciesId !== undefined ? `Espécie #${serverProfile.speciesId}` : '—')
+  const ivDisplay = serverProfile?.ivAverage ?? (serverProfile?.ivTotal !== undefined ? Number((serverProfile.ivTotal / 6).toFixed(2)) : undefined)
+  const lastRead = serverProfile?.detectedAt ? new Date(serverProfile.detectedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : null
 
   return <main class="hunt-page">
     <section class="hunt-header poke-card">
       <div class="hunt-title">
         <span class="hunt-title-icon">⚔</span>
-        <div><h1>HUNT INTELLIGENCE</h1><p>Pokémon equipado por conta · leitura automática · cálculo local e cacheado</p></div>
+        <div><h1>HUNT INTELLIGENCE</h1><p>Estado oficial da conta · WebSocket do PokeIdle · activeId exato</p></div>
       </div>
       <div class="hunt-objectives">
         {([['route','ROTA'],['xp','XP MÁX.'],['safe','SEGURO']] as Array<[HuntObjective,string]>).map(([key,label]) =>
@@ -143,28 +86,27 @@ export function HuntView({ accountId, autoScan }: { accountId: AccountId; autoSc
 
     <section class="hunt-profile poke-card">
       <div class="hunt-profile-head">
-        <strong>POKÉMON EQUIPADO · CONTA {accountId}</strong>
-        <span class={autoScan ? 'profile-ready' : configured ? 'profile-ready' : 'profile-warn'}>
-          {scanStatus === 'scanning' ? 'LENDO CONTA…' : autoScan ? `✓ AUTOMÁTICO${lastRead ? ` · ${lastRead}` : ''}` : configured ? 'FALLBACK SALVO' : 'AGUARDANDO JOGO'}
+        <strong>POKÉMON ATIVO DO SERVIDOR · CONTA {accountId}</strong>
+        <span class={protocolStatus === 'live' ? 'profile-ready' : 'profile-warn'}>
+          {protocolStatus === 'live' ? `● SERVIDOR AO VIVO${lastRead ? ` · ${lastRead}` : ''}` : protocolStatus === 'unavailable' ? 'MONITOR DE SERVIDOR INDISPONÍVEL' : 'AGUARDANDO ESTADO DO SERVIDOR'}
         </span>
       </div>
-      <div class="hunt-form">
-        <label>ESPÉCIE<input list="hunt-species" value={speciesName} onInput={(e) => setSpeciesName(e.currentTarget.value)} placeholder="Detectando…" /></label>
-        <datalist id="hunt-species">{data.map((row) => <option value={row[1]} key={row[0]} />)}</datalist>
-        <label>NV TREINADOR<input type="number" min="1" value={trainerLevel} onInput={(e) => setTrainerLevel(Number(e.currentTarget.value))} /></label>
-        <label>NV POKÉMON<input type="number" min="1" value={pokemonLevel} onInput={(e) => setPokemonLevel(Number(e.currentTarget.value))} /></label>
-        <label>QUALIDADE<input type="number" min="0.8" max="2" step="0.001" value={quality} onInput={(e) => setQuality(Number(e.currentTarget.value))} /></label>
-        <label>POTÊNCIA<select value={potency} onChange={(e) => setPotency(Number(e.currentTarget.value) as 1|2|3|4|5)}>{[1,2,3,4,5].map((x) => <option value={x} key={x}>P{x}</option>)}</select></label>
-        <label>IV MÉDIO<input type="number" min="1" max="32" step="0.01" value={iv} onInput={(e) => setIv(Number(e.currentTarget.value))} /></label>
-        <label class="hunt-shiny"><input type="checkbox" checked={shiny} onChange={(e) => setShiny(e.currentTarget.checked)} /> SHINY ×3</label>
-        <div class="hunt-form-actions">
-          <button class="hunt-read" onClick={() => void scanAccount(true)} disabled={scanStatus === 'scanning'}>ATUALIZAR AGORA</button>
-          <button class="hunt-save" disabled={!species} onClick={save}>SALVAR AJUSTE</button>
-        </div>
+
+      <div class="hunt-server-grid">
+        <ServerField label="POKÉMON" value={displayName} />
+        <ServerField label="ACTIVE ID" value={serverProfile?.activePokemonId ?? '—'} />
+        <ServerField label="NV TREINADOR" value={formatValue(serverProfile?.trainerLevel)} />
+        <ServerField label="NV POKÉMON" value={formatValue(serverProfile?.pokemonLevel)} />
+        <ServerField label="QUALIDADE" value={formatValue(serverProfile?.quality, 3)} />
+        <ServerField label="POTÊNCIA" value={serverProfile?.potency ? `P${serverProfile.potency}` : '—'} />
+        <ServerField label="IV MÉDIO" value={formatValue(ivDisplay, 2)} />
+        <ServerField label="SHINY" value={serverProfile?.shiny === undefined ? '—' : serverProfile.shiny ? 'SIM ×3' : 'NÃO'} />
       </div>
-      <small class="hunt-auto-note">A leitura automática acompanha a conta enquanto a aba Hunt estiver aberta. Campos manuais só servem como fallback se o jogo não expuser algum dado.</small>
-      {scanStatus === 'failed' && <small class="hunt-error">Ainda não consegui identificar o Pokémon equipado nesta conta. Deixe a conta carregada e tente novamente; o fallback manual continua disponível.</small>}
-      {!species && speciesName && <small class="hunt-error">Espécie não encontrada na Pokédex deste servidor.</small>}
+
+      <small class="hunt-auto-note">Fonte: pacotes <b>welcome/estado</b> recebidos pela própria sessão da conta. O Gridium usa somente o registro cujo ID é exatamente igual ao <b>activeId</b> enviado pelo servidor. Nenhum nome é lido da tela.</small>
+      {protocolStatus === 'live' && !serverProfile && <small class="hunt-error">O servidor já está conectado, mas ainda não enviou o registro correspondente ao activeId. O Gridium não usa outro Pokémon como fallback.</small>}
+      {protocolStatus === 'live' && serverProfile && missing.length > 0 && <small class="hunt-error">Aguardando o servidor fornecer: {missing.join(', ')}. A rota não será calculada com valores inventados.</small>}
+      {serverProfile?.speciesId !== undefined && !species && <small class="hunt-error">A espécie #{serverProfile.speciesId} veio do servidor, mas não existe no banco Hunt local desta build.</small>}
     </section>
 
     {profile && best ? <>
@@ -176,7 +118,7 @@ export function HuntView({ accountId, autoScan }: { accountId: AccountId; autoSc
       </section>
 
       <section class="hunt-route poke-card">
-        <div class="hunt-section-title"><strong>ROTA DE PROGRESSÃO</strong><span>o Gridium troca a recomendação quando outra hunt supera a atual</span></div>
+        <div class="hunt-section-title"><strong>ROTA DE PROGRESSÃO</strong><span>recalculada somente quando o estado ativo ou objetivo muda</span></div>
         <div class="route-track">{route.map((stage,index) =>
           <div class={`route-stage ${index === 0 ? 'current' : ''}`} key={`${stage.fromLevel}-${stage.hunt.id}`}>
             <small>{index === 0 ? 'AGORA' : `NV ${stage.fromLevel}`}</small><b>{stage.hunt.area}</b><span>{stage.hunt.name} · {compact(stage.hunt.trainerXpPerHour)} XP/h</span>
@@ -185,7 +127,7 @@ export function HuntView({ accountId, autoScan }: { accountId: AccountId; autoSc
       </section>
 
       <section class="hunt-ranking poke-card">
-        <div class="hunt-section-title"><strong>RANKING CALCULADO</strong><span>{ranking.length} melhores opções · sem cálculo por frame</span></div>
+        <div class="hunt-section-title"><strong>RANKING CALCULADO</strong><span>{ranking.length} melhores opções · estado ativo confirmado pelo servidor</span></div>
         <div class="hunt-table-wrap"><table class="hunt-table"><thead><tr><th>#</th><th>ÁREA / ALVO</th><th>REGIÃO</th><th>NÍVEL</th><th>ABATES/H</th><th>XP/ABATE</th><th>XP/H TREINADOR</th><th>XP/H POKÉMON</th><th>SEGURANÇA</th></tr></thead><tbody>
           {ranking.map((row,index) => <tr class={index === 0 ? 'best' : ''} key={row.id}>
             <td>{index+1}</td><td><b>{row.area}</b><small>{row.name} · {row.types.join(' / ')}</small></td><td><span class="region-chip">{row.region}</span></td>
@@ -194,51 +136,21 @@ export function HuntView({ accountId, autoScan }: { accountId: AccountId; autoSc
           </tr>)}
         </tbody></table></div>
       </section>
-      <p class="hunt-disclaimer">MODELADO = projeção. Caminhada, spawn, desmaios, buffs e comportamento real do servidor podem mudar o resultado. O Gridium separa projeção de dado medido para não mostrar precisão falsa.</p>
-    </> : <section class="hunt-empty poke-card"><b>Aguardando o Pokémon equipado desta conta.</b><span>O Gridium lê automaticamente a sessão. Se algum campo não aparecer no jogo, você ainda pode preencher só aquele campo manualmente.</span></section>}
+      <p class="hunt-disclaimer">Os dados do Pokémon ativo vêm do servidor; XP/h, abates/h, segurança e rota continuam sendo projeções do Gridium e podem variar por caminhada, spawn, buffs e comportamento real do servidor.</p>
+    </> : <section class="hunt-empty poke-card"><b>{protocolStatus === 'unavailable' ? 'Monitor do servidor indisponível.' : 'Aguardando estado completo do Pokémon ativo.'}</b><span>Nenhuma rota é gerada a partir de nomes visíveis na tela ou valores padrão.</span></section>}
   </main>
 }
 
-const storageKey = (accountId: AccountId): string => `gridium2:hunt-profile:${accountId}`
-
-function loadStoredProfile(accountId: AccountId): StoredProfile {
-  const raw = localStorage.getItem(storageKey(accountId))
-  if (!raw) return { ...EMPTY_PROFILE }
-  try {
-    const x = JSON.parse(raw) as Partial<StoredProfile>
-    return {
-      trainerLevel: Number(x.trainerLevel) || 1,
-      speciesName: String(x.speciesName || ''),
-      pokemonLevel: Number(x.pokemonLevel) || 1,
-      quality: Number(x.quality) || 1,
-      potency: ([1,2,3,4,5].includes(Number(x.potency)) ? Number(x.potency) : 1) as 1|2|3|4|5,
-      shiny: Boolean(x.shiny),
-      iv: Number(x.iv) || 16
-    }
-  } catch {
-    return { ...EMPTY_PROFILE }
-  }
-}
-
-function persistProfile(accountId: AccountId, next: StoredProfile): void {
-  localStorage.setItem(storageKey(accountId), JSON.stringify(next))
-}
-
-function mergeScan(old: StoredProfile, scan: HuntProfileScan): StoredProfile {
-  const detectedIv = scan.ivAverage ?? (scan.ivTotal ? scan.ivTotal / 6 : undefined)
-  return {
-    trainerLevel: scan.trainerLevel || old.trainerLevel,
-    speciesName: scan.speciesName || old.speciesName,
-    pokemonLevel: scan.pokemonLevel || old.pokemonLevel,
-    quality: scan.quality || old.quality,
-    potency: scan.potency || old.potency,
-    shiny: scan.shiny ?? old.shiny,
-    iv: detectedIv !== undefined ? Math.max(1, Math.min(32, Number(detectedIv.toFixed(2)))) : old.iv
-  }
+function ServerField({ label, value }: { label: string; value: string }) {
+  return <div class="hunt-server-field"><small>{label}</small><b>{value}</b></div>
 }
 
 function Summary({ label, value, sub, accent = false }: { label: string; value: string; sub: string; accent?: boolean }) {
   return <div class={`hunt-summary poke-card ${accent ? 'accent' : ''}`}><small>{label}</small><b>{value}</b><span>{sub}</span></div>
+}
+
+function formatValue(value: number | undefined, maximumFractionDigits = 0): string {
+  return value === undefined ? '—' : value.toLocaleString('pt-BR', { maximumFractionDigits })
 }
 
 function compact(value: number): string {
