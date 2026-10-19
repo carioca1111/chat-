@@ -3,13 +3,16 @@ import { join } from 'node:path'
 import type {
   AccountCommand,
   AccountId,
+  AccountPowerMode,
   AppModule,
   GridiumSnapshot,
   LayoutMode,
-  PerformanceMode
+  PerformanceMode,
+  PowerAutomationKey
 } from '../shared/contracts'
 import { AccountRuntime } from './account-runtime'
 import { computeLayout } from './layout'
+import { DEFAULT_POWER_AUTOMATION } from './power-policy'
 import { TelemetryService } from './telemetry'
 
 let mainWindow: BrowserWindow | null = null
@@ -26,6 +29,7 @@ function currentSnapshot(): GridiumSnapshot {
     selectedAccount,
     performanceMode,
     activeModule,
+    powerAutomation: accounts?.getPowerAutomation() ?? { ...DEFAULT_POWER_AUTOMATION },
     accounts: accounts?.snapshots() ?? [],
     telemetry: telemetry?.getSnapshot() ?? {
       cpuPercent: 0,
@@ -47,15 +51,19 @@ function hostIsActive(): boolean {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused())
 }
 
+function hostIsMinimized(): boolean {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized())
+}
+
 function applyLayout(): void {
   if (!mainWindow || !accounts) return
   if (activeModule !== 'accounts') {
-    accounts.applyLayout({}, [], selectedAccount, performanceMode, false)
+    accounts.applyLayout({}, [], selectedAccount, performanceMode, false, hostIsMinimized())
     return
   }
   const [width, height] = mainWindow.getContentSize()
   const result = computeLayout({ width, height }, layout, selectedAccount)
-  accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive())
+  accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive(), hostIsMinimized())
 }
 
 function registerIpc(): void {
@@ -69,16 +77,27 @@ function registerIpc(): void {
     performanceMode = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
-    if (!['accounts', 'hunt'].includes(next)) return
+    if (!['accounts', 'hunt', 'settings'].includes(next)) return
     activeModule = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-account-zoom', (_event, id: AccountId, zoomPercent: number) => {
     if (![1, 2, 3, 4].includes(id) || !Number.isFinite(zoomPercent)) return
     accounts?.setZoom(id, zoomPercent); publish()
   })
+  ipcMain.handle('gridium2:set-account-power-mode', (_event, id: AccountId, mode: AccountPowerMode) => {
+    if (![1, 2, 3, 4].includes(id) || !['auto', 'on', 'black', 'suspended'].includes(mode)) return
+    accounts?.setPowerMode(id, mode); applyLayout(); publish()
+  })
+  ipcMain.handle('gridium2:set-all-account-power-mode', (_event, mode: AccountPowerMode) => {
+    if (!['auto', 'on', 'black', 'suspended'].includes(mode)) return
+    accounts?.setAllPowerModes(mode); applyLayout(); publish()
+  })
+  ipcMain.handle('gridium2:set-power-automation', (_event, key: PowerAutomationKey, enabled: boolean) => {
+    if (!['blackUnfocused', 'blackWhenMinimized', 'wakeOnSelect'].includes(key) || typeof enabled !== 'boolean') return
+    accounts?.setPowerAutomation(key, enabled); applyLayout(); publish()
+  })
   ipcMain.handle('gridium2:scan-hunt-profile', async (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return null
-    // Kept for API compatibility. Data is already maintained by server WebSocket events.
     return await accounts?.scanHuntProfile(id) ?? null
   })
   ipcMain.handle('gridium2:select-account', (_event, id: AccountId) => {
@@ -100,7 +119,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.3.2 Server Hunt',
+    title: 'Gridium 2 — Alpha 0.4 Account Control',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
