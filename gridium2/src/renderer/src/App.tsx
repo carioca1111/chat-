@@ -38,15 +38,15 @@ export function App() {
   return <div class="shell">
     <aside class="sidebar poke-frame">
       <div class="brand-panel"><div class="brand-ball"><span /></div><div class="brand-copy"><strong>GRIDIIUM <em>2</em></strong><span>POKEIDLE MANAGER</span></div></div>
-      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 0.3.1</span></div>
+      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 0.3.2</span></div>
       <div class="accounts">
         {snapshot.accounts.length === 0 ? <div class="skeleton-card poke-card">Preparando as 4 sessões…</div> : snapshot.accounts.map((account) => <div class={`account-block ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} key={account.id}>
           <button class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} onClick={() => select(account.id)}>
             <span class="account-orb">{account.id}</span><span class="account-main">
               <span class="account-line"><b>Conta {account.id}</b><small class={`account-status ${account.status}`}><i class={`status-dot ${account.status}`} /> {statusLabel[account.status]}</small></span>
               <span class="account-title">{account.title || 'PokeIdle.io'}</span>
-              <span class="account-meta">{snapshot.activeModule === 'hunt' && account.huntProfile?.speciesName
-                ? `${account.huntProfile.speciesName}${account.huntProfile.pokemonLevel ? ` · Nv ${account.huntProfile.pokemonLevel}` : ''} · AUTO`
+              <span class="account-meta">{snapshot.activeModule === 'hunt'
+                ? huntAccountMeta(account)
                 : `Sessão isolada${account.visualMode === 'eco' ? ' · ECO' : ' · QUALIDADE'}`}</span>
             </span>
           </button>
@@ -65,14 +65,23 @@ export function App() {
           <div class="performance-picker poke-toggle"><button class={snapshot.performanceMode === 'auto' ? 'active' : ''} onClick={() => setPerformance('auto')}>⚡ ECO</button><button class={snapshot.performanceMode === 'full' ? 'active' : ''} onClick={() => setPerformance('full')}>FULL</button></div>
           <div class="selected-zoom"><span>ZOOM</span><b>{selected?.zoomPercent ?? 100}%</b></div>
           <div class="account-controls"><Control label="←" title="Voltar" onClick={() => command(snapshot.selectedAccount,'back')} /><Control label="→" title="Avançar" onClick={() => command(snapshot.selectedAccount,'forward')} /><Control label="⌂" title="PokeIdle.io" onClick={() => command(snapshot.selectedAccount,'home')} /><Control label="↻" title="Recarregar" onClick={() => command(snapshot.selectedAccount,'reload')} /></div>
-        </> : <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>{selected?.huntProfile?.speciesName ? `${selected.huntProfile.speciesName} · ` : ''}CONTA {snapshot.selectedAccount}</b></div>}
+        </> : <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b></div>}
       </div>
     </header>
 
-    {snapshot.activeModule === 'accounts' ? <main class="viewport-placeholder poke-frame"><div class="viewport-ribbon"><span class="ribbon-title">CONTA {snapshot.selectedAccount}</span><span>{selected?.title || 'PokeIdle.io'}</span><span class="ribbon-zoom">ZOOM {selected?.zoomPercent ?? 100}%</span><span class="ribbon-status"><i class={`status-dot ${selected?.status || 'booting'}`} /> {selected ? statusLabel[selected.status] : 'CARREGANDO'}</span></div><div class="empty-message">As telas nativas do PokeIdle são renderizadas sobre esta área.</div></main> : <HuntView accountId={snapshot.selectedAccount} autoScan={selected?.huntProfile} />}
+    {snapshot.activeModule === 'accounts' ? <main class="viewport-placeholder poke-frame"><div class="viewport-ribbon"><span class="ribbon-title">CONTA {snapshot.selectedAccount}</span><span>{selected?.title || 'PokeIdle.io'}</span><span class="ribbon-zoom">ZOOM {selected?.zoomPercent ?? 100}%</span><span class="ribbon-status"><i class={`status-dot ${selected?.status || 'booting'}`} /> {selected ? statusLabel[selected.status] : 'CARREGANDO'}</span></div><div class="empty-message">As telas nativas do PokeIdle são renderizadas sobre esta área.</div></main> : <HuntView accountId={snapshot.selectedAccount} serverProfile={selected?.huntProfile} protocolStatus={selected?.huntProtocolStatus ?? 'waiting'} />}
 
-    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' ? '⚔ HUNT AUTO · EQUIPADO' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{snapshot.performanceMode === 'auto' ? '⚡ AUTO ECO' : '◆ QUALIDADE TOTAL'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
+    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' ? '⚔ HUNT · WEBSOCKET POKEIDLE' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{snapshot.performanceMode === 'auto' ? '⚡ AUTO ECO' : '◆ QUALIDADE TOTAL'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
   </div>
+}
+
+function huntAccountMeta(account: GridiumSnapshot['accounts'][number]): string {
+  if (account.huntProtocolStatus === 'unavailable') return 'Servidor · indisponível'
+  if (account.huntProtocolStatus !== 'live') return 'Servidor · aguardando estado'
+  const profile = account.huntProfile
+  if (!profile) return 'Servidor ao vivo · aguardando activeId'
+  const identity = profile.speciesName || (profile.speciesId !== undefined ? `Espécie #${profile.speciesId}` : `Active #${profile.activePokemonId ?? '?'}`)
+  return `${identity}${profile.pokemonLevel !== undefined ? ` · Nv ${profile.pokemonLevel}` : ''} · SERVIDOR`
 }
 
 function Metric({ icon,label,value }: { icon:string; label:string; value:string }) { return <div class="metric"><span class="metric-icon">{icon}</span><span class="metric-copy"><small>{label}</small><b>{value}</b></span></div> }
