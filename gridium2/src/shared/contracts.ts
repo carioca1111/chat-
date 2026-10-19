@@ -128,6 +128,7 @@ export interface GridiumSnapshot {
   selectedAccount: AccountId
   performanceMode: PerformanceMode
   activeModule: AppModule
+  keepDisplayAwake: boolean
   powerAutomation: PowerAutomationSettings
   accounts: AccountSnapshot[]
   autoMarket: AutoMarketSnapshot
@@ -139,6 +140,7 @@ export interface GridiumApi {
   setLayout: (layout: LayoutMode) => Promise<void>
   setPerformanceMode: (mode: PerformanceMode) => Promise<void>
   setModule: (module: AppModule) => Promise<void>
+  setKeepDisplayAwake: (enabled: boolean) => Promise<void>
   setAccountZoom: (accountId: AccountId, zoomPercent: number) => Promise<void>
   setAccountPowerMode: (accountId: AccountId, mode: AccountPowerMode) => Promise<void>
   setAllAccountsPowerMode: (mode: AccountPowerMode) => Promise<void>
