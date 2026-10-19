@@ -6,20 +6,31 @@ import { join } from 'node:path'
 import type {
   AccountCommand,
   AccountId,
+  AccountPowerMode,
   AccountSnapshot,
   AccountStatus,
+  EffectivePowerState,
   HuntProfileScan,
   HuntProtocolStatus,
   PerformanceMode,
+  PowerAutomationKey,
+  PowerAutomationSettings,
   VisualMode
 } from '../shared/contracts'
 import type { Rect } from './layout'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
+import { DEFAULT_POWER_AUTOMATION, resolveAccountPowerState } from './power-policy'
 import { PokeIdleServerState } from './pokeidle-server-state'
 import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
+const POWER_MODES = new Set<AccountPowerMode>(['auto', 'on', 'black', 'suspended'])
+
+interface StoredPowerSettings {
+  modes: Partial<Record<AccountId, AccountPowerMode>>
+  automation: PowerAutomationSettings
+}
 
 interface AccountSlot {
   id: AccountId
@@ -36,6 +47,11 @@ interface AccountSlot {
   ecoCssKey: string | null
   visualUpdateRunning: boolean
   zoomPercent: number
+  powerMode: AccountPowerMode
+  desiredPowerState: EffectivePowerState
+  appliedPowerState: EffectivePowerState
+  powerUpdateRunning: boolean
+  suspendSupported: boolean
   huntProfile: HuntProfileScan | null
   huntProtocolStatus: HuntProtocolStatus
   serverState: PokeIdleServerState
@@ -49,7 +65,10 @@ export class AccountRuntime {
   private readonly accounts = new Map<AccountId, AccountSlot>()
   private readonly authWindows = new Set<BrowserWindow>()
   private readonly zoomFilePath = join(app.getPath('userData'), 'gridium2-account-zoom.json')
+  private readonly powerFilePath = join(app.getPath('userData'), 'gridium2-power-settings.json')
   private zoomWrite: Promise<void> = Promise.resolve()
+  private powerWrite: Promise<void> = Promise.resolve()
+  private powerAutomation: PowerAutomationSettings = { ...DEFAULT_POWER_AUTOMATION }
   private disposed = false
 
   constructor(
@@ -57,8 +76,14 @@ export class AccountRuntime {
     private readonly onChanged: () => void
   ) {
     const storedZoom = this.loadZoomSettings()
+    const storedPower = this.loadPowerSettings()
+    this.powerAutomation = storedPower.automation
     for (const id of [1, 2, 3, 4] as AccountId[]) {
-      this.createAccount(id, normalizeAccountZoom(storedZoom[id] ?? DEFAULT_ACCOUNT_ZOOM))
+      this.createAccount(
+        id,
+        normalizeAccountZoom(storedZoom[id] ?? DEFAULT_ACCOUNT_ZOOM),
+        storedPower.modes[id] ?? 'auto'
+      )
     }
   }
 
@@ -78,9 +103,44 @@ export class AccountRuntime {
       attached: account.attached,
       visualMode: account.desiredVisualMode,
       zoomPercent: account.zoomPercent,
+      powerMode: account.powerMode,
+      effectivePowerState: account.desiredPowerState,
+      suspendSupported: account.suspendSupported,
       huntProfile: account.huntProfile ? { ...account.huntProfile } : null,
       huntProtocolStatus: account.huntProtocolStatus
     }))
+  }
+
+  getPowerAutomation(): PowerAutomationSettings {
+    return { ...this.powerAutomation }
+  }
+
+  setPowerMode(accountId: AccountId, mode: AccountPowerMode): void {
+    const account = this.accounts.get(accountId)
+    if (!account || !POWER_MODES.has(mode) || account.powerMode === mode) return
+    account.powerMode = mode
+    this.persistPowerSettings()
+    this.onChanged()
+  }
+
+  setAllPowerModes(mode: AccountPowerMode): void {
+    if (!POWER_MODES.has(mode)) return
+    let changed = false
+    for (const account of this.accounts.values()) {
+      if (account.powerMode === mode) continue
+      account.powerMode = mode
+      changed = true
+    }
+    if (!changed) return
+    this.persistPowerSettings()
+    this.onChanged()
+  }
+
+  setPowerAutomation(key: PowerAutomationKey, enabled: boolean): void {
+    if (!(key in this.powerAutomation) || this.powerAutomation[key] === enabled) return
+    this.powerAutomation = { ...this.powerAutomation, [key]: enabled }
+    this.persistPowerSettings()
+    this.onChanged()
   }
 
   applyLayout(
@@ -88,15 +148,26 @@ export class AccountRuntime {
     visible: AccountId[],
     selectedAccount: AccountId,
     performanceMode: PerformanceMode,
-    hostActive: boolean
+    hostActive: boolean,
+    hostMinimized: boolean
   ): void {
     if (this.disposed) return
     const visibleSet = new Set(visible)
 
     for (const account of this.accounts.values()) {
-      const shouldAttach = visibleSet.has(account.id)
-      account.visible = shouldAttach
+      const accountInLayout = visibleSet.has(account.id)
+      account.visible = accountInLayout
 
+      const effectivePowerState = resolveAccountPowerState({
+        mode: account.powerMode,
+        accountSelected: account.id === selectedAccount,
+        accountInLayout,
+        hostMinimized,
+        automation: this.powerAutomation
+      })
+      this.requestPowerState(account, effectivePowerState)
+
+      const shouldAttach = accountInLayout && effectivePowerState === 'on'
       if (shouldAttach && !account.attached) {
         this.window.contentView.addChildView(account.view)
         account.attached = true
@@ -141,14 +212,12 @@ export class AccountRuntime {
   }
 
   async scanHuntProfile(accountId: AccountId): Promise<HuntProfileScan | null> {
-    // Compatibility API: Hunt data is now event-driven from the PokeIdle WebSocket.
-    // This method never reads document text or searches the DOM.
     return this.getHuntProfile(accountId)
   }
 
   async command(accountId: AccountId, command: AccountCommand): Promise<void> {
     const account = this.accounts.get(accountId)
-    if (!account || account.view.webContents.isDestroyed()) return
+    if (!account || account.view.webContents.isDestroyed() || account.desiredPowerState === 'suspended') return
 
     const wc = account.view.webContents
     switch (command) {
@@ -179,18 +248,14 @@ export class AccountRuntime {
     for (const account of this.accounts.values()) {
       this.detachServerMonitor(account)
       if (account.attached) {
-        try {
-          this.window.contentView.removeChildView(account.view)
-        } catch {
-          // Window may already be tearing down.
-        }
+        try { this.window.contentView.removeChildView(account.view) } catch { /* window teardown */ }
       }
       if (!account.view.webContents.isDestroyed()) account.view.webContents.close()
     }
     this.accounts.clear()
   }
 
-  private createAccount(id: AccountId, zoomPercent: number): void {
+  private createAccount(id: AccountId, zoomPercent: number, powerMode: AccountPowerMode): void {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
 
@@ -223,6 +288,11 @@ export class AccountRuntime {
       ecoCssKey: null,
       visualUpdateRunning: false,
       zoomPercent,
+      powerMode,
+      desiredPowerState: 'on',
+      appliedPowerState: 'on',
+      powerUpdateRunning: false,
+      suspendSupported: true,
       huntProfile: null,
       huntProtocolStatus: 'waiting',
       serverState: new PokeIdleServerState(),
@@ -250,6 +320,7 @@ export class AccountRuntime {
       if (!view.webContents.isDestroyed()) view.webContents.setZoomFactor(account.zoomPercent / 100)
       this.patchAccount(account, { status: 'ready' })
       this.requestVisualMode(account, account.desiredVisualMode)
+      this.requestPowerState(account, account.desiredPowerState)
     })
     view.webContents.on('did-fail-load', (_event, code) => {
       if (code !== -3) this.patchAccount(account, { status: 'offline' })
@@ -284,6 +355,7 @@ export class AccountRuntime {
         account.huntProfile = null
         account.huntProtocolStatus = 'unavailable'
         account.debuggerOwned = false
+        account.suspendSupported = false
         if (!this.disposed) this.onChanged()
       }
       account.debuggerMessageHandler = onMessage
@@ -292,9 +364,11 @@ export class AccountRuntime {
       debuggerApi.on('detach', onDetach)
       await debuggerApi.sendCommand('Network.enable')
       if (account.huntProtocolStatus === 'unavailable') account.huntProtocolStatus = 'waiting'
+      account.suspendSupported = true
     } catch {
       account.huntProtocolStatus = 'unavailable'
       account.huntProfile = null
+      account.suspendSupported = false
       if (!this.disposed) this.onChanged()
     }
   }
@@ -338,7 +412,6 @@ export class AccountRuntime {
     const frame = payload.response
     if (!frame || frame.opcode !== 1 || typeof frame.payloadData !== 'string') return
     const raw = frame.payloadData
-    // Fast reject before JSON.parse: Hunt consumes only authoritative state packets.
     if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) return
 
     try {
@@ -351,7 +424,7 @@ export class AccountRuntime {
       else if (account.huntProfile === null && result.profile) account.huntProfile = result.profile
       if (result.changed || statusChanged) this.onChanged()
     } catch {
-      // Ignore malformed frames. Raw payload is deliberately never logged or persisted.
+      // Raw payloads are deliberately never logged or persisted.
     }
   }
 
@@ -383,6 +456,57 @@ export class AccountRuntime {
   private patchAccount(account: AccountSlot, patch: Partial<Pick<AccountSlot, 'status' | 'title'>>): void {
     Object.assign(account, patch)
     this.onChanged()
+  }
+
+  private requestPowerState(account: AccountSlot, state: EffectivePowerState): void {
+    account.desiredPowerState = state
+    void this.reconcilePowerState(account)
+  }
+
+  private async reconcilePowerState(account: AccountSlot): Promise<void> {
+    if (account.powerUpdateRunning || this.disposed || account.view.webContents.isDestroyed()) return
+    account.powerUpdateRunning = true
+
+    try {
+      const wc = account.view.webContents
+      while (!this.disposed && !wc.isDestroyed() && account.appliedPowerState !== account.desiredPowerState) {
+        const target = account.desiredPowerState
+        const debuggerApi = wc.debugger
+
+        if (target === 'suspended') {
+          wc.setBackgroundThrottling(true)
+          if (debuggerApi.isAttached()) {
+            try {
+              await debuggerApi.sendCommand('Page.setWebLifecycleState', { state: 'frozen' })
+              account.suspendSupported = true
+            } catch {
+              account.suspendSupported = false
+            }
+          } else {
+            account.suspendSupported = false
+          }
+        } else {
+          if (account.appliedPowerState === 'suspended' && debuggerApi.isAttached()) {
+            try {
+              await debuggerApi.sendCommand('Page.setWebLifecycleState', { state: 'active' })
+              account.suspendSupported = true
+            } catch {
+              account.suspendSupported = false
+            }
+          }
+          // Black screen explicitly keeps the renderer running while the native view is detached.
+          wc.setBackgroundThrottling(target !== 'black')
+        }
+
+        account.appliedPowerState = target
+        if (!this.disposed) this.onChanged()
+      }
+    } finally {
+      account.powerUpdateRunning = false
+      if (!this.disposed && !account.view.webContents.isDestroyed() && account.appliedPowerState !== account.desiredPowerState) {
+        void this.reconcilePowerState(account)
+      }
+    }
   }
 
   private requestVisualMode(account: AccountSlot, mode: VisualMode): void {
@@ -445,9 +569,43 @@ export class AccountRuntime {
     this.zoomWrite = this.zoomWrite.catch(() => undefined).then(() => writeFile(this.zoomFilePath, payload, 'utf8')).catch(() => undefined)
   }
 
+  private loadPowerSettings(): StoredPowerSettings {
+    const fallback: StoredPowerSettings = { modes: {}, automation: { ...DEFAULT_POWER_AUTOMATION } }
+    try {
+      const parsed = JSON.parse(readFileSync(this.powerFilePath, 'utf8')) as {
+        modes?: Record<string, unknown>
+        automation?: Partial<Record<PowerAutomationKey, unknown>>
+      }
+      const modes: Partial<Record<AccountId, AccountPowerMode>> = {}
+      for (const id of [1, 2, 3, 4] as AccountId[]) {
+        const value = parsed.modes?.[String(id)]
+        if (typeof value === 'string' && POWER_MODES.has(value as AccountPowerMode)) modes[id] = value as AccountPowerMode
+      }
+      const automation: PowerAutomationSettings = {
+        blackUnfocused: typeof parsed.automation?.blackUnfocused === 'boolean' ? parsed.automation.blackUnfocused : DEFAULT_POWER_AUTOMATION.blackUnfocused,
+        blackWhenMinimized: typeof parsed.automation?.blackWhenMinimized === 'boolean' ? parsed.automation.blackWhenMinimized : DEFAULT_POWER_AUTOMATION.blackWhenMinimized,
+        wakeOnSelect: typeof parsed.automation?.wakeOnSelect === 'boolean' ? parsed.automation.wakeOnSelect : DEFAULT_POWER_AUTOMATION.wakeOnSelect
+      }
+      return { modes, automation }
+    } catch { return fallback }
+  }
+
+  private persistPowerSettings(): void {
+    const payload = JSON.stringify({
+      modes: Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.powerMode])),
+      automation: this.powerAutomation
+    }, null, 2)
+    this.powerWrite = this.powerWrite.catch(() => undefined).then(() => writeFile(this.powerFilePath, payload, 'utf8')).catch(() => undefined)
+  }
+
   private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
     return {
-      parent: this.window, width: 600, height: 780, minWidth: 460, minHeight: 640, autoHideMenuBar: true,
+      parent: this.window,
+      width: 600,
+      height: 780,
+      minWidth: 460,
+      minHeight: 640,
+      autoHideMenuBar: true,
       backgroundColor: '#0b0d18',
       webPreferences: { session: account.session, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true }
     }
