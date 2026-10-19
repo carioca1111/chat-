@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.3.3",
+  "version": "2.0.0-alpha.4",
   "private": true,
-  "description": "Gridium 2 Alpha 0.3.3 - server Hunt plus safe PokeIdle menu rendering in ECO mode",
+  "description": "Gridium 2 Alpha 0.4 - account screen, black-running and suspend controls",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
