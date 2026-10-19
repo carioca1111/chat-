@@ -30,10 +30,17 @@ describe('AutoMarket PokeIdle catalog', () => {
     }
   })
 
-  it('keeps the validated market.itens detail read without changing transactions', () => {
-    expect(MARKET_BRIDGE_SOURCE).toContain("payload.t === 'market.item'")
-    expect(MARKET_BRIDGE_SOURCE).toContain("t: 'market.itens'")
-    expect(MARKET_BRIDGE_SOURCE).toContain('elemento: Number(payload.itemId)')
-    expect(MARKET_BRIDGE_SOURCE).not.toContain("payload.t === 'market.comprar'")
+  it('uses a text-scoped UI macro instead of hard-coded screen coordinates', () => {
+    expect(MARKET_BRIDGE_SOURCE).toContain("payload.t === 'market.comprar'")
+    expect(MARKET_BRIDGE_SOURCE).toContain("clickExact(document, 'Menu')")
+    expect(MARKET_BRIDGE_SOURCE).toContain("leafByExactText(document, 'Market')")
+    expect(MARKET_BRIDGE_SOURCE).toContain("categoryLabel")
+    expect(MARKET_BRIDGE_SOURCE).toContain("purchaseToastVisible")
+    expect(MARKET_BRIDGE_SOURCE).toContain("macro-confirmation-timeout")
+    expect(MARKET_BRIDGE_SOURCE).not.toContain('screenX')
+    expect(MARKET_BRIDGE_SOURCE).not.toContain('screenY')
+    expect(MARKET_BRIDGE_SOURCE).not.toContain('elementFromPoint')
+    expect(MARKET_BRIDGE_SOURCE).not.toContain('clientX:')
+    expect(MARKET_BRIDGE_SOURCE).not.toContain('clientY:')
   })
 })
