@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveVisualMode } from '../src/main/performance-policy'
+import { ECO_VISUAL_CSS, resolveVisualMode } from '../src/main/performance-policy'
 
 describe('Gridium 2 visual performance policy', () => {
   it('keeps only the selected visible account in full visuals in auto mode', () => {
@@ -58,5 +58,22 @@ describe('Gridium 2 visual performance policy', () => {
         performanceMode: 'full'
       })
     ).toBe('full')
+  })
+
+  it('never freezes or hides PokeIdle menus and modals in ECO mode', () => {
+    const css = ECO_VISUAL_CSS.toLowerCase()
+    for (const forbidden of [
+      'animation',
+      'transition',
+      'opacity',
+      'visibility',
+      'display',
+      'pointer-events',
+      'transform',
+      'filter',
+      'backdrop'
+    ]) {
+      expect(css).not.toContain(forbidden)
+    }
   })
 })
