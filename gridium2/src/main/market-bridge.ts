@@ -40,7 +40,11 @@ export const MARKET_BRIDGE_SOURCE = `(() => {
       try {
         const ws = isGameSocket(window.__gridium2GameSocket) ? window.__gridium2GameSocket : window.__gridium2FindGameSocket();
         if (!ws) return { ok: false, reason: 'socket-unavailable' };
-        const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
+        let outgoing = payload;
+        if (payload && typeof payload === 'object' && payload.t === 'market.item') {
+          outgoing = { t: 'market.itens', elemento: Number(payload.itemId), categoria: String(payload.categoria || '') };
+        }
+        const text = typeof outgoing === 'string' ? outgoing : JSON.stringify(outgoing);
         nativeSend.call(ws, text);
         return { ok: true };
       } catch (error) {
