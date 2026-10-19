@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { itemSpriteUrl, normalizeItemName } from '../src/renderer/src/item-visuals'
 
 describe('AutoMarket item visuals', () => {
-  it('normalizes item names safely', () => {
+  it('normalizes PokeIdle item names safely', () => {
     expect(normalizeItemName('  Poké Ball  ')).toBe('poke ball')
-    expect(normalizeItemName('Hyper_Potion')).toBe('hyper potion')
+    expect(normalizeItemName('Ultimate_Potion')).toBe('ultimate potion')
   })
 
-  it('maps common AutoMarket items to visible sprites', () => {
-    expect(itemSpriteUrl('Ultra Ball')).toContain('/ultra-ball.png')
-    expect(itemSpriteUrl('Small Potion')).toContain('/potion.png')
-    expect(itemSpriteUrl('Hyper Potion')).toContain('/hyper-potion.png')
-    expect(itemSpriteUrl('Revive')).toContain('/revive.png')
+  it('ships local visual data for every real AutoMarket item family', () => {
+    for (const name of ['Poké Ball','Great Ball','Super Ball','Ultra Ball','Small Potion','Great Potion','Ultra Potion','Hyper Potion','Ultimate Potion','Golden Potion','Revive','Max Revive']) {
+      expect(itemSpriteUrl(name)).toMatch(/^data:image\/svg\+xml,/)
+    }
   })
 
-  it('creates a stable fallback slug for server-provided item names', () => {
-    expect(itemSpriteUrl('Mystic Ticket')).toContain('/mystic-ticket.png')
+  it('does not create generic or PokeAPI fallbacks for unknown items', () => {
+    expect(itemSpriteUrl('Beast Ball')).toBe('')
+    expect(itemSpriteUrl('Master Ball')).toBe('')
+    expect(itemSpriteUrl('Super Potion')).toBe('')
+    expect(itemSpriteUrl('Mystic Ticket')).toBe('')
   })
 })
