@@ -119,18 +119,13 @@ const CATEGORY_HOTFIX_SOURCE = `(() => {
           element.click();
           return true;
         }
-        const rect = element.getBoundingClientRect();
-        const clientX = Math.max(rect.left + 1, Math.min(rect.right - 1, rect.left + rect.width / 2));
-        const clientY = Math.max(rect.top + 1, Math.min(rect.bottom - 1, rect.top + rect.height / 2));
-        const hit = document.elementFromPoint(clientX, clientY);
-        const target = hit && element.contains(hit) ? hit : element;
         if (typeof PointerEvent === 'function') {
-          target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX, clientY }));
-          target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX, clientY }));
+          element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
+          element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
         }
-        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
-        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
-        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
         return true;
       } catch { return false; }
     };
