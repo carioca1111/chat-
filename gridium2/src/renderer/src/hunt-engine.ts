@@ -87,10 +87,9 @@ export interface RouteStage {
 
 const REGION_UNLOCK: Record<string, number> = { Kanto:1, Outland:150, Johto:200, Hoenn:500, Sinnoh:1000, Unova:5000, Kalos:10000, Galar:25000, Paldea:40000, Alola:75000 }
 
-// Fallback only. Live server stats are always preferred. P5=2x and shiny=3x are
-// independently observed; intermediate potency values remain model inputs until
-// a packet/client rule gives an authoritative multiplier for every tier.
-const POTENCY_FALLBACK = [0, 1, 1.05, 1.1, 1.25, 2]
+// Official current PokeIdle terms publish these stat bonuses exactly:
+// P1 +0%, P2 +5%, P3 +10%, P4 +25%, P5 +100%; shiny doubles stats.
+const POTENCY = [0, 1, 1.05, 1.1, 1.25, 2]
 const MIN_CALIBRATION_SECONDS = 120
 const MIN_CALIBRATION_KILLS = 10
 const ROUTE_SWITCH_GAIN = 0.03
@@ -141,8 +140,12 @@ function bestMatchup(playerTypes:string[], enemyTypes:string[]):number {
   return playerTypes.length ? Math.max(...playerTypes.map((t)=>huntTypeEffectiveness(t,enemyTypes))) : 1
 }
 
+export function statPowerMultiplier(potency:1|2|3|4|5,shiny:boolean):number {
+  return POTENCY[potency]*(shiny?2:1)
+}
+
 function potencyMultiplier(profile:HuntProfile):number {
-  return POTENCY_FALLBACK[profile.potency]*(profile.shiny?3:1)
+  return statPowerMultiplier(profile.potency,profile.shiny)
 }
 
 function scaledPlayerStats(profile:HuntProfile): Required<CombatStatBlock> {
