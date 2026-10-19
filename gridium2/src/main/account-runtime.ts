@@ -9,6 +9,9 @@ import type {
   AccountPowerMode,
   AccountSnapshot,
   AccountStatus,
+  AutoMarketMode,
+  AutoMarketRule,
+  AutoMarketSnapshot,
   EffectivePowerState,
   HuntProfileScan,
   HuntProtocolStatus,
@@ -17,7 +20,10 @@ import type {
   PowerAutomationSettings,
   VisualMode
 } from '../shared/contracts'
+import { AutoMarketRuntime } from './auto-market-runtime'
+import type { AutoMarketPersistedSettings } from './auto-market-runtime'
 import type { Rect } from './layout'
+import { MARKET_BRIDGE_SOURCE } from './market-bridge'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
 import { DEFAULT_POWER_AUTOMATION, resolveAccountPowerState } from './power-policy'
 import { PokeIdleServerState } from './pokeidle-server-state'
@@ -26,6 +32,8 @@ import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
 const POWER_MODES = new Set<AccountPowerMode>(['auto', 'on', 'black', 'suspended'])
+
+type JsonRecord = Record<string, unknown>
 
 interface StoredPowerSettings {
   modes: Partial<Record<AccountId, AccountPowerMode>>
@@ -66,8 +74,11 @@ export class AccountRuntime {
   private readonly authWindows = new Set<BrowserWindow>()
   private readonly zoomFilePath = join(app.getPath('userData'), 'gridium2-account-zoom.json')
   private readonly powerFilePath = join(app.getPath('userData'), 'gridium2-power-settings.json')
+  private readonly autoMarketFilePath = join(app.getPath('userData'), 'gridium2-automarket.json')
+  private readonly autoMarket: AutoMarketRuntime
   private zoomWrite: Promise<void> = Promise.resolve()
   private powerWrite: Promise<void> = Promise.resolve()
+  private autoMarketWrite: Promise<void> = Promise.resolve()
   private powerAutomation: PowerAutomationSettings = { ...DEFAULT_POWER_AUTOMATION }
   private disposed = false
 
@@ -78,6 +89,12 @@ export class AccountRuntime {
     const storedZoom = this.loadZoomSettings()
     const storedPower = this.loadPowerSettings()
     this.powerAutomation = storedPower.automation
+    this.autoMarket = new AutoMarketRuntime({
+      initial: this.loadAutoMarketSettings(),
+      onChanged: this.onChanged,
+      onPersist: (settings) => this.persistAutoMarketSettings(settings),
+      sendCommand: (accountId, command) => this.sendMarketCommand(accountId, command)
+    })
     for (const id of [1, 2, 3, 4] as AccountId[]) {
       this.createAccount(
         id,
@@ -109,6 +126,22 @@ export class AccountRuntime {
       huntProfile: account.huntProfile ? { ...account.huntProfile } : null,
       huntProtocolStatus: account.huntProtocolStatus
     }))
+  }
+
+  autoMarketSnapshot(): AutoMarketSnapshot {
+    return this.autoMarket.snapshot()
+  }
+
+  setAutoMarketUiActive(active: boolean): void {
+    this.autoMarket.setUiActive(active)
+  }
+
+  setAutoMarketMode(mode: AutoMarketMode): void {
+    this.autoMarket.setMode(mode)
+  }
+
+  setAutoMarketRule(accountId: AccountId, rule: AutoMarketRule): void {
+    this.autoMarket.updateRule(accountId, rule)
   }
 
   getPowerAutomation(): PowerAutomationSettings {
@@ -197,10 +230,8 @@ export class AccountRuntime {
   setZoom(accountId: AccountId, zoomPercent: number): void {
     const account = this.accounts.get(accountId)
     if (!account || account.view.webContents.isDestroyed()) return
-
     const normalized = normalizeAccountZoom(zoomPercent)
     if (account.zoomPercent === normalized) return
-
     account.zoomPercent = normalized
     account.view.webContents.setZoomFactor(normalized / 100)
     this.persistZoomSettings()
@@ -218,33 +249,21 @@ export class AccountRuntime {
   async command(accountId: AccountId, command: AccountCommand): Promise<void> {
     const account = this.accounts.get(accountId)
     if (!account || account.view.webContents.isDestroyed() || account.desiredPowerState === 'suspended') return
-
     const wc = account.view.webContents
     switch (command) {
-      case 'home':
-        await wc.loadURL(GAME_URL)
-        break
-      case 'reload':
-        wc.reload()
-        break
-      case 'back':
-        if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack()
-        break
-      case 'forward':
-        if (wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward()
-        break
+      case 'home': await wc.loadURL(GAME_URL); break
+      case 'reload': wc.reload(); break
+      case 'back': if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack(); break
+      case 'forward': if (wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward(); break
     }
   }
 
   destroy(): void {
     if (this.disposed) return
     this.disposed = true
-
-    for (const auth of this.authWindows) {
-      if (!auth.isDestroyed()) auth.close()
-    }
+    this.autoMarket.destroy()
+    for (const auth of this.authWindows) if (!auth.isDestroyed()) auth.close()
     this.authWindows.clear()
-
     for (const account of this.accounts.values()) {
       this.detachServerMonitor(account)
       if (account.attached) {
@@ -258,7 +277,6 @@ export class AccountRuntime {
   private createAccount(id: AccountId, zoomPercent: number, powerMode: AccountPowerMode): void {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
-
     const view = new WebContentsView({
       webPreferences: {
         session: accountSession,
@@ -274,32 +292,12 @@ export class AccountRuntime {
     view.webContents.setZoomFactor(zoomPercent / 100)
 
     const account: AccountSlot = {
-      id,
-      name: `Conta ${id}`,
-      partition,
-      session: accountSession,
-      view,
-      attached: false,
-      visible: false,
-      status: 'booting',
-      title: 'PokeIdle.io',
-      desiredVisualMode: 'eco',
-      appliedVisualMode: 'full',
-      ecoCssKey: null,
-      visualUpdateRunning: false,
-      zoomPercent,
-      powerMode,
-      desiredPowerState: 'on',
-      appliedPowerState: 'on',
-      powerUpdateRunning: false,
-      suspendSupported: true,
-      huntProfile: null,
-      huntProtocolStatus: 'waiting',
-      serverState: new PokeIdleServerState(),
-      socketUrls: new Map(),
-      debuggerOwned: false,
-      debuggerMessageHandler: null,
-      debuggerDetachHandler: null
+      id, name: `Conta ${id}`, partition, session: accountSession, view,
+      attached: false, visible: false, status: 'booting', title: 'PokeIdle.io',
+      desiredVisualMode: 'eco', appliedVisualMode: 'full', ecoCssKey: null, visualUpdateRunning: false,
+      zoomPercent, powerMode, desiredPowerState: 'on', appliedPowerState: 'on', powerUpdateRunning: false,
+      suspendSupported: true, huntProfile: null, huntProtocolStatus: 'waiting', serverState: new PokeIdleServerState(),
+      socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null
     }
 
     this.accounts.set(id, account)
@@ -321,10 +319,9 @@ export class AccountRuntime {
       this.patchAccount(account, { status: 'ready' })
       this.requestVisualMode(account, account.desiredVisualMode)
       this.requestPowerState(account, account.desiredPowerState)
+      void this.installMarketBridge(account)
     })
-    view.webContents.on('did-fail-load', (_event, code) => {
-      if (code !== -3) this.patchAccount(account, { status: 'offline' })
-    })
+    view.webContents.on('did-fail-load', (_event, code) => { if (code !== -3) this.patchAccount(account, { status: 'offline' }) })
     view.webContents.on('page-title-updated', (_event, title) => this.patchAccount(account, { title }))
     view.webContents.on('render-process-gone', () => {
       this.resetServerState(account)
@@ -338,13 +335,11 @@ export class AccountRuntime {
     const wc = account.view.webContents
     if (this.disposed || wc.isDestroyed()) return
     const debuggerApi = wc.debugger
-
     try {
       if (!debuggerApi.isAttached()) {
         debuggerApi.attach('1.3')
         account.debuggerOwned = true
       }
-
       const onMessage = (_event: Electron.Event, method: string, params: unknown): void => {
         if (this.disposed || wc.isDestroyed()) return
         this.handleDebuggerMessage(account, method, params)
@@ -356,6 +351,7 @@ export class AccountRuntime {
         account.huntProtocolStatus = 'unavailable'
         account.debuggerOwned = false
         account.suspendSupported = false
+        this.autoMarket.resetConnection(account.id)
         if (!this.disposed) this.onChanged()
       }
       account.debuggerMessageHandler = onMessage
@@ -363,12 +359,15 @@ export class AccountRuntime {
       debuggerApi.on('message', onMessage)
       debuggerApi.on('detach', onDetach)
       await debuggerApi.sendCommand('Network.enable')
+      try { await debuggerApi.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: MARKET_BRIDGE_SOURCE }) } catch { /* current document install is fallback */ }
       if (account.huntProtocolStatus === 'unavailable') account.huntProtocolStatus = 'waiting'
       account.suspendSupported = true
+      await this.installMarketBridge(account)
     } catch {
       account.huntProtocolStatus = 'unavailable'
       account.huntProfile = null
       account.suspendSupported = false
+      this.autoMarket.resetConnection(account.id)
       if (!this.disposed) this.onChanged()
     }
   }
@@ -390,19 +389,20 @@ export class AccountRuntime {
 
   private handleDebuggerMessage(account: AccountSlot, method: string, params: unknown): void {
     if (!params || typeof params !== 'object') return
-    const payload = params as {
-      requestId?: string
-      url?: string
-      response?: { opcode?: number; payloadData?: string }
-    }
+    const payload = params as { requestId?: string; url?: string; response?: { opcode?: number; payloadData?: string } }
     const requestId = String(payload.requestId || '')
 
     if (method === 'Network.webSocketCreated') {
-      if (requestId && typeof payload.url === 'string') account.socketUrls.set(requestId, payload.url)
+      if (requestId && typeof payload.url === 'string') {
+        account.socketUrls.set(requestId, payload.url)
+        if (this.isPokeIdleSocket(payload.url)) this.autoMarket.setSocketReady(account.id, true)
+      }
       return
     }
     if (method === 'Network.webSocketClosed') {
       if (requestId) account.socketUrls.delete(requestId)
+      const anyGameSocket = [...account.socketUrls.values()].some((url) => this.isPokeIdleSocket(url))
+      if (!anyGameSocket) this.autoMarket.setSocketReady(account.id, false)
       return
     }
     if (method !== 'Network.webSocketFrameReceived' || !requestId) return
@@ -412,10 +412,12 @@ export class AccountRuntime {
     const frame = payload.response
     if (!frame || frame.opcode !== 1 || typeof frame.payloadData !== 'string') return
     const raw = frame.payloadData
-    if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) return
+    if (!raw.includes('"t"')) return
 
     try {
       const packet = JSON.parse(raw) as unknown
+      this.autoMarket.ingest(account.id, packet)
+      if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) return
       const result = account.serverState.ingest(packet)
       if (!result.accepted) return
       const statusChanged = account.huntProtocolStatus !== 'live'
@@ -433,7 +435,55 @@ export class AccountRuntime {
     const changed = account.serverState.reset() || account.huntProfile !== null || account.huntProtocolStatus !== 'waiting'
     account.huntProfile = null
     if (account.huntProtocolStatus !== 'unavailable') account.huntProtocolStatus = 'waiting'
+    this.autoMarket.resetConnection(account.id)
     if (changed && !this.disposed) this.onChanged()
+  }
+
+  private async installMarketBridge(account: AccountSlot): Promise<boolean> {
+    const wc = account.view.webContents
+    if (this.disposed || wc.isDestroyed()) return false
+    try { return await wc.executeJavaScript(MARKET_BRIDGE_SOURCE, true) === true } catch { return false }
+  }
+
+  private async sendMarketCommand(accountId: AccountId, command: JsonRecord): Promise<{ ok: boolean; reason?: string }> {
+    const account = this.accounts.get(accountId)
+    if (!account || account.view.webContents.isDestroyed()) return { ok: false, reason: 'conta-indisponivel' }
+    if (account.desiredPowerState === 'suspended') return { ok: false, reason: 'conta-suspensa' }
+    if (!this.isPokeIdleUrl(account.view.webContents.getURL())) return { ok: false, reason: 'fora-do-pokeidle' }
+    const clean = this.validateAutoMarketCommand(command)
+    if (!clean) return { ok: false, reason: 'comando-rejeitado' }
+    if (!await this.installMarketBridge(account)) return { ok: false, reason: 'bridge-indisponivel' }
+    try {
+      const encoded = JSON.stringify(clean)
+      const result = await account.view.webContents.executeJavaScript(`window.__gridium2MarketSend ? window.__gridium2MarketSend(${encoded}) : ({ok:false,reason:'bridge-missing'})`, true) as { ok?: boolean; reason?: string }
+      return result?.ok === true ? { ok: true } : { ok: false, reason: String(result?.reason || 'socket-unavailable') }
+    } catch (error) {
+      return { ok: false, reason: String(error instanceof Error ? error.message : error) }
+    }
+  }
+
+  private validateAutoMarketCommand(input: JsonRecord): JsonRecord | null {
+    const type = String(input.t || '')
+    if (type === 'market.itens') {
+      const categoria = String(input.categoria ?? '').slice(0, 80)
+      const elementoRaw = input.elemento
+      const elemento = elementoRaw === '' || elementoRaw === undefined ? '' : Number(elementoRaw)
+      if (elemento !== '' && (!Number.isSafeInteger(elemento) || elemento <= 0)) return null
+      return { t: type, elemento, categoria }
+    }
+    if (type === 'market.item') {
+      const itemId = Number(input.itemId)
+      const pagina = Math.max(1, Math.min(10, Number(input.pagina) || 1))
+      if (!Number.isSafeInteger(itemId) || itemId <= 0) return null
+      return { t: type, tipo: 'item', itemId, pagina }
+    }
+    if (type === 'market.comprar') {
+      const id = Number(input.id), qtd = Number(input.qtd), preco = Number(input.preco), moeda = String(input.moeda || '')
+      if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(qtd) || qtd <= 0 || qtd > 9999) return null
+      if (!Number.isFinite(preco) || preco <= 0 || !['gold','orb'].includes(moeda)) return null
+      return { t: type, id, qtd, preco, moeda }
+    }
+    return null
   }
 
   private isPokeIdleSocket(url: string): boolean {
@@ -466,46 +516,30 @@ export class AccountRuntime {
   private async reconcilePowerState(account: AccountSlot): Promise<void> {
     if (account.powerUpdateRunning || this.disposed || account.view.webContents.isDestroyed()) return
     account.powerUpdateRunning = true
-
     try {
       const wc = account.view.webContents
       while (!this.disposed && !wc.isDestroyed() && account.appliedPowerState !== account.desiredPowerState) {
         const target = account.desiredPowerState
         const debuggerApi = wc.debugger
-
         if (target === 'suspended') {
           wc.setBackgroundThrottling(true)
           if (debuggerApi.isAttached()) {
-            try {
-              await debuggerApi.sendCommand('Page.setWebLifecycleState', { state: 'frozen' })
-              account.suspendSupported = true
-            } catch {
-              account.suspendSupported = false
-            }
-          } else {
-            account.suspendSupported = false
-          }
+            try { await debuggerApi.sendCommand('Page.setWebLifecycleState', { state: 'frozen' }); account.suspendSupported = true }
+            catch { account.suspendSupported = false }
+          } else account.suspendSupported = false
         } else {
           if (account.appliedPowerState === 'suspended' && debuggerApi.isAttached()) {
-            try {
-              await debuggerApi.sendCommand('Page.setWebLifecycleState', { state: 'active' })
-              account.suspendSupported = true
-            } catch {
-              account.suspendSupported = false
-            }
+            try { await debuggerApi.sendCommand('Page.setWebLifecycleState', { state: 'active' }); account.suspendSupported = true }
+            catch { account.suspendSupported = false }
           }
-          // Black screen explicitly keeps the renderer running while the native view is detached.
           wc.setBackgroundThrottling(target !== 'black')
         }
-
         account.appliedPowerState = target
         if (!this.disposed) this.onChanged()
       }
     } finally {
       account.powerUpdateRunning = false
-      if (!this.disposed && !account.view.webContents.isDestroyed() && account.appliedPowerState !== account.desiredPowerState) {
-        void this.reconcilePowerState(account)
-      }
+      if (!this.disposed && !account.view.webContents.isDestroyed() && account.appliedPowerState !== account.desiredPowerState) void this.reconcilePowerState(account)
     }
   }
 
@@ -517,7 +551,6 @@ export class AccountRuntime {
   private async reconcileVisualMode(account: AccountSlot): Promise<void> {
     if (account.visualUpdateRunning || this.disposed || account.view.webContents.isDestroyed()) return
     account.visualUpdateRunning = true
-
     try {
       const wc = account.view.webContents
       while (!this.disposed && !wc.isDestroyed() && account.appliedVisualMode !== account.desiredVisualMode) {
@@ -538,9 +571,7 @@ export class AccountRuntime {
       }
     } finally {
       account.visualUpdateRunning = false
-      if (!this.disposed && !account.view.webContents.isDestroyed() && account.appliedVisualMode !== account.desiredVisualMode) {
-        void this.reconcileVisualMode(account)
-      }
+      if (!this.disposed && !account.view.webContents.isDestroyed() && account.appliedVisualMode !== account.desiredVisualMode) void this.reconcileVisualMode(account)
     }
   }
 
@@ -556,7 +587,7 @@ export class AccountRuntime {
     try {
       const parsed = JSON.parse(readFileSync(this.zoomFilePath, 'utf8')) as Record<string, unknown>
       const result: Partial<Record<AccountId, number>> = {}
-      for (const id of [1, 2, 3, 4] as AccountId[]) {
+      for (const id of [1,2,3,4] as AccountId[]) {
         const value = parsed[String(id)]
         if (typeof value === 'number') result[id] = normalizeAccountZoom(value)
       }
@@ -572,12 +603,9 @@ export class AccountRuntime {
   private loadPowerSettings(): StoredPowerSettings {
     const fallback: StoredPowerSettings = { modes: {}, automation: { ...DEFAULT_POWER_AUTOMATION } }
     try {
-      const parsed = JSON.parse(readFileSync(this.powerFilePath, 'utf8')) as {
-        modes?: Record<string, unknown>
-        automation?: Partial<Record<PowerAutomationKey, unknown>>
-      }
+      const parsed = JSON.parse(readFileSync(this.powerFilePath, 'utf8')) as { modes?: Record<string, unknown>; automation?: Partial<Record<PowerAutomationKey, unknown>> }
       const modes: Partial<Record<AccountId, AccountPowerMode>> = {}
-      for (const id of [1, 2, 3, 4] as AccountId[]) {
+      for (const id of [1,2,3,4] as AccountId[]) {
         const value = parsed.modes?.[String(id)]
         if (typeof value === 'string' && POWER_MODES.has(value as AccountPowerMode)) modes[id] = value as AccountPowerMode
       }
@@ -591,21 +619,25 @@ export class AccountRuntime {
   }
 
   private persistPowerSettings(): void {
-    const payload = JSON.stringify({
-      modes: Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.powerMode])),
-      automation: this.powerAutomation
-    }, null, 2)
+    const payload = JSON.stringify({ modes: Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.powerMode])), automation: this.powerAutomation }, null, 2)
     this.powerWrite = this.powerWrite.catch(() => undefined).then(() => writeFile(this.powerFilePath, payload, 'utf8')).catch(() => undefined)
+  }
+
+  private loadAutoMarketSettings(): AutoMarketPersistedSettings {
+    try {
+      const parsed = JSON.parse(readFileSync(this.autoMarketFilePath, 'utf8')) as AutoMarketPersistedSettings
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch { return {} }
+  }
+
+  private persistAutoMarketSettings(settings: AutoMarketPersistedSettings): void {
+    const payload = JSON.stringify(settings, null, 2)
+    this.autoMarketWrite = this.autoMarketWrite.catch(() => undefined).then(() => writeFile(this.autoMarketFilePath, payload, 'utf8')).catch(() => undefined)
   }
 
   private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
     return {
-      parent: this.window,
-      width: 600,
-      height: 780,
-      minWidth: 460,
-      minHeight: 640,
-      autoHideMenuBar: true,
+      parent: this.window, width: 600, height: 780, minWidth: 460, minHeight: 640, autoHideMenuBar: true,
       backgroundColor: '#0b0d18',
       webPreferences: { session: account.session, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true }
     }
@@ -642,10 +674,7 @@ export class AccountRuntime {
 
   private isAllowedPopupUrl(url: string): boolean {
     if (url === 'about:blank') return true
-    try {
-      const parsed = new URL(url)
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:'
-    } catch { return false }
+    try { const parsed = new URL(url); return parsed.protocol === 'https:' || parsed.protocol === 'http:' } catch { return false }
   }
 
   private isPokeIdleUrl(url: string): boolean {

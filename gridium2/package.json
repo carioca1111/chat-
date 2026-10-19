@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-alpha.5",
   "private": true,
-  "description": "Gridium 2 Alpha 0.4 - account screen, black-running and suspend controls",
+  "description": "Gridium 2 Alpha 0.5 - server-driven AutoMarket for four isolated PokeIdle accounts",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
