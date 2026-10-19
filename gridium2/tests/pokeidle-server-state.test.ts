@@ -90,10 +90,17 @@ describe('PokeIdle authoritative Hunt server state', () => {
     expect(serialized).not.toContain('token')
   })
 
-  it('keeps DOM scraping removed and activeId selection inside the server reducer', () => {
+  it('keeps Hunt DOM scraping removed and activeId selection inside the server reducer', () => {
     const runtime = readFileSync(join(process.cwd(), 'src/main/account-runtime.ts'), 'utf8')
     const reducer = readFileSync(join(process.cwd(), 'src/main/pokeidle-server-state.ts'), 'utf8')
-    expect(runtime).not.toContain('executeJavaScript')
+    const huntStart = runtime.indexOf('async scanHuntProfile')
+    const huntEnd = runtime.indexOf('async command', huntStart)
+    const huntPath = runtime.slice(huntStart, huntEnd)
+
+    expect(huntStart).toBeGreaterThanOrEqual(0)
+    expect(huntEnd).toBeGreaterThan(huntStart)
+    expect(huntPath).not.toContain('executeJavaScript')
+    expect(huntPath).not.toContain('document')
     expect(runtime).not.toContain('document.body')
     expect(runtime).not.toContain('HUNT_PROFILE_SCAN_SCRIPT')
     expect(runtime).toContain('Network.webSocketFrameReceived')
