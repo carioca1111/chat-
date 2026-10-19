@@ -7,6 +7,7 @@ const aliases: Record<string, string> = {
   'pokéball': 'poke-ball',
   'great ball': 'great-ball',
   'ultra ball': 'ultra-ball',
+  'beast ball': 'beast-ball',
   'master ball': 'master-ball',
   'premier ball': 'premier-ball',
   'luxury ball': 'luxury-ball',
