@@ -34,6 +34,33 @@ describe('PokeIdle authoritative Hunt server state', () => {
     })
   })
 
+  it('reads real stats, individual IVs, progression XP and Pokemon XP multiplier', () => {
+    const state = new PokeIdleServerState()
+    const result = state.ingest({
+      t:'welcome',
+      estado:{
+        id:28379, nick:'Carioca', level:321, xp:5000000, xpNivel:4900000, xpProximo:5100000,
+        bonusXp:{ tr:1.35, pk:1.65 }, huntSlug:'shuckle', activeId:14495388,
+        pokemons:[{
+          id:14495388, speciesId:9, level:318, xp:4300000, xpNivel:4200000, xpProximo:4400000,
+          qualidade:1.437, potencia:2, shiny:false, maxHp:7600,
+          stats:{ hp:633, atk:651, def:683, spAtk:641, spDef:625, speed:589 },
+          ivs:{ hp:27, atk:31, def:26, spAtk:29, spDef:17, speed:23 },
+          refino:{ hp:2, atk:1, def:0, spAtk:3, spDef:0 }, tmElemental:'WATER', tmAoe:true
+        }]
+      }
+    }, 500)
+
+    expect(result.profile).toMatchObject({
+      trainerLevel:321, trainerXp:5000000, trainerXpLevelStart:4900000, trainerXpNext:5100000, trainerXpMultiplier:1.35,
+      activePokemonId:'14495388', speciesId:9, pokemonLevel:318, pokemonXp:4300000, pokemonXpLevelStart:4200000, pokemonXpNext:4400000,
+      pokemonXpMultiplier:1.65, huntSlug:'shuckle', maxHp:7600, tmElemental:'WATER', tmAoe:true,
+      stats:{ hp:633, atk:651, def:683, spAtk:641, spDef:625, speed:589 },
+      ivs:{ hp:27, atk:31, def:26, spAtk:29, spDef:17, speed:23 },
+      refinement:{ hp:2, atk:1, def:0, spAtk:3, spDef:0 }
+    })
+  })
+
   it('merges pkMud only by Pokemon instance id', () => {
     const state = new PokeIdleServerState()
     state.ingest({ t:'welcome', estado:{ id:'a', level:20, activeId:7, pokemons:[{ id:7, speciesId:25, level:10, potencia:2, qualidade:1.1, ivTotal:120, shiny:false }] } })
