@@ -30,27 +30,6 @@ export interface AutoMarketRuntimeOptions {
   scheduler?: boolean
 }
 
-interface MarketListing {
-  listingId: string
-  itemId: string
-  name: string
-  price: number
-  currency: MarketCurrency
-  quantity: number
-  sellerId: string
-  availableAt: number
-  observedAt: number
-}
-
-interface PendingPurchase {
-  listingId: string
-  itemId: string
-  quantity: number
-  unitPrice: number
-  currency: MarketCurrency
-  sentAt: number
-}
-
 interface InventoryRow {
   itemId: string
   name: string
@@ -63,30 +42,35 @@ interface AccountState {
   connected: boolean
   socketReady: boolean
   serverNick: string
-  serverAccountId: string
   coins: number | null
   gems: number | null
-  serverOffsetMs: number
   lastServerAt: number
   inventory: Map<string, InventoryRow>
-  listings: Map<string, MarketListing>
-  summaryPrices: Map<string, { coins: number | null; gems: number | null; observedAt: number }>
   rules: AutoMarketRule[]
   statuses: Map<AutoMarketCategory, AutoMarketRuleStatus>
-  pending: PendingPurchase | null
+  pending: boolean
   lastAction: string
   orderTimes: number[]
-  blockedListings: Map<string, number>
 }
 
 const CATEGORIES: AutoMarketCategory[] = ['balls', 'potions', 'revives']
 const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bag', 'consumables', 'consumiveis']
 const LIST_ARRAY_KEYS = ['linhas', 'anuncios', 'lista', 'ofertas']
 const INVENTORY_STALE_MS = 90_000
-const LISTING_STALE_MS = 20_000
-const PENDING_TIMEOUT_MS = 7_000
-const PROBE_INTERVAL_OPEN_MS = 2_500
-const PROBE_INTERVAL_BACKGROUND_MS = 5_000
+const TICK_OPEN_MS = 3_000
+const TICK_BACKGROUND_MS = 4_500
+
+const CANONICAL_ITEMS: Record<AutoMarketCategory, string[]> = {
+  balls: ['Poké Ball', 'Great Ball', 'Super Ball', 'Ultra Ball'],
+  potions: ['Small Potion', 'Great Potion', 'Ultra Potion', 'Hyper Potion', 'Ultimate Potion', 'Golden Potion'],
+  revives: ['Revive', 'Max Revive']
+}
+
+const DEFAULT_ITEM: Record<AutoMarketCategory, string> = {
+  balls: 'Ultra Ball',
+  potions: 'Ultra Potion',
+  revives: 'Revive'
+}
 
 const isRecord = (value: unknown): value is JsonRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 const finite = (value: unknown): number | null => {
@@ -99,19 +83,19 @@ const positiveInt = (value: unknown): number | null => {
 }
 const safeText = (value: unknown, max = 80): string => typeof value === 'string' ? value.trim().slice(0, max) : ''
 const first = (...values: unknown[]): unknown => values.find((value) => value !== undefined && value !== null)
-const currencyFromWire = (value: unknown): MarketCurrency | null => {
-  const text = String(value || '').toLowerCase()
-  if (text === 'gold' || text === 'coin' || text === 'coins') return 'coins'
-  if (text === 'orb' || text === 'orbs' || text === 'gem' || text === 'gems') return 'gems'
-  return null
+const normalizeName = (value: string): string => String(value || '')
+  .trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')
+
+function canonicalName(category: AutoMarketCategory, value: string): string {
+  const normalized = normalizeName(value)
+  return CANONICAL_ITEMS[category].find((name) => normalizeName(name) === normalized) ?? ''
 }
-const currencyToWire = (value: MarketCurrency): MarketWireCurrency => value === 'gems' ? 'orb' : 'gold'
 
 export function defaultAutoMarketRules(): AutoMarketRule[] {
   return [
-    { category: 'balls', enabled: false, itemId: '', itemName: '', minStock: 500, targetStock: 5000, maxUnitPrice: 0, currency: 'coins' },
-    { category: 'potions', enabled: false, itemId: '', itemName: '', minStock: 100, targetStock: 1000, maxUnitPrice: 0, currency: 'coins' },
-    { category: 'revives', enabled: false, itemId: '', itemName: '', minStock: 20, targetStock: 200, maxUnitPrice: 0, currency: 'coins' }
+    { category: 'balls', enabled: false, itemId: '', itemName: DEFAULT_ITEM.balls, minStock: 500, targetStock: 5000, maxUnitPrice: 130, currency: 'coins' },
+    { category: 'potions', enabled: false, itemId: '', itemName: DEFAULT_ITEM.potions, minStock: 100, targetStock: 1000, maxUnitPrice: 400, currency: 'coins' },
+    { category: 'revives', enabled: false, itemId: '', itemName: DEFAULT_ITEM.revives, minStock: 20, targetStock: 200, maxUnitPrice: 600, currency: 'coins' }
   ]
 }
 
@@ -119,11 +103,13 @@ function cleanRule(input: AutoMarketRule, category?: AutoMarketCategory): AutoMa
   const fallbackCategory = category && CATEGORIES.includes(category) ? category : CATEGORIES.includes(input.category) ? input.category : 'balls'
   const minStock = Math.max(0, Math.min(1_000_000, Math.floor(finite(input.minStock) ?? 0)))
   const targetStock = Math.max(minStock, Math.min(1_000_000, Math.floor(finite(input.targetStock) ?? minStock)))
+  const validName = canonicalName(fallbackCategory, safeText(input.itemName, 80))
+  const valid = Boolean(validName)
   return {
     category: fallbackCategory,
-    enabled: input.enabled === true,
-    itemId: String(input.itemId || '').replace(/[^0-9]/g, '').slice(0, 20),
-    itemName: safeText(input.itemName, 80),
+    enabled: input.enabled === true && valid,
+    itemId: valid ? String(input.itemId || '').replace(/[^0-9]/g, '').slice(0, 20) : '',
+    itemName: valid ? validName : '',
     minStock,
     targetStock,
     maxUnitPrice: Math.max(0, Math.min(1e15, finite(input.maxUnitPrice) ?? 0)),
@@ -135,7 +121,10 @@ function mergeRules(saved?: AutoMarketRule[]): AutoMarketRule[] {
   const defaults = defaultAutoMarketRules()
   return defaults.map((base) => {
     const row = saved?.find((item) => item?.category === base.category)
-    return row ? cleanRule({ ...base, ...row }, base.category) : base
+    if (!row) return base
+    const cleaned = cleanRule({ ...base, ...row }, base.category)
+    if (!cleaned.itemName) return { ...base, enabled: false }
+    return cleaned
   })
 }
 
@@ -177,23 +166,21 @@ export function extractServerInventory(estado: JsonRecord, at = Date.now()): Inv
   return [...out.values()]
 }
 
-export function normalizeMarketListing(row: unknown, at = Date.now()): MarketListing | null {
+export function normalizeMarketListing(row: unknown, at = Date.now()): { listingId: string; itemId: string; name: string; price: number; currency: MarketCurrency; quantity: number; observedAt: number } | null {
   if (!isRecord(row)) return null
   const listingId = String(positiveInt(row.id) ?? '')
   const itemId = String(positiveInt(first(row.itemId, row.item_id)) ?? '')
   const price = finite(first(row.preco, row.price))
-  const currency = currencyFromWire(first(row.moeda, row.currency))
+  const rawCurrency = String(first(row.moeda, row.currency, '') || '').toLowerCase()
+  const currency: MarketCurrency | null = ['gold','coin','coins'].includes(rawCurrency) ? 'coins' : ['orb','orbs','gem','gems'].includes(rawCurrency) ? 'gems' : null
   if (!listingId || !itemId || price === null || price <= 0 || !currency) return null
-  const quantity = Math.max(1, Math.floor(finite(first(row.qtd, row.quantidade, row.qty, row.amount)) ?? 1))
   return {
     listingId,
     itemId,
-    name: safeText(first(row.nome, row.itemNome, row.name, isRecord(row.ficha) ? first(row.ficha.nome, row.ficha.name) : undefined)) || `Item #${itemId}`,
+    name: safeText(first(row.nome, row.itemNome, row.name)) || `Item #${itemId}`,
     price,
     currency,
-    quantity,
-    sellerId: String(first(row.vendedorId, row.sellerId, '') || ''),
-    availableAt: Math.max(0, finite(first(row.compravelEm, row.availableAt)) ?? 0),
+    quantity: Math.max(1, Math.floor(finite(first(row.qtd, row.quantidade, row.qty, row.amount)) ?? 1)),
     observedAt: at
   }
 }
@@ -214,10 +201,9 @@ export class AutoMarketRuntime {
     for (const id of [1,2,3,4] as AccountId[]) {
       const rules = mergeRules(options.initial?.rules?.[id])
       this.accounts.set(id, {
-        id, connected: false, socketReady: false, serverNick: '', serverAccountId: '', coins: null, gems: null,
-        serverOffsetMs: 0, lastServerAt: 0, inventory: new Map(), listings: new Map(), summaryPrices: new Map(), rules,
-        statuses: new Map(rules.map((rule) => [rule.category, waitingStatus(rule.category)])), pending: null,
-        lastAction: 'Aguardando servidor', orderTimes: [], blockedListings: new Map()
+        id, connected: false, socketReady: false, serverNick: '', coins: null, gems: null, lastServerAt: 0,
+        inventory: new Map(), rules, statuses: new Map(rules.map((rule) => [rule.category, waitingStatus(rule.category)])),
+        pending: false, lastAction: 'Aguardando servidor', orderTimes: []
       })
     }
   }
@@ -234,14 +220,14 @@ export class AutoMarketRuntime {
       inventory: [...account.inventory.values()].sort((a,b) => a.name.localeCompare(b.name)).slice(0,250),
       rules: account.rules.map((rule) => ({ ...rule })),
       statuses: CATEGORIES.map((category) => ({ ...(account.statuses.get(category) ?? waitingStatus(category)) })),
-      pending: account.pending !== null,
+      pending: account.pending,
       lastAction: account.lastAction
     }))
     return {
       mode: this.mode,
       uiActive: this.uiActive,
       accounts,
-      catalog: [...this.catalog.values()].sort((a,b) => a.name.localeCompare(b.name)).slice(0,300),
+      catalog: [...this.catalog.values()].sort((a,b) => a.name.localeCompare(b.name)).slice(0,100),
       lastTickAt: this.lastTickAt
     }
   }
@@ -260,9 +246,7 @@ export class AutoMarketRuntime {
   setMode(mode: AutoMarketMode): void {
     if (!['observe','auto'].includes(mode) || this.mode === mode) return
     this.mode = mode
-    if (mode === 'observe') {
-      for (const account of this.accounts.values()) account.pending = null
-    }
+    for (const account of this.accounts.values()) account.pending = false
     this.schedule()
     this.options.onChanged()
   }
@@ -272,10 +256,9 @@ export class AutoMarketRuntime {
     if (!account || !CATEGORIES.includes(input.category)) return
     const cleaned = cleanRule(input, input.category)
     account.rules = account.rules.map((rule) => rule.category === cleaned.category ? cleaned : rule)
-    account.statuses.set(cleaned.category, waitingStatus(cleaned.category, cleaned.enabled ? 'Regra atualizada; aguardando servidor' : 'Regra pausada'))
+    account.statuses.set(cleaned.category, waitingStatus(cleaned.category, cleaned.enabled ? 'Regra atualizada · macro aguardando verificação' : 'Regra pausada'))
     this.options.onPersist?.(this.persisted())
     this.options.onChanged()
-    if (this.mode === 'auto') void this.evaluateAccount(accountId)
   }
 
   setSocketReady(accountId: AccountId, ready: boolean): void {
@@ -283,10 +266,8 @@ export class AutoMarketRuntime {
     if (!account) return
     const changed = account.socketReady !== ready || account.connected !== ready
     account.socketReady = ready
-    if (!ready) {
-      account.connected = false
-      account.pending = null
-    }
+    account.connected = ready
+    if (!ready) account.pending = false
     if (changed) this.options.onChanged()
   }
 
@@ -295,8 +276,7 @@ export class AutoMarketRuntime {
     if (!account) return
     account.connected = false
     account.socketReady = false
-    account.pending = null
-    account.listings.clear()
+    account.pending = false
     account.lastAction = 'Aguardando reconexão do servidor'
     for (const rule of account.rules) account.statuses.set(rule.category, waitingStatus(rule.category, 'Aguardando reconexão do servidor'))
     this.options.onChanged()
@@ -315,189 +295,85 @@ export class AutoMarketRuntime {
       account.lastServerAt = at
       const nick = safeText(first(estado.nick, estado.nickname, estado.usuario))
       if (nick && nick !== account.serverNick) { account.serverNick = nick; changed = true }
-      const serverId = String(first(estado.id, estado.accountId, estado.userId, '') || '')
-      if (serverId && serverId !== account.serverAccountId) { account.serverAccountId = serverId; changed = true }
       const coins = finite(first(estado.gold, estado.ouro, estado.coins))
       const gems = finite(first(estado.orbs, estado.gems))
       if (coins !== null && coins !== account.coins) { account.coins = coins; changed = true }
       if (gems !== null && gems !== account.gems) { account.gems = gems; changed = true }
-      const serverNow = finite(estado.servidorAgora)
-      if (serverNow !== null) account.serverOffsetMs = serverNow - at
       const rows = extractServerInventory(estado, at)
-      if (rows.length) {
-        for (const row of rows) {
-          const previous = account.inventory.get(row.itemId)
-          account.inventory.set(row.itemId, row)
-          this.learnCatalog(row.itemId, row.name, at)
-          if (!previous || previous.quantity !== row.quantity || previous.name !== row.name) changed = true
-        }
+      for (const row of rows) {
+        const previous = account.inventory.get(row.itemId)
+        account.inventory.set(row.itemId, row)
+        this.learnCatalog(row.itemId, row.name, at)
+        if (!previous || previous.quantity !== row.quantity || previous.name !== row.name) changed = true
       }
     }
 
     if (type === 'market') {
-      changed = this.ingestMarketPacket(account, packet, at) || changed
-    }
-
-    if (type === 'batalha' && Array.isArray(packet.ev)) {
-      for (const event of packet.ev) {
-        if (!isRecord(event) || event.k !== 'marketComprado' || !account.pending) continue
-        const eventListingId = String(first(event.anuncioId, event.marketId, '') || '')
-        if (eventListingId && eventListingId !== account.pending.listingId) continue
-        const pending = account.pending
-        account.pending = null
-        account.lastAction = `Compra confirmada pelo servidor: ${pending.quantity}× ${this.catalog.get(pending.itemId)?.name || `Item #${pending.itemId}`}`
-        const rule = account.rules.find((row) => row.itemId === pending.itemId)
-        if (rule) account.statuses.set(rule.category, {
-          category: rule.category, state: 'bought', message: account.lastAction,
-          stock: account.inventory.get(pending.itemId)?.quantity ?? null,
-          bestUnitPrice: pending.unitPrice, suggestedQuantity: 0, updatedAt: at
-        })
-        changed = true
+      const resumo = isRecord(packet.resumo) ? packet.resumo : null
+      if (resumo) {
+        for (const [itemIdRaw, value] of Object.entries(resumo)) {
+          if (!isRecord(value)) continue
+          const itemId = String(positiveInt(itemIdRaw) ?? '')
+          const name = safeText(first(value.nome, value.name))
+          if (itemId && name) this.learnCatalog(itemId, name, at, finite(first(value.minGold, value.minCoins)), finite(first(value.minOrb, value.minGems)))
+        }
+      }
+      for (const key of LIST_ARRAY_KEYS) {
+        const rows = packet[key]
+        if (!Array.isArray(rows)) continue
+        for (const row of rows) {
+          const listing = normalizeMarketListing(row, at)
+          if (listing) this.learnCatalog(listing.itemId, listing.name, at, listing.currency === 'coins' ? listing.price : null, listing.currency === 'gems' ? listing.price : null)
+        }
       }
     }
 
     if (changed) this.options.onChanged()
-    if (this.mode === 'auto' && (type === 'market' || type === 'estado' || type === 'welcome')) queueMicrotask(() => void this.evaluateAccount(accountId))
-  }
-
-  private ingestMarketPacket(account: AccountState, packet: JsonRecord, at: number): boolean {
-    let changed = false
-    const resumo = isRecord(packet.resumo) ? packet.resumo : null
-    if (resumo) {
-      for (const [itemIdRaw, value] of Object.entries(resumo)) {
-        const itemId = String(positiveInt(itemIdRaw) ?? '')
-        if (!itemId || !isRecord(value)) continue
-        const coins = finite(first(value.minGold, value.minCoins))
-        const gems = finite(first(value.minOrb, value.minGems))
-        account.summaryPrices.set(itemId, { coins: coins && coins > 0 ? coins : null, gems: gems && gems > 0 ? gems : null, observedAt: at })
-        this.learnCatalog(itemId, safeText(first(value.nome, value.name)) || `Item #${itemId}`, at, coins, gems)
-        changed = true
-      }
-    }
-
-    for (const key of LIST_ARRAY_KEYS) {
-      const rows = packet[key]
-      if (!Array.isArray(rows)) continue
-      for (const row of rows) {
-        const listing = normalizeMarketListing(row, at)
-        if (!listing) continue
-        account.listings.set(listing.listingId, listing)
-        this.learnCatalog(listing.itemId, listing.name, at, listing.currency === 'coins' ? listing.price : null, listing.currency === 'gems' ? listing.price : null)
-        changed = true
-      }
-    }
-
-    this.pruneAccount(account, at)
-    return changed
   }
 
   private learnCatalog(itemId: string, name: string, at: number, coins?: number | null, gems?: number | null): void {
+    const category = CATEGORIES.find((cat) => canonicalName(cat, name))
+    if (!category) return
+    const canonical = canonicalName(category, name)
     const previous = this.catalog.get(itemId)
-    const usefulName = name && !/^Item #/.test(name) ? name : previous?.name || name || `Item #${itemId}`
     this.catalog.set(itemId, {
       itemId,
-      name: usefulName,
+      name: canonical,
       bestCoins: coins && coins > 0 ? Math.min(previous?.bestCoins ?? Infinity, coins) : previous?.bestCoins ?? null,
       bestGems: gems && gems > 0 ? Math.min(previous?.bestGems ?? Infinity, gems) : previous?.bestGems ?? null,
       observedAt: at
     })
-    if (this.catalog.size > 350) {
-      const oldest = [...this.catalog.values()].sort((a,b) => a.observedAt - b.observedAt).slice(0, this.catalog.size - 300)
-      for (const row of oldest) this.catalog.delete(row.itemId)
-    }
   }
 
-  async evaluateAccount(accountId: AccountId, now = Date.now()): Promise<void> {
-    const account = this.accounts.get(accountId)
-    if (!account) return
-    this.pruneAccount(account, now)
-
-    if (account.pending && now - account.pending.sentAt > PENDING_TIMEOUT_MS) {
-      const pending = account.pending
-      account.blockedListings.set(pending.listingId, now + 15_000)
-      account.pending = null
-      account.lastAction = 'Compra sem confirmação do servidor; anúncio bloqueado temporariamente'
-    }
-
-    for (const rule of account.rules) {
-      const status = this.evaluateRule(account, rule, now)
-      account.statuses.set(rule.category, status)
-      if (status.state !== 'would-buy' || this.mode !== 'auto' || account.pending) continue
-
-      const listing = this.bestListing(account, rule, now)
-      if (!listing) continue
-      const quantity = Math.min(status.suggestedQuantity, listing.quantity, 9999)
-      if (quantity <= 0) continue
-      if (!this.rateAllowed(account, now)) {
-        account.statuses.set(rule.category, { ...status, state: 'blocked', message: 'Limite de segurança: aguarde antes da próxima compra', updatedAt: now })
-        continue
-      }
-
-      const total = listing.price * quantity
-      const balance = rule.currency === 'gems' ? account.gems : account.coins
-      if (balance === null || balance < total) {
-        account.statuses.set(rule.category, { ...status, state: 'blocked', message: `Saldo insuficiente para ${quantity} un.`, updatedAt: now })
-        continue
-      }
-
-      account.pending = { listingId: listing.listingId, itemId: listing.itemId, quantity, unitPrice: listing.price, currency: listing.currency, sentAt: now }
-      account.statuses.set(rule.category, { ...status, state: 'buying', message: `Enviando compra de ${quantity} un. · aguardando servidor`, updatedAt: now })
-      account.lastAction = `Compra enviada: ${quantity}× ${listing.name} a ${listing.price}`
-      this.options.onChanged()
-
-      const result = await this.options.sendCommand(account.id, {
-        t: 'market.comprar',
-        id: Number(listing.listingId),
-        qtd: quantity,
-        preco: listing.price,
-        moeda: currencyToWire(listing.currency)
-      })
-      if (!result.ok) {
-        account.pending = null
-        account.blockedListings.set(listing.listingId, Date.now() + 10_000)
-        account.lastAction = `Compra não enviada: ${result.reason || 'socket indisponível'}`
-        account.statuses.set(rule.category, { ...status, state: 'error', message: account.lastAction, updatedAt: Date.now() })
-      } else {
-        account.orderTimes.push(Date.now())
-      }
-      this.options.onChanged()
-      break
-    }
+  private inventoryFor(account: AccountState, rule: AutoMarketRule): InventoryRow | null {
+    if (rule.itemId && account.inventory.has(rule.itemId)) return account.inventory.get(rule.itemId) ?? null
+    const target = normalizeName(rule.itemName)
+    return [...account.inventory.values()].find((row) => normalizeName(row.name) === target) ?? null
   }
 
   private evaluateRule(account: AccountState, rule: AutoMarketRule, now: number): AutoMarketRuleStatus {
-    const base = { category: rule.category, stock: null as number | null, bestUnitPrice: null as number | null, suggestedQuantity: 0, updatedAt: now }
+    const base = { category: rule.category, stock: null as number | null, bestUnitPrice: rule.maxUnitPrice > 0 ? rule.maxUnitPrice : null, suggestedQuantity: 0, updatedAt: now }
     if (!rule.enabled) return { ...base, state: 'disabled', message: 'Pausado' }
-    if (!rule.itemId) return { ...base, state: 'waiting', message: 'Selecione um item do servidor' }
-    if (!account.connected || !account.socketReady) return { ...base, state: 'waiting', message: 'Aguardando WebSocket do PokeIdle' }
+    if (!canonicalName(rule.category, rule.itemName)) return { ...base, state: 'blocked', message: 'Selecione um item válido do PokeIdle' }
+    if (!account.connected || !account.socketReady) return { ...base, state: 'waiting', message: 'Aguardando sessão do PokeIdle' }
+    if (rule.currency !== 'coins') return { ...base, state: 'blocked', message: 'Macro da loja suporta ouro nesta versão' }
+    if (rule.maxUnitPrice <= 0) return { ...base, state: 'blocked', message: 'Defina o teto máximo por unidade' }
+    if (account.pending) return { ...base, state: 'buying', message: 'Macro em execução' }
 
-    const inventory = account.inventory.get(rule.itemId)
-    if (!inventory || now - inventory.observedAt > INVENTORY_STALE_MS) return { ...base, state: 'waiting', message: 'Aguardando estoque real do servidor' }
-    base.stock = inventory.quantity
-    if (inventory.quantity > rule.minStock) return { ...base, state: 'ok', message: `Estoque OK · mínimo ${rule.minStock}` }
-    if (rule.targetStock <= inventory.quantity) return { ...base, state: 'blocked', message: 'Comprar até precisa ser maior que o estoque atual' }
-    if (rule.maxUnitPrice <= 0) return { ...base, state: 'blocked', message: 'Defina o preço máximo por unidade' }
+    const inventory = this.inventoryFor(account, rule)
+    if (inventory && now - inventory.observedAt <= INVENTORY_STALE_MS) {
+      base.stock = inventory.quantity
+      if (inventory.quantity > rule.minStock) return { ...base, state: 'ok', message: `Estoque OK · ${inventory.quantity} > mínimo ${rule.minStock}` }
+      if (rule.targetStock <= inventory.quantity) return { ...base, state: 'blocked', message: 'Comprar até precisa ser maior que o estoque atual' }
+      base.suggestedQuantity = Math.max(0, rule.targetStock - inventory.quantity)
+    } else {
+      base.suggestedQuantity = Math.max(1, rule.targetStock)
+    }
 
-    const listing = this.bestListing(account, rule, now)
-    if (!listing) return { ...base, state: 'waiting', message: 'Sem anúncio real e recente dentro do teto' }
-    base.bestUnitPrice = listing.price
-    base.suggestedQuantity = Math.max(0, rule.targetStock - inventory.quantity)
-    if (!base.suggestedQuantity) return { ...base, state: 'ok', message: 'Estoque no alvo' }
-    if (account.pending) return { ...base, state: 'buying', message: 'Aguardando confirmação da compra anterior' }
-    const message = `${base.suggestedQuantity} un. necessárias · melhor ${listing.price}/${rule.currency === 'gems' ? '💎' : '🪙'}`
-    return { ...base, state: 'would-buy', message: this.mode === 'observe' ? `OBSERVAR · compraria ${message}` : message }
-  }
-
-  private bestListing(account: AccountState, rule: AutoMarketRule, now: number): MarketListing | null {
-    const serverNow = now + account.serverOffsetMs
-    return [...account.listings.values()]
-      .filter((listing) => listing.itemId === rule.itemId && listing.currency === rule.currency)
-      .filter((listing) => now - listing.observedAt <= LISTING_STALE_MS)
-      .filter((listing) => listing.price <= rule.maxUnitPrice)
-      .filter((listing) => !listing.availableAt || listing.availableAt <= serverNow)
-      .filter((listing) => !account.serverAccountId || !listing.sellerId || listing.sellerId !== account.serverAccountId)
-      .filter((listing) => (account.blockedListings.get(listing.listingId) ?? 0) <= now)
-      .sort((a,b) => a.price - b.price || a.observedAt - b.observedAt)[0] ?? null
+    const message = base.stock === null
+      ? `Macro conferirá estoque/preço no card de ${rule.itemName}`
+      : `${base.suggestedQuantity} un. para chegar a ${rule.targetStock}`
+    return { ...base, state: 'would-buy', message: this.mode === 'observe' ? `OBSERVAR · ${message}` : message }
   }
 
   private rateAllowed(account: AccountState, now: number): boolean {
@@ -507,38 +383,84 @@ export class AutoMarketRuntime {
     return now - last >= 3_000
   }
 
-  private pruneAccount(account: AccountState, now: number): void {
-    for (const [id, listing] of account.listings) if (now - listing.observedAt > 60_000) account.listings.delete(id)
-    if (account.listings.size > 250) {
-      const rows = [...account.listings.values()].sort((a,b) => b.observedAt - a.observedAt).slice(0,200)
-      account.listings = new Map(rows.map((row) => [row.listingId, row]))
-    }
-    for (const [id, until] of account.blockedListings) if (until <= now) account.blockedListings.delete(id)
+  private macroToken(rule: AutoMarketRule): string {
+    return ['__gridium_macro__', rule.category, encodeURIComponent(rule.itemName), rule.minStock, rule.targetStock, rule.maxUnitPrice, rule.currency].join('|')
   }
 
-  private async probe(account: AccountState): Promise<void> {
-    if (!account.socketReady || account.pending) return
-    const configured = account.rules.filter((rule) => rule.enabled && rule.itemId)
-    let command: JsonRecord
-    if (configured.length) {
-      const rule = configured[this.cursor % configured.length]
-      command = { t: 'market.item', tipo: 'item', itemId: Number(rule.itemId), pagina: 1 }
-    } else {
-      command = { t: 'market.itens', elemento: '', categoria: '' }
+  private parseMacroReason(reason: string): { kind: string; values: number[] } {
+    const parts = String(reason || '').split(':')
+    return { kind: parts[0] || '', values: parts.slice(1).map((value) => Number(value)).filter(Number.isFinite) }
+  }
+
+  async evaluateAccount(accountId: AccountId, now = Date.now()): Promise<void> {
+    const account = this.accounts.get(accountId)
+    if (!account) return
+
+    for (const rule of account.rules) {
+      const status = this.evaluateRule(account, rule, now)
+      account.statuses.set(rule.category, status)
+      if (status.state !== 'would-buy' || this.mode !== 'auto') continue
+      if (!this.rateAllowed(account, now)) {
+        account.statuses.set(rule.category, { ...status, state: 'blocked', message: 'Limite de segurança: aguarde antes da próxima compra', updatedAt: now })
+        continue
+      }
+
+      account.pending = true
+      account.statuses.set(rule.category, { ...status, state: 'buying', message: `Macro abrindo Market · ${rule.itemName}`, updatedAt: now })
+      this.options.onChanged()
+
+      try {
+        const prep = await this.options.sendCommand(account.id, { t: 'market.itens', elemento: '', categoria: this.macroToken(rule) })
+        if (!prep.ok) {
+          account.statuses.set(rule.category, { ...status, state: 'error', message: `Macro não preparado: ${prep.reason || 'erro'}`, updatedAt: Date.now() })
+          account.lastAction = `Macro falhou ao preparar ${rule.itemName}`
+          break
+        }
+
+        const result = await this.options.sendCommand(account.id, {
+          t: 'market.comprar',
+          id: 1,
+          qtd: Math.max(1, Math.min(9999, status.suggestedQuantity || 1)),
+          preco: rule.maxUnitPrice,
+          moeda: 'gold'
+        })
+
+        if (result.ok) {
+          account.orderTimes.push(Date.now())
+          account.lastAction = `Macro confirmou compra de ${rule.itemName} pela interface do PokeIdle`
+          account.statuses.set(rule.category, { ...status, state: 'bought', message: account.lastAction, updatedAt: Date.now() })
+        } else {
+          const parsed = this.parseMacroReason(result.reason || '')
+          if (parsed.kind === 'macro-stock-ok') {
+            const stock = parsed.values[0] ?? status.stock
+            account.statuses.set(rule.category, { ...status, state: 'ok', stock: stock ?? null, message: `Estoque OK no Market · ${stock ?? 'confirmado'}`, updatedAt: Date.now() })
+            account.lastAction = `${rule.itemName}: estoque suficiente`
+          } else if (parsed.kind === 'macro-price-above') {
+            const price = parsed.values[0] ?? 0
+            account.statuses.set(rule.category, { ...status, state: 'blocked', bestUnitPrice: price || null, message: `Preço ${price} acima do teto ${rule.maxUnitPrice}`, updatedAt: Date.now() })
+            account.lastAction = `${rule.itemName}: preço acima do teto`
+          } else if (parsed.kind === 'macro-no-funds') {
+            account.statuses.set(rule.category, { ...status, state: 'blocked', message: 'Saldo insuficiente para completar o reabastecimento', updatedAt: Date.now() })
+            account.lastAction = `${rule.itemName}: saldo insuficiente`
+          } else {
+            account.statuses.set(rule.category, { ...status, state: 'error', message: `Macro: ${result.reason || 'falha sem detalhe'}`, updatedAt: Date.now() })
+            account.lastAction = `Macro falhou em ${rule.itemName}: ${result.reason || 'erro'}`
+          }
+        }
+      } finally {
+        account.pending = false
+        this.options.onChanged()
+      }
+      break
     }
-    await this.options.sendCommand(account.id, command)
   }
 
   async tick(): Promise<void> {
     if (this.disposed) return
     const ids = [1,2,3,4] as AccountId[]
     const id = ids[this.cursor++ % ids.length]
-    const account = this.accounts.get(id)
     this.lastTickAt = Date.now()
-    if (account) {
-      await this.probe(account)
-      await this.evaluateAccount(id)
-    }
+    await this.evaluateAccount(id)
     this.options.onChanged()
   }
 
@@ -546,7 +468,7 @@ export class AutoMarketRuntime {
     if (!this.scheduler || this.disposed) return
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
     if (!this.uiActive && this.mode !== 'auto') return
-    const delay = this.uiActive ? PROBE_INTERVAL_OPEN_MS : PROBE_INTERVAL_BACKGROUND_MS
+    const delay = this.uiActive ? TICK_OPEN_MS : TICK_BACKGROUND_MS
     this.timer = setTimeout(async () => {
       this.timer = null
       try { await this.tick() } finally { this.schedule() }
@@ -557,6 +479,6 @@ export class AutoMarketRuntime {
     this.disposed = true
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
-    for (const account of this.accounts.values()) account.pending = null
+    for (const account of this.accounts.values()) account.pending = false
   }
 }
