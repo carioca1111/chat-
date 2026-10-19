@@ -15,11 +15,13 @@ export function resolveVisualMode(input: VisualPolicyInput): VisualMode {
   return input.accountId === input.selectedAccount ? 'full' : 'eco'
 }
 
+// ECO must never alter opacity, visibility, transforms, filters, pointer events,
+// animations or transitions inside PokeIdle. Several game menus use those
+// properties as part of their open/close state, so overriding them can freeze
+// a modal on its transparent first frame. Rendering savings come from Electron
+// view detachment/background throttling; this CSS is intentionally harmless.
 export const ECO_VISUAL_CSS = `
-*, *::before, *::after {
-  animation-play-state: paused !important;
-  transition-duration: 0.001ms !important;
-  transition-delay: 0ms !important;
+html {
   scroll-behavior: auto !important;
 }
 `
