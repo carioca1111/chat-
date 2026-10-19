@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.6.0",
+  "version": "2.0.0-alpha.6.1",
   "private": true,
-  "description": "Gridium 2 Alpha 0.6.0 - Hunt Route V2 focused on Pokemon XP per hour and server-derived combat profile",
+  "description": "Gridium 2 Alpha 0.6.1 - Hunt Intelligence route engine focused on real Pokemon XP per hour",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
