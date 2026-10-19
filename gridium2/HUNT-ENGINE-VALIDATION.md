@@ -7,6 +7,8 @@
 - XP do treinador e XP do Pokémon permanecem separados. O número principal da Hunt é somente XP recebido pelo Pokémon.
 - Os seis IVs individuais são usados quando chegam no estado do servidor.
 - `stats`, `refino`, `bonusXp.pk`, `bonusXp.tr`, `tmElemental` e `tmAoe` são lidos do estado do servidor quando presentes.
+- Potência segue a regra oficial atual: P1 +0%, P2 +5%, P3 +10%, P4 +25% e P5 +100% nos stats.
+- Shiny segue a regra oficial atual: stats ×2. Uma documentação comunitária mais antiga ainda descreve ×3; o Gridium deliberadamente segue a regra oficial vigente.
 - A tabela de Hunt mantém amplificações observadas como 2,5x e 5,5x, separadas da tabela Pokémon tradicional.
 - IV de velocidade reduz cooldown no modelo de golpe em 0,01 s por ponto.
 - TM Elemental, quando o tipo chega nominalmente pelo servidor, entra como golpe especial de poder 2800 / cooldown base 60 s. O motor NÃO inventa multiplicador de AOE sem informação de densidade/quantidade de alvos.
@@ -22,7 +24,7 @@
 - XP do Pokémon ganho em cada abate/evento de combate;
 - densidade/ondas do mapa para modelar AOE e sobreposição de spawns.
 
-O fallback de potência P2/P3/P4 também permanece explicitamente um fallback quando os `stats` completos do Pokémon não chegam. Com `stats` completos do servidor, o motor usa esses stats diretamente e não precisa reconstruí-los a partir desse fallback.
+Quando `stats` completos do Pokémon chegam do servidor, o motor usa esses stats diretamente. Se eles não chegam, a reconstrução usa os multiplicadores oficiais de potência/shiny, mas qualidade/expoente, refino, stats esperados do inimigo e parte da cadência de combate continuam sendo modelo empírico — por isso a saída permanece `ESTIMADO`.
 
 ## Calibração real já suportada pelo motor
 
