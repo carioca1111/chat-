@@ -8,7 +8,8 @@ import type {
   AutoMarketSnapshot,
   MarketCurrency
 } from '../../shared/contracts'
-import { itemSpriteUrl } from './item-visuals'
+import { AUTO_MARKET_VISUAL_PRESETS } from './automarket-presets'
+import { itemSpriteUrl, normalizeItemName } from './item-visuals'
 
 const categoryMeta: Record<AutoMarketCategory, { icon: string; title: string; subtitle: string }> = {
   balls: { icon: '◉', title: 'POKÉBOLAS', subtitle: 'Bolas de captura' },
@@ -17,6 +18,7 @@ const categoryMeta: Record<AutoMarketCategory, { icon: string; title: string; su
 }
 
 const categories: AutoMarketCategory[] = ['balls','potions','revives']
+type PickerItem = AutoMarketCatalogItem & { preset?: boolean }
 
 export function AutoMarketView({ state }: { state: AutoMarketSnapshot }) {
   const accounts = ([1,2,3,4] as AccountId[]).map((id) => state.accounts.find((row) => row.accountId === id))
@@ -58,12 +60,12 @@ export function AutoMarketView({ state }: { state: AutoMarketSnapshot }) {
     </section>
 
     <section class="automarket-footer-note poke-frame">
-      <b>🛡 PROTEÇÕES DA ALPHA 0.5</b>
+      <b>🛡 PROTEÇÕES DA ALPHA 0.5.2</b>
+      <span>Nome/imagem podem aparecer antes do ID; sem vínculo do servidor = não compra</span>
       <span>Sem estoque do servidor = não compra</span>
       <span>Sem anúncio real recente = não compra</span>
       <span>Preço acima do teto = não compra</span>
       <span>Saldo insuficiente = não compra</span>
-      <span>Máximo 4 envios/min por conta</span>
       <span>Compra só é marcada como concluída após confirmação do servidor</span>
     </section>
   </main>
@@ -98,8 +100,12 @@ function RuleCell({
   if (!rule) return <div class="am-rule-cell loading">Regra indisponível</div>
 
   const inventory = account.inventory.find((row) => row.itemId === rule.itemId)
-  const options = mergeOptions(catalog, account, rule)
-  const selectedItem = options.find((row) => row.itemId === rule.itemId)
+  const options = mergeOptions(category, catalog, account, rule)
+  const selectedItem = rule.itemId
+    ? options.find((row) => row.itemId === rule.itemId)
+    : rule.itemName
+      ? options.find((row) => normalizeItemName(row.name) === normalizeItemName(rule.itemName))
+      : undefined
   const commit = (patch: Partial<AutoMarketRule>): void => {
     void window.gridium2.setAutoMarketRule(id, { ...rule, ...patch })
   }
@@ -110,7 +116,7 @@ function RuleCell({
         category={category}
         items={options}
         selected={selectedItem}
-        onSelect={(item) => commit({ itemId: item?.itemId || '', itemName: item?.name || '' })}
+        onSelect={(item) => commit({ itemId: item && !item.preset ? item.itemId : '', itemName: item?.name || '' })}
       />
       <label class="am-switch"><input type="checkbox" checked={rule.enabled} onChange={(event) => commit({ enabled: event.currentTarget.checked })} /><span /> <b>{rule.enabled ? 'ATIVO' : 'PAUSADO'}</b></label>
     </div>
@@ -118,7 +124,7 @@ function RuleCell({
     <div class="am-stock-line">
       <div class="am-selected-item">
         <ItemSprite item={selectedItem} category={category} />
-        <div><b>{selectedItem?.name || rule.itemName || 'Nenhum item'}</b><small>{inventory ? `×${formatNumber(inventory.quantity)} no estoque` : 'estoque aguardando servidor'}</small></div>
+        <div><b>{selectedItem?.name || rule.itemName || 'Nenhum item'}</b><small>{inventory ? `×${formatNumber(inventory.quantity)} no estoque` : selectedItem?.preset ? 'imagem pronta · aguardando ID real do servidor' : 'estoque aguardando servidor'}</small></div>
       </div>
       {status?.bestUnitPrice !== null && status?.bestUnitPrice !== undefined && <em>{rule.currency === 'gems' ? '💎' : '🪙'} {formatNumber(status.bestUnitPrice)}</em>}
     </div>
@@ -138,29 +144,29 @@ function ItemPicker({
   category, items, selected, onSelect
 }: {
   category: AutoMarketCategory
-  items: AutoMarketCatalogItem[]
-  selected?: AutoMarketCatalogItem
-  onSelect: (item?: AutoMarketCatalogItem) => void
+  items: PickerItem[]
+  selected?: PickerItem
+  onSelect: (item?: PickerItem) => void
 }) {
   return <details class="am-item-picker">
     <summary>
       <ItemSprite item={selected} category={category} compact />
-      <span><b>{selected?.name || '— nenhum —'}</b><small>trocar item</small></span>
+      <span><b>{selected?.name || '— escolher item —'}</b><small>{selected?.preset ? 'aguardando vínculo' : selected ? 'item do servidor' : 'trocar item'}</small></span>
       <i>⌄</i>
     </summary>
     <div class="am-item-menu">
       <button class="am-item-option none" onClick={(event) => { onSelect(undefined); event.currentTarget.closest('details')?.removeAttribute('open') }}>
         <span class="am-item-sprite empty">—</span><b>Nenhum</b>
       </button>
-      {items.slice(0, 300).map((item) => <button class={`am-item-option ${selected?.itemId === item.itemId ? 'selected' : ''}`} key={item.itemId} onClick={(event) => { onSelect(item); event.currentTarget.closest('details')?.removeAttribute('open') }}>
+      {items.slice(0, 300).map((item) => <button class={`am-item-option ${samePickerItem(selected, item) ? 'selected' : ''}`} key={`${item.preset ? 'preset' : 'server'}:${item.itemId}:${normalizeItemName(item.name)}`} onClick={(event) => { onSelect(item); event.currentTarget.closest('details')?.removeAttribute('open') }}>
         <ItemSprite item={item} category={category} compact />
-        <span><b>{item.name}</b><small>Item {item.itemId}</small></span>
+        <span><b>{item.name}</b><small>{item.preset ? 'visual pronto · ID será confirmado pelo servidor' : `Item ${item.itemId}`}</small></span>
       </button>)}
     </div>
   </details>
 }
 
-function ItemSprite({ item, category, compact = false }: { item?: AutoMarketCatalogItem; category: AutoMarketCategory; compact?: boolean }) {
+function ItemSprite({ item, category, compact = false }: { item?: PickerItem; category: AutoMarketCategory; compact?: boolean }) {
   const src = item ? itemSpriteUrl(item.name) : ''
   return <span class={`am-item-sprite ${compact ? 'compact' : ''}`}>
     <span class="am-item-fallback">{categoryMeta[category].icon}</span>
@@ -177,15 +183,45 @@ function StatusLine({ status, mode }: { status?: AutoMarketRuleStatus; mode: 'ob
   return <div class={`am-status ${state}`}><i /> <span>{status?.message || 'Aguardando dados do servidor'}</span>{state === 'would-buy' && <b>{mode === 'auto' ? 'PRONTO' : 'SIMULAÇÃO'}</b>}</div>
 }
 
-function mergeOptions(catalog: AutoMarketCatalogItem[], account: AutoMarketAccountSnapshot, rule: AutoMarketRule): AutoMarketCatalogItem[] {
-  const map = new Map<string, AutoMarketCatalogItem>()
-  for (const item of catalog) map.set(item.itemId, item)
-  for (const item of account.inventory) {
-    const previous = map.get(item.itemId)
-    map.set(item.itemId, previous ? { ...previous, name: /^Item #/.test(previous.name) ? item.name : previous.name } : { itemId: item.itemId, name: item.name, bestCoins: null, bestGems: null, observedAt: item.observedAt })
+function mergeOptions(category: AutoMarketCategory, catalog: AutoMarketCatalogItem[], account: AutoMarketAccountSnapshot, rule: AutoMarketRule): PickerItem[] {
+  const byName = new Map<string, PickerItem>()
+  for (const preset of AUTO_MARKET_VISUAL_PRESETS[category]) {
+    byName.set(normalizeItemName(preset.name), { itemId: `preset:${preset.key}`, name: preset.name, bestCoins: null, bestGems: null, observedAt: 0, preset: true })
   }
-  if (rule.itemId && !map.has(rule.itemId)) map.set(rule.itemId, { itemId: rule.itemId, name: rule.itemName || `Item #${rule.itemId}`, bestCoins: null, bestGems: null, observedAt: 0 })
-  return [...map.values()].sort((a,b) => a.name.localeCompare(b.name)).slice(0,300)
+
+  const addAuthoritative = (item: AutoMarketCatalogItem): void => {
+    const normalized = normalizeItemName(item.name)
+    const belongs = categoryForName(item.name) === category
+    const isCurrent = item.itemId === rule.itemId || (rule.itemName && normalized === normalizeItemName(rule.itemName))
+    if (!belongs && !isCurrent) return
+    if (/^item #/i.test(item.name) && !isCurrent) return
+    byName.set(normalized || `id:${item.itemId}`, { ...item, preset: false })
+  }
+
+  for (const item of catalog) addAuthoritative(item)
+  for (const item of account.inventory) addAuthoritative({ itemId: item.itemId, name: item.name, bestCoins: null, bestGems: null, observedAt: item.observedAt })
+
+  if (rule.itemName && !byName.has(normalizeItemName(rule.itemName))) {
+    byName.set(normalizeItemName(rule.itemName), { itemId: rule.itemId || `preset:saved-${category}`, name: rule.itemName, bestCoins: null, bestGems: null, observedAt: 0, preset: !rule.itemId })
+  }
+  if (rule.itemId && ![...byName.values()].some((item) => item.itemId === rule.itemId)) {
+    byName.set(`id:${rule.itemId}`, { itemId: rule.itemId, name: rule.itemName || `Item #${rule.itemId}`, bestCoins: null, bestGems: null, observedAt: 0, preset: false })
+  }
+  return [...byName.values()].sort((a,b) => Number(Boolean(a.preset)) - Number(Boolean(b.preset)) || a.name.localeCompare(b.name)).slice(0,300)
+}
+
+function categoryForName(name: string): AutoMarketCategory | null {
+  const normalized = normalizeItemName(name)
+  if (/\b(ball|pokeball)\b/.test(normalized)) return 'balls'
+  if (/\b(potion|restore)\b/.test(normalized)) return 'potions'
+  if (/\brevive\b/.test(normalized)) return 'revives'
+  return null
+}
+
+function samePickerItem(a?: PickerItem, b?: PickerItem): boolean {
+  if (!a || !b) return false
+  if (!a.preset && !b.preset && a.itemId === b.itemId) return true
+  return normalizeItemName(a.name) === normalizeItemName(b.name)
 }
 
 function formatNumber(value: number): string {
