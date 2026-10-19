@@ -18,6 +18,7 @@ const api: GridiumApi = {
   setLayout: (layout: LayoutMode) => ipcRenderer.invoke('gridium2:set-layout', layout),
   setPerformanceMode: (mode: PerformanceMode) => ipcRenderer.invoke('gridium2:set-performance-mode', mode),
   setModule: (module: AppModule) => ipcRenderer.invoke('gridium2:set-module', module),
+  setKeepDisplayAwake: (enabled: boolean) => ipcRenderer.invoke('gridium2:set-keep-display-awake', enabled),
   setAccountZoom: (accountId: AccountId, zoomPercent: number) => ipcRenderer.invoke('gridium2:set-account-zoom', accountId, zoomPercent),
   setAccountPowerMode: (accountId: AccountId, mode: AccountPowerMode) => ipcRenderer.invoke('gridium2:set-account-power-mode', accountId, mode),
   setAllAccountsPowerMode: (mode: AccountPowerMode) => ipcRenderer.invoke('gridium2:set-all-account-power-mode', mode),
