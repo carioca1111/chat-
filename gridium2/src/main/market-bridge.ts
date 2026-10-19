@@ -89,16 +89,73 @@ const CATEGORY_HOTFIX_SOURCE = `(() => {
       return null;
     };
 
+    const marketMenuTarget = () => {
+      const seeds = candidates(document)
+        .filter((element) => {
+          if (!visible(element)) return false;
+          const text = norm(element.textContent);
+          return text === 'market' || text.startsWith('market ');
+        })
+        .sort((a, b) => rectArea(a) - rectArea(b));
+      for (const seed of seeds) {
+        let node = seed;
+        for (let depth = 0; depth < 7 && node && node !== document.body; depth += 1, node = node.parentElement) {
+          if (!visible(node)) continue;
+          const text = norm(node.textContent);
+          if (!(text === 'market' || text.startsWith('market ')) || text.length > 90) continue;
+          const rect = node.getBoundingClientRect();
+          if (rect.width >= 80 && rect.width <= 520 && rect.height >= 26 && rect.height <= 130) return node;
+        }
+      }
+      const seed = exactLeaf(document, 'Market') || buttonStartingWith(document, 'Market');
+      return seed ? clickableAncestor(seed, document.body) : null;
+    };
+
+    const activateMarketTarget = (element, attempt) => {
+      if (!element) return false;
+      try { element.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+      try {
+        if (attempt === 0 && typeof element.click === 'function') {
+          element.click();
+          return true;
+        }
+        const rect = element.getBoundingClientRect();
+        const clientX = Math.max(rect.left + 1, Math.min(rect.right - 1, rect.left + rect.width / 2));
+        const clientY = Math.max(rect.top + 1, Math.min(rect.bottom - 1, rect.top + rect.height / 2));
+        const hit = document.elementFromPoint(clientX, clientY);
+        const target = hit && element.contains(hit) ? hit : element;
+        if (typeof PointerEvent === 'function') {
+          target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX, clientY }));
+          target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX, clientY }));
+        }
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+        return true;
+      } catch { return false; }
+    };
+
     const openMarket = async () => {
       const existing = marketRoot();
       if (existing) return { root: existing, openedByMacro: false };
       if (!clickExact(document, 'Menu')) return { root: null, openedByMacro: false, reason: 'macro-menu-not-found' };
-      const marketButton = await waitFor(() => exactLeaf(document, 'Market') || buttonStartingWith(document, 'Market'), 2500);
-      if (!marketButton) return { root: null, openedByMacro: false, reason: 'macro-market-button-not-found' };
-      try { clickableAncestor(marketButton, document.body).click(); }
-      catch { return { root: null, openedByMacro: false, reason: 'macro-market-button-failed' }; }
-      const root = await waitFor(() => marketRoot(), 5000);
-      return root ? { root, openedByMacro: true } : { root: null, openedByMacro: false, reason: 'macro-market-open-failed' };
+      await sleep(220);
+
+      let sawMarketButton = false;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const marketButton = await waitFor(() => marketMenuTarget(), 1600, 70);
+        if (!marketButton) continue;
+        sawMarketButton = true;
+        activateMarketTarget(marketButton, attempt);
+        const root = await waitFor(() => marketRoot(), 1150, 70);
+        if (root) return { root, openedByMacro: true };
+        await sleep(180 + attempt * 70);
+      }
+      return {
+        root: null,
+        openedByMacro: false,
+        reason: sawMarketButton ? 'macro-market-click-no-navigation' : 'macro-market-button-not-found'
+      };
     };
 
     const closeMarket = (root) => {
