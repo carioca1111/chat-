@@ -8,6 +8,7 @@ import type {
   AutoMarketSnapshot,
   MarketCurrency
 } from '../../shared/contracts'
+import { itemSpriteUrl } from './item-visuals'
 
 const categoryMeta: Record<AutoMarketCategory, { icon: string; title: string; subtitle: string }> = {
   balls: { icon: '◉', title: 'POKÉBOLAS', subtitle: 'Bolas de captura' },
@@ -98,26 +99,27 @@ function RuleCell({
 
   const inventory = account.inventory.find((row) => row.itemId === rule.itemId)
   const options = mergeOptions(catalog, account, rule)
+  const selectedItem = options.find((row) => row.itemId === rule.itemId)
   const commit = (patch: Partial<AutoMarketRule>): void => {
     void window.gridium2.setAutoMarketRule(id, { ...rule, ...patch })
   }
 
   return <div class={`am-rule-cell ${rule.enabled ? 'enabled' : 'disabled'} state-${status?.state || 'waiting'}`}>
     <div class="am-rule-top">
-      <select value={rule.itemId} onChange={(event) => {
-        const itemId = event.currentTarget.value
-        const option = options.find((row) => row.itemId === itemId)
-        commit({ itemId, itemName: option?.name || '' })
-      }}>
-        <option value="">— nenhum —</option>
-        {options.map((item) => <option value={item.itemId} key={item.itemId}>{item.name}</option>)}
-      </select>
+      <ItemPicker
+        category={category}
+        items={options}
+        selected={selectedItem}
+        onSelect={(item) => commit({ itemId: item?.itemId || '', itemName: item?.name || '' })}
+      />
       <label class="am-switch"><input type="checkbox" checked={rule.enabled} onChange={(event) => commit({ enabled: event.currentTarget.checked })} /><span /> <b>{rule.enabled ? 'ATIVO' : 'PAUSADO'}</b></label>
     </div>
 
     <div class="am-stock-line">
-      <strong>{inventory ? `×${formatNumber(inventory.quantity)}` : '×—'}</strong>
-      <span>estoque do servidor</span>
+      <div class="am-selected-item">
+        <ItemSprite item={selectedItem} category={category} />
+        <div><b>{selectedItem?.name || rule.itemName || 'Nenhum item'}</b><small>{inventory ? `×${formatNumber(inventory.quantity)} no estoque` : 'estoque aguardando servidor'}</small></div>
+      </div>
       {status?.bestUnitPrice !== null && status?.bestUnitPrice !== undefined && <em>{rule.currency === 'gems' ? '💎' : '🪙'} {formatNumber(status.bestUnitPrice)}</em>}
     </div>
 
@@ -130,6 +132,40 @@ function RuleCell({
 
     <StatusLine status={status} mode={mode} />
   </div>
+}
+
+function ItemPicker({
+  category, items, selected, onSelect
+}: {
+  category: AutoMarketCategory
+  items: AutoMarketCatalogItem[]
+  selected?: AutoMarketCatalogItem
+  onSelect: (item?: AutoMarketCatalogItem) => void
+}) {
+  return <details class="am-item-picker">
+    <summary>
+      <ItemSprite item={selected} category={category} compact />
+      <span><b>{selected?.name || '— nenhum —'}</b><small>trocar item</small></span>
+      <i>⌄</i>
+    </summary>
+    <div class="am-item-menu">
+      <button class="am-item-option none" onClick={(event) => { onSelect(undefined); event.currentTarget.closest('details')?.removeAttribute('open') }}>
+        <span class="am-item-sprite empty">—</span><b>Nenhum</b>
+      </button>
+      {items.slice(0, 300).map((item) => <button class={`am-item-option ${selected?.itemId === item.itemId ? 'selected' : ''}`} key={item.itemId} onClick={(event) => { onSelect(item); event.currentTarget.closest('details')?.removeAttribute('open') }}>
+        <ItemSprite item={item} category={category} compact />
+        <span><b>{item.name}</b><small>Item {item.itemId}</small></span>
+      </button>)}
+    </div>
+  </details>
+}
+
+function ItemSprite({ item, category, compact = false }: { item?: AutoMarketCatalogItem; category: AutoMarketCategory; compact?: boolean }) {
+  const src = item ? itemSpriteUrl(item.name) : ''
+  return <span class={`am-item-sprite ${compact ? 'compact' : ''}`}>
+    <span class="am-item-fallback">{categoryMeta[category].icon}</span>
+    {src && <img src={src} alt={item?.name || 'Item'} loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />}
+  </span>
 }
 
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
