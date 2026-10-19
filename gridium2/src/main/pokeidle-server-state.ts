@@ -1,4 +1,4 @@
-import type { HuntProfileScan } from '../shared/contracts'
+import type { HuntProfileScan, HuntStatBlock } from '../shared/contracts'
 
 type JsonRecord = Record<string, unknown>
 
@@ -32,9 +32,27 @@ const safeString = (value: unknown): string | undefined => {
   const text = value.trim()
   return text && text.length <= 80 ? text : undefined
 }
+const safePrimitive = (value: unknown): string | number | null | undefined => {
+  if (value === null) return null
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  return safeString(value)
+}
 const asPotency = (value: unknown): 1|2|3|4|5|undefined => {
   const number = toFiniteNumber(typeof value === 'string' ? value.replace(/^P/i, '') : value)
   return number && [1,2,3,4,5].includes(number) ? number as 1|2|3|4|5 : undefined
+}
+
+function statBlockOf(value: unknown): HuntStatBlock | undefined {
+  if (!isRecord(value)) return undefined
+  const block: HuntStatBlock = {
+    hp: toFiniteNumber(value.hp),
+    atk: toFiniteNumber(value.atk),
+    def: toFiniteNumber(value.def),
+    spAtk: toFiniteNumber(firstDefined(value.spAtk, value.spatk, value.sp_atk)),
+    spDef: toFiniteNumber(firstDefined(value.spDef, value.spdef, value.sp_def)),
+    speed: toFiniteNumber(firstDefined(value.speed, value.spd))
+  }
+  return Object.values(block).some((entry) => entry !== undefined) ? block : undefined
 }
 
 function speciesIdOf(pokemon: JsonRecord): number | undefined {
@@ -79,17 +97,27 @@ function ivTotalOf(pokemon: JsonRecord): number | undefined {
 
 function profileSignature(profile: HuntProfileScan | null): string {
   if (!profile) return 'null'
+  // Absolute XP changes every kill. Deliberately exclude it so the UI/route is not rebuilt every frame/kill.
   return JSON.stringify({
     trainerLevel: profile.trainerLevel,
+    trainerXpMultiplier: profile.trainerXpMultiplier,
     activePokemonId: profile.activePokemonId,
     speciesId: profile.speciesId,
     speciesName: profile.speciesName,
     pokemonLevel: profile.pokemonLevel,
+    pokemonXpMultiplier: profile.pokemonXpMultiplier,
     quality: profile.quality,
     potency: profile.potency,
     ivTotal: profile.ivTotal,
     ivAverage: profile.ivAverage,
+    ivs: profile.ivs,
+    stats: profile.stats,
+    refinement: profile.refinement,
+    maxHp: profile.maxHp,
     shiny: profile.shiny,
+    huntSlug: profile.huntSlug,
+    tmElemental: profile.tmElemental,
+    tmAoe: profile.tmAoe,
     serverAccountId: profile.serverAccountId,
     serverNick: profile.serverNick
   })
@@ -99,6 +127,12 @@ export class PokeIdleServerState {
   private readonly pokemons = new Map<string, JsonRecord>()
   private activeId?: string
   private trainerLevel?: number
+  private trainerXp?: number
+  private trainerXpLevelStart?: number
+  private trainerXpNext?: number
+  private trainerXpMultiplier = 1
+  private pokemonXpMultiplier = 1
+  private huntSlug?: string
   private serverAccountId?: string
   private serverNick?: string
   private current: HuntProfileScan | null = null
@@ -108,6 +142,12 @@ export class PokeIdleServerState {
     this.pokemons.clear()
     this.activeId = undefined
     this.trainerLevel = undefined
+    this.trainerXp = undefined
+    this.trainerXpLevelStart = undefined
+    this.trainerXpNext = undefined
+    this.trainerXpMultiplier = 1
+    this.pokemonXpMultiplier = 1
+    this.huntSlug = undefined
     this.serverAccountId = undefined
     this.serverNick = undefined
     this.current = null
@@ -134,6 +174,12 @@ export class PokeIdleServerState {
     if (accountChanged) {
       this.activeId = undefined
       this.trainerLevel = undefined
+      this.trainerXp = undefined
+      this.trainerXpLevelStart = undefined
+      this.trainerXpNext = undefined
+      this.trainerXpMultiplier = 1
+      this.pokemonXpMultiplier = 1
+      this.huntSlug = undefined
       this.serverNick = undefined
     }
 
@@ -142,6 +188,22 @@ export class PokeIdleServerState {
     if (nick) this.serverNick = nick
     const trainerLevel = toFiniteNumber(firstDefined(estado.trainerLevel, estado.nivelTreinador, estado.level, estado.nivel, estado.lvl))
     if (trainerLevel !== undefined) this.trainerLevel = trainerLevel
+
+    const trainerXp = toFiniteNumber(estado.xp)
+    const trainerXpLevelStart = toFiniteNumber(firstDefined(estado.xpNivel, estado.xpLevelStart))
+    const trainerXpNext = toFiniteNumber(firstDefined(estado.xpProximo, estado.xpNext))
+    if (trainerXp !== undefined) this.trainerXp = trainerXp
+    if (trainerXpLevelStart !== undefined) this.trainerXpLevelStart = trainerXpLevelStart
+    if (trainerXpNext !== undefined) this.trainerXpNext = trainerXpNext
+
+    const bonusXp = isRecord(estado.bonusXp) ? estado.bonusXp : undefined
+    const trainerMultiplier = toFiniteNumber(firstDefined(bonusXp?.tr, bonusXp?.trainer, estado.xpTreinadorMultiplicador))
+    const pokemonMultiplier = toFiniteNumber(firstDefined(bonusXp?.pk, bonusXp?.pokemon, estado.xpPokemonMultiplicador))
+    if (trainerMultiplier !== undefined && trainerMultiplier > 0) this.trainerXpMultiplier = trainerMultiplier
+    if (pokemonMultiplier !== undefined && pokemonMultiplier > 0) this.pokemonXpMultiplier = pokemonMultiplier
+
+    const huntSlug = safeString(firstDefined(estado.huntSlug, estado.hunt))
+    if (huntSlug) this.huntSlug = huntSlug
 
     const applyPokemonRows = (rows: unknown): void => {
       if (!Array.isArray(rows)) return
@@ -178,15 +240,30 @@ export class PokeIdleServerState {
 
     return {
       trainerLevel: this.trainerLevel,
+      trainerXp: this.trainerXp,
+      trainerXpLevelStart: this.trainerXpLevelStart,
+      trainerXpNext: this.trainerXpNext,
+      trainerXpMultiplier: this.trainerXpMultiplier,
       activePokemonId: this.activeId,
       speciesId: speciesIdOf(pokemon),
       speciesName: speciesNameOf(pokemon),
       pokemonLevel: toFiniteNumber(firstDefined(pokemon.level, pokemon.nivel, pokemon.lvl)),
+      pokemonXp: toFiniteNumber(pokemon.xp),
+      pokemonXpLevelStart: toFiniteNumber(firstDefined(pokemon.xpNivel, pokemon.xpLevelStart)),
+      pokemonXpNext: toFiniteNumber(firstDefined(pokemon.xpProximo, pokemon.xpNext)),
+      pokemonXpMultiplier: this.pokemonXpMultiplier,
       quality: toFiniteNumber(firstDefined(pokemon.qualidade, pokemon.quality)),
       potency: asPotency(firstDefined(pokemon.potencia, pokemon.potency)),
       ivTotal,
       ivAverage,
+      ivs: statBlockOf(pokemon.ivs),
+      stats: statBlockOf(pokemon.stats),
+      refinement: statBlockOf(firstDefined(pokemon.refino, pokemon.refinement)),
+      maxHp: toFiniteNumber(pokemon.maxHp),
       shiny: toBoolean(firstDefined(pokemon.shiny, pokemon.isShiny)),
+      huntSlug: this.huntSlug,
+      tmElemental: safePrimitive(pokemon.tmElemental),
+      tmAoe: toBoolean(pokemon.tmAoe),
       serverAccountId: this.serverAccountId,
       serverNick: this.serverNick,
       source: 'server',
