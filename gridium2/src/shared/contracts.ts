@@ -20,17 +20,41 @@ export interface PowerAutomationSettings {
   wakeOnSelect: boolean
 }
 
+export interface HuntStatBlock {
+  hp?: number
+  atk?: number
+  def?: number
+  spAtk?: number
+  spDef?: number
+  speed?: number
+}
+
 export interface HuntProfileScan {
   trainerLevel?: number
+  trainerXp?: number
+  trainerXpLevelStart?: number
+  trainerXpNext?: number
+  trainerXpMultiplier?: number
   activePokemonId?: string
   speciesId?: number
   speciesName?: string
   pokemonLevel?: number
+  pokemonXp?: number
+  pokemonXpLevelStart?: number
+  pokemonXpNext?: number
+  pokemonXpMultiplier?: number
   quality?: number
   potency?: 1 | 2 | 3 | 4 | 5
   ivTotal?: number
   ivAverage?: number
+  ivs?: HuntStatBlock
+  stats?: HuntStatBlock
+  refinement?: HuntStatBlock
+  maxHp?: number
   shiny?: boolean
+  huntSlug?: string
+  tmElemental?: string | number | null
+  tmAoe?: boolean
   serverAccountId?: string
   serverNick?: string
   source: 'server'
