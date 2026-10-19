@@ -22,7 +22,8 @@ describe('display power option', () => {
   it('defaults to keeping the display awake and persists the choice', () => {
     expect(controller).toContain("gridium2-display-power.json")
     expect(controller).toContain('keepDisplayAwake: this.enabled')
-    expect(controller.match(/return true/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+    expect(controller).toContain("typeof parsed.keepDisplayAwake === 'boolean' ? parsed.keepDisplayAwake : true")
+    expect(controller).toContain('catch {\n      return true')
   })
 
   it('exposes the option through snapshot, IPC and settings UI', () => {
