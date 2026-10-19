@@ -6,9 +6,12 @@ export type AppModule = 'accounts' | 'hunt'
 export type AccountCommand = 'home' | 'reload' | 'back' | 'forward'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
+export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
 
 export interface HuntProfileScan {
   trainerLevel?: number
+  activePokemonId?: string
+  speciesId?: number
   speciesName?: string
   pokemonLevel?: number
   quality?: number
@@ -16,7 +19,9 @@ export interface HuntProfileScan {
   ivTotal?: number
   ivAverage?: number
   shiny?: boolean
-  source: 'page'
+  serverAccountId?: string
+  serverNick?: string
+  source: 'server'
   detectedAt: number
 }
 
@@ -32,6 +37,7 @@ export interface AccountSnapshot {
   visualMode: VisualMode
   zoomPercent: number
   huntProfile: HuntProfileScan | null
+  huntProtocolStatus: HuntProtocolStatus
 }
 
 export interface TelemetrySnapshot {
