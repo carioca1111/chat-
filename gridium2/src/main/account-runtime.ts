@@ -9,17 +9,17 @@ import type {
   AccountSnapshot,
   AccountStatus,
   HuntProfileScan,
+  HuntProtocolStatus,
   PerformanceMode,
   VisualMode
 } from '../shared/contracts'
 import type { Rect } from './layout'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
+import { PokeIdleServerState } from './pokeidle-server-state'
 import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
-import { HUNT_PROFILE_SCAN_SCRIPT, parseHuntPageText } from './hunt-scan'
 
 const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
-const HUNT_SCAN_MIN_INTERVAL_MS = 3500
 
 interface AccountSlot {
   id: AccountId
@@ -37,8 +37,12 @@ interface AccountSlot {
   visualUpdateRunning: boolean
   zoomPercent: number
   huntProfile: HuntProfileScan | null
-  huntScanAt: number
-  huntScanPromise: Promise<HuntProfileScan | null> | null
+  huntProtocolStatus: HuntProtocolStatus
+  serverState: PokeIdleServerState
+  socketUrls: Map<string, string>
+  debuggerOwned: boolean
+  debuggerMessageHandler: ((event: Electron.Event, method: string, params: unknown) => void) | null
+  debuggerDetachHandler: (() => void) | null
 }
 
 export class AccountRuntime {
@@ -74,7 +78,8 @@ export class AccountRuntime {
       attached: account.attached,
       visualMode: account.desiredVisualMode,
       zoomPercent: account.zoomPercent,
-      huntProfile: account.huntProfile ? { ...account.huntProfile } : null
+      huntProfile: account.huntProfile ? { ...account.huntProfile } : null,
+      huntProtocolStatus: account.huntProtocolStatus
     }))
   }
 
@@ -131,43 +136,14 @@ export class AccountRuntime {
     this.onChanged()
   }
 
-  async scanHuntProfile(accountId: AccountId, force = false): Promise<HuntProfileScan | null> {
-    const account = this.accounts.get(accountId)
-    if (!account || this.disposed || account.view.webContents.isDestroyed()) return null
-    if (account.status !== 'ready') return account.huntProfile
-
-    const now = Date.now()
-    if (!force && account.huntProfile && now - account.huntScanAt < HUNT_SCAN_MIN_INTERVAL_MS) {
-      return account.huntProfile
-    }
-    if (account.huntScanPromise) return account.huntScanPromise
-
-    const previousSignature = huntSignature(account.huntProfile)
-    account.huntScanAt = now
-    account.huntScanPromise = (async () => {
-      try {
-        const text = await account.view.webContents.executeJavaScript(HUNT_PROFILE_SCAN_SCRIPT, true)
-        const scan = parseHuntPageText(String(text || ''))
-        if (!scan) return account.huntProfile
-        account.huntProfile = scan
-        if (huntSignature(scan) !== previousSignature) this.onChanged()
-        return scan
-      } catch {
-        return account.huntProfile
-      } finally {
-        account.huntScanPromise = null
-      }
-    })()
-
-    return account.huntScanPromise
+  getHuntProfile(accountId: AccountId): HuntProfileScan | null {
+    return this.accounts.get(accountId)?.huntProfile ?? null
   }
 
-  async refreshHuntProfiles(): Promise<void> {
-    for (const id of [1, 2, 3, 4] as AccountId[]) {
-      if (this.disposed) return
-      await this.scanHuntProfile(id, false)
-      await delay(60)
-    }
+  async scanHuntProfile(accountId: AccountId): Promise<HuntProfileScan | null> {
+    // Compatibility API: Hunt data is now event-driven from the PokeIdle WebSocket.
+    // This method never reads document text or searches the DOM.
+    return this.getHuntProfile(accountId)
   }
 
   async command(accountId: AccountId, command: AccountCommand): Promise<void> {
@@ -201,7 +177,7 @@ export class AccountRuntime {
     this.authWindows.clear()
 
     for (const account of this.accounts.values()) {
-      account.huntScanPromise = null
+      this.detachServerMonitor(account)
       if (account.attached) {
         try {
           this.window.contentView.removeChildView(account.view)
@@ -248,9 +224,16 @@ export class AccountRuntime {
       visualUpdateRunning: false,
       zoomPercent,
       huntProfile: null,
-      huntScanAt: 0,
-      huntScanPromise: null
+      huntProtocolStatus: 'waiting',
+      serverState: new PokeIdleServerState(),
+      socketUrls: new Map(),
+      debuggerOwned: false,
+      debuggerMessageHandler: null,
+      debuggerDetachHandler: null
     }
+
+    this.accounts.set(id, account)
+    void this.attachServerMonitor(account)
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (!this.isAllowedPopupUrl(url)) return { action: 'deny' }
@@ -260,8 +243,7 @@ export class AccountRuntime {
 
     view.webContents.on('did-start-loading', () => {
       this.clearInjectedVisualStyle(account)
-      account.huntProfile = null
-      account.huntScanAt = 0
+      this.resetServerState(account)
       this.patchAccount(account, { status: 'loading' })
     })
     view.webContents.on('did-stop-loading', () => {
@@ -273,11 +255,119 @@ export class AccountRuntime {
       if (code !== -3) this.patchAccount(account, { status: 'offline' })
     })
     view.webContents.on('page-title-updated', (_event, title) => this.patchAccount(account, { title }))
-    view.webContents.on('render-process-gone', () => this.patchAccount(account, { status: 'crashed' }))
+    view.webContents.on('render-process-gone', () => {
+      this.resetServerState(account)
+      this.patchAccount(account, { status: 'crashed' })
+    })
     view.webContents.on('did-navigate', () => this.onChanged())
     view.webContents.on('did-navigate-in-page', () => this.onChanged())
+  }
 
-    this.accounts.set(id, account)
+  private async attachServerMonitor(account: AccountSlot): Promise<void> {
+    const wc = account.view.webContents
+    if (this.disposed || wc.isDestroyed()) return
+    const debuggerApi = wc.debugger
+
+    try {
+      if (!debuggerApi.isAttached()) {
+        debuggerApi.attach('1.3')
+        account.debuggerOwned = true
+      }
+
+      const onMessage = (_event: Electron.Event, method: string, params: unknown): void => {
+        if (this.disposed || wc.isDestroyed()) return
+        this.handleDebuggerMessage(account, method, params)
+      }
+      const onDetach = (): void => {
+        account.socketUrls.clear()
+        account.serverState.reset()
+        account.huntProfile = null
+        account.huntProtocolStatus = 'unavailable'
+        account.debuggerOwned = false
+        if (!this.disposed) this.onChanged()
+      }
+      account.debuggerMessageHandler = onMessage
+      account.debuggerDetachHandler = onDetach
+      debuggerApi.on('message', onMessage)
+      debuggerApi.on('detach', onDetach)
+      await debuggerApi.sendCommand('Network.enable')
+      if (account.huntProtocolStatus === 'unavailable') account.huntProtocolStatus = 'waiting'
+    } catch {
+      account.huntProtocolStatus = 'unavailable'
+      account.huntProfile = null
+      if (!this.disposed) this.onChanged()
+    }
+  }
+
+  private detachServerMonitor(account: AccountSlot): void {
+    const wc = account.view.webContents
+    if (wc.isDestroyed()) return
+    const debuggerApi = wc.debugger
+    if (account.debuggerMessageHandler) debuggerApi.removeListener('message', account.debuggerMessageHandler)
+    if (account.debuggerDetachHandler) debuggerApi.removeListener('detach', account.debuggerDetachHandler)
+    account.debuggerMessageHandler = null
+    account.debuggerDetachHandler = null
+    account.socketUrls.clear()
+    if (account.debuggerOwned && debuggerApi.isAttached()) {
+      try { debuggerApi.detach() } catch { /* teardown only */ }
+    }
+    account.debuggerOwned = false
+  }
+
+  private handleDebuggerMessage(account: AccountSlot, method: string, params: unknown): void {
+    if (!params || typeof params !== 'object') return
+    const payload = params as {
+      requestId?: string
+      url?: string
+      response?: { opcode?: number; payloadData?: string }
+    }
+    const requestId = String(payload.requestId || '')
+
+    if (method === 'Network.webSocketCreated') {
+      if (requestId && typeof payload.url === 'string') account.socketUrls.set(requestId, payload.url)
+      return
+    }
+    if (method === 'Network.webSocketClosed') {
+      if (requestId) account.socketUrls.delete(requestId)
+      return
+    }
+    if (method !== 'Network.webSocketFrameReceived' || !requestId) return
+
+    const socketUrl = account.socketUrls.get(requestId)
+    if (!socketUrl || !this.isPokeIdleSocket(socketUrl)) return
+    const frame = payload.response
+    if (!frame || frame.opcode !== 1 || typeof frame.payloadData !== 'string') return
+    const raw = frame.payloadData
+    // Fast reject before JSON.parse: Hunt consumes only authoritative state packets.
+    if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) return
+
+    try {
+      const packet = JSON.parse(raw) as unknown
+      const result = account.serverState.ingest(packet)
+      if (!result.accepted) return
+      const statusChanged = account.huntProtocolStatus !== 'live'
+      account.huntProtocolStatus = 'live'
+      if (result.changed) account.huntProfile = result.profile
+      else if (account.huntProfile === null && result.profile) account.huntProfile = result.profile
+      if (result.changed || statusChanged) this.onChanged()
+    } catch {
+      // Ignore malformed frames. Raw payload is deliberately never logged or persisted.
+    }
+  }
+
+  private resetServerState(account: AccountSlot): void {
+    account.socketUrls.clear()
+    const changed = account.serverState.reset() || account.huntProfile !== null || account.huntProtocolStatus !== 'waiting'
+    account.huntProfile = null
+    if (account.huntProtocolStatus !== 'unavailable') account.huntProtocolStatus = 'waiting'
+    if (changed && !this.disposed) this.onChanged()
+  }
+
+  private isPokeIdleSocket(url: string): boolean {
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'wss:' && (parsed.hostname === 'pokeidle.io' || parsed.hostname === 'www.pokeidle.io')
+    } catch { return false }
   }
 
   private async loadAccount(account: AccountSlot): Promise<void> {
@@ -404,19 +494,3 @@ export class AccountRuntime {
     try { return POKEIDLE_ORIGINS.has(new URL(url).origin) } catch { return false }
   }
 }
-
-function huntSignature(scan: HuntProfileScan | null): string {
-  if (!scan) return ''
-  return JSON.stringify([
-    scan.trainerLevel ?? null,
-    scan.speciesName ?? null,
-    scan.pokemonLevel ?? null,
-    scan.quality ?? null,
-    scan.potency ?? null,
-    scan.ivTotal ?? null,
-    scan.ivAverage ?? null,
-    scan.shiny ?? null
-  ])
-}
-
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
