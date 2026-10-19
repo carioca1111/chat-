@@ -1,6 +1,7 @@
 import type { HuntSpecies } from './hunt-data'
 
 export type HuntObjective = 'route' | 'xp' | 'safe'
+export type HuntConfidence = 'ESTIMADO' | 'CALIBRADO'
 
 export interface CombatStatBlock {
   hp?: number
@@ -9,6 +10,25 @@ export interface CombatStatBlock {
   spAtk?: number
   spDef?: number
   speed?: number
+}
+
+export interface HuntMove {
+  name?: string
+  type: string
+  power: number
+  cooldownSeconds: number
+  category: 'physical' | 'special'
+}
+
+export interface HuntCalibrationSample {
+  huntKey: string
+  sampleSeconds: number
+  kills: number
+  pokemonXpGained?: number
+  trainerXpGained?: number
+  deaths?: number
+  heals?: number
+  idleSeconds?: number
 }
 
 export interface HuntProfile {
@@ -32,9 +52,14 @@ export interface HuntProfile {
   pokemonXp?: number
   trainerXpMultiplier?: number
   pokemonXpMultiplier?: number
+  moves?: HuntMove[]
+  tmElemental?: string | number | null
+  tmAoe?: boolean
+  calibration?: HuntCalibrationSample[]
 }
 
 export interface HuntRecommendation {
+  key: string
   id: number
   name: string
   types: string[]
@@ -49,7 +74,7 @@ export interface HuntRecommendation {
   safety: number
   matchup: number
   score: number
-  confidence: 'ROTA_V2'
+  confidence: HuntConfidence
 }
 
 export interface RouteStage {
@@ -61,18 +86,33 @@ export interface RouteStage {
 }
 
 const REGION_UNLOCK: Record<string, number> = { Kanto:1, Outland:150, Johto:200, Hoenn:500, Sinnoh:1000, Unova:5000, Kalos:10000, Galar:25000, Paldea:40000, Alola:75000 }
-const POTENCY = [0, 1, 1.05, 1.1, 1.25, 2]
+
+// Fallback only. Live server stats are always preferred. P5=2x and shiny=3x are
+// independently observed; intermediate potency values remain model inputs until
+// a packet/client rule gives an authoritative multiplier for every tier.
+const POTENCY_FALLBACK = [0, 1, 1.05, 1.1, 1.25, 2]
+const MIN_CALIBRATION_SECONDS = 120
+const MIN_CALIBRATION_KILLS = 10
+const ROUTE_SWITCH_GAIN = 0.03
+const MAX_RANK_CACHE = 24
+
 const TYPE: Record<string, Partial<Record<string, number>>> = {
   NORMAL:{ROCK:.5,GHOST:0,STEEL:.5}, FIRE:{FIRE:.5,WATER:.5,GRASS:2,ICE:2,BUG:2,ROCK:.5,DRAGON:.5,STEEL:2}, WATER:{FIRE:2,WATER:.5,GRASS:.5,GROUND:2,ROCK:2,DRAGON:.5}, ELECTRIC:{WATER:2,ELECTRIC:.5,GRASS:.5,GROUND:0,FLYING:2,DRAGON:.5}, GRASS:{FIRE:.5,WATER:2,GRASS:.5,POISON:.5,GROUND:2,FLYING:.5,BUG:.5,ROCK:2,DRAGON:.5,STEEL:.5}, ICE:{FIRE:.5,WATER:.5,GRASS:2,ICE:.5,GROUND:2,FLYING:2,DRAGON:2,STEEL:.5}, FIGHTING:{NORMAL:2,ICE:2,POISON:.5,FLYING:.5,PSYCHIC:.5,BUG:.5,ROCK:2,GHOST:0,DARK:2,STEEL:2,FAIRY:.5}, POISON:{GRASS:2,POISON:.5,GROUND:.5,ROCK:.5,GHOST:.5,STEEL:0,FAIRY:2}, GROUND:{FIRE:2,ELECTRIC:2,GRASS:.5,POISON:2,FLYING:0,BUG:.5,ROCK:2,STEEL:2}, FLYING:{ELECTRIC:.5,GRASS:2,FIGHTING:2,BUG:2,ROCK:.5,STEEL:.5}, PSYCHIC:{FIGHTING:2,POISON:2,PSYCHIC:.5,DARK:0,STEEL:.5}, BUG:{FIRE:.5,GRASS:2,FIGHTING:.5,POISON:.5,FLYING:.5,PSYCHIC:2,GHOST:.5,DARK:2,STEEL:.5,FAIRY:.5}, ROCK:{FIRE:2,ICE:2,FIGHTING:.5,GROUND:.5,FLYING:2,BUG:2,STEEL:.5}, GHOST:{NORMAL:0,PSYCHIC:2,GHOST:2,DARK:.5}, DRAGON:{DRAGON:2,STEEL:.5,FAIRY:0}, DARK:{FIGHTING:.5,PSYCHIC:2,GHOST:2,DARK:.5,FAIRY:.5}, STEEL:{FIRE:.5,WATER:.5,ELECTRIC:.5,ICE:2,ROCK:2,STEEL:.5,FAIRY:2}, FAIRY:{FIRE:.5,FIGHTING:2,POISON:.5,DRAGON:2,DARK:2,STEEL:.5}
 }
+const KNOWN_TYPES = new Set(Object.keys(TYPE))
 
 const clamp = (n:number,lo:number,hi:number):number => Math.min(hi,Math.max(lo,n))
 const sane = (n:number | undefined,fallback:number):number => n !== undefined && Number.isFinite(n) ? n : fallback
+const normalizeType = (value:unknown):string => String(value ?? '').trim().toUpperCase()
 
-/** Base XP confirmed by the PokeIdle battle packet: a Lv10 Shellder pays 68 = .6*10²+8. */
+/**
+ * XP base por abate observado no PokeIdle atual: nivel² + 12.
+ * A curva foi validada empiricamente em campo em 2026-10 (amostra multi-Hunt,
+ * níveis 1..150). Não é confundida com xpNivel, que é a curva acumulada.
+ */
 export function xpPerKill(level:number):number {
   const l=Math.max(1,Math.floor(level))
-  return Math.round(.6*l*l+8)
+  return l*l+12
 }
 
 /** Absolute XP at the start of a level, matching xpNivel from the server. */
@@ -82,10 +122,11 @@ export function xpTotalForLevel(level:number):number {
 }
 
 export function typeEffectiveness(attack:string, defenders:string[]):number {
-  return defenders.reduce((v,t)=>v*(TYPE[attack]?.[t]??1),1)
+  const normalized=normalizeType(attack)
+  return defenders.reduce((v,t)=>v*(TYPE[normalized]?.[normalizeType(t)]??1),1)
 }
 
-/** Hunt uses an amplified chart on top of the normal Pokémon effectiveness. */
+/** Hunt amplifies the regular type chart; measured Hunt values include 2.5x and 5.5x. */
 export function huntTypeEffectiveness(attack:string, defenders:string[]):number {
   const standard=typeEffectiveness(attack,defenders)
   if (standard===0) return 0
@@ -101,7 +142,7 @@ function bestMatchup(playerTypes:string[], enemyTypes:string[]):number {
 }
 
 function potencyMultiplier(profile:HuntProfile):number {
-  return POTENCY[profile.potency]*(profile.shiny?3:1)
+  return POTENCY_FALLBACK[profile.potency]*(profile.shiny?3:1)
 }
 
 function scaledPlayerStats(profile:HuntProfile): Required<CombatStatBlock> {
@@ -142,7 +183,8 @@ function statsAtPokemonLevel(profile:HuntProfile, level:number):Required<CombatS
 
 function expectedWildStats(enemy:HuntSpecies):Required<CombatStatBlock> {
   const [,,,base,level]=enemy
-  // Wilds roll capture-like quality/IV/potency. These central values model the middle of that distribution.
+  // Until the server exposes the exact spawned enemy roll, wild quality/IV/potency
+  // remain an explicit central estimate. This is why non-calibrated rows say ESTIMADO.
   const q=1.16
   const potency=1.025
   const iv=16.5
@@ -156,18 +198,55 @@ function expectedDamage(level:number,power:number,attack:number,defense:number,s
   return Math.max(1,base*stab*effectiveness*.925)
 }
 
+export function effectiveMoveCooldown(baseSeconds:number,ivSpeed:number | undefined):number {
+  return Math.max(.1,Math.max(.1,baseSeconds)-clamp(sane(ivSpeed,16),1,32)*.01)
+}
+
 function attackInterval(profile:HuntProfile):number {
   return Math.max(.9,2-clamp(sane(profile.ivSpeed,profile.ivAtk),1,32)*.01)
 }
 
+function validMove(move:HuntMove):boolean {
+  return KNOWN_TYPES.has(normalizeType(move.type)) && Number.isFinite(move.power) && move.power>0 && Number.isFinite(move.cooldownSeconds) && move.cooldownSeconds>0
+}
+
+function resolvedMoves(profile:HuntProfile):HuntMove[] {
+  const supplied=(profile.moves??[]).filter(validMove).map((move)=>({...move,type:normalizeType(move.type)}))
+  const tmType=normalizeType(profile.tmElemental)
+  if (typeof profile.tmElemental==='string' && KNOWN_TYPES.has(tmType) && !supplied.some((move)=>move.type===tmType && move.power===2800)) {
+    // Elemental TM: measured single-target move power/cooldown. tmAoe is deliberately
+    // not multiplied here because wave density/number of targets is not in welcome/estado.
+    supplied.push({name:'TM Elemental',type:tmType,power:2800,cooldownSeconds:60,category:'special'})
+  }
+  return supplied
+}
+
+function moveDps(profile:HuntProfile,enemy:HuntSpecies,stats:Required<CombatStatBlock>,move:HuntMove):number {
+  const wild=expectedWildStats(enemy)
+  const effectiveness=huntTypeEffectiveness(move.type,enemy[2])
+  if(effectiveness<=0) return 0
+  const stab=profile.types.map(normalizeType).includes(normalizeType(move.type))?1.5:1
+  const attack=move.category==='physical'?stats.atk:stats.spAtk
+  const defense=move.category==='physical'?wild.def:wild.spDef
+  const damage=expectedDamage(profile.pokemonLevel,move.power,attack,defense,stab,effectiveness)
+  return damage/effectiveMoveCooldown(move.cooldownSeconds,profile.ivSpeed)
+}
+
 function playerDps(profile:HuntProfile, enemy:HuntSpecies, stats:Required<CombatStatBlock>):number {
+  const moves=resolvedMoves(profile)
+  if(moves.length){
+    const dps=moves.reduce((sum,move)=>sum+moveDps(profile,enemy,stats,move),0)
+    if(dps>0) return dps
+  }
+
+  // welcome/estado does not currently expose the complete equipped move list.
+  // Keep a conservative theoretical fallback instead of inventing named moves.
   const matchup=bestMatchup(profile.types,enemy[2])
   if (matchup<=0) return .01
   const wild=expectedWildStats(enemy)
   const basicInterval=attackInterval(profile)
   const physical=expectedDamage(profile.pokemonLevel,30,stats.atk,wild.def,1.5,matchup)/basicInterval
   const special=expectedDamage(profile.pokemonLevel,30,stats.spAtk,wild.spDef,1.5,matchup)/basicInterval
-  // Skills are not rendered in the UI; this sustained budget approximates their contribution between basic attacks.
   const skillBudget=profile.pokemonLevel>=60?2:profile.pokemonLevel>=30?1.5:1
   const skillPhysical=expectedDamage(profile.pokemonLevel,100,stats.atk,wild.def,1.5,matchup)/25
   const skillSpecial=expectedDamage(profile.pokemonLevel,100,stats.spAtk,wild.spDef,1.5,matchup)/25
@@ -190,6 +269,15 @@ function movementOverhead(region:string):number {
   return 5.9
 }
 
+export function huntKey(enemy:HuntSpecies):string {
+  const [id,,, ,level,region,area]=enemy
+  return `${region}|${area}|${id}|${level}`
+}
+
+function calibrationFor(profile:HuntProfile,key:string):HuntCalibrationSample | undefined {
+  return profile.calibration?.find((sample)=>sample.huntKey===key && sample.sampleSeconds>=MIN_CALIBRATION_SECONDS && sample.kills>=MIN_CALIBRATION_KILLS)
+}
+
 function rankInternal(data:HuntSpecies[],profile:HuntProfile,objective:HuntObjective):HuntRecommendation[] {
   const baseStats=profile.baseStats??data.find((row)=>row[0]===profile.speciesId)?.[3]??[100,100,100,100,100,100]
   const resolved={...profile,baseStats}
@@ -201,6 +289,7 @@ function rankInternal(data:HuntSpecies[],profile:HuntProfile,objective:HuntObjec
 
   return unlocked.map((enemy):HuntRecommendation=>{
     const [id,name,types,,level,region,explicitArea]=enemy
+    const key=huntKey(enemy)
     const matchup=bestMatchup(resolved.types,types)
     const wild=expectedWildStats(enemy)
     const wildHp=Math.max(24,wild.hp*12)*5
@@ -209,25 +298,59 @@ function rankInternal(data:HuntSpecies[],profile:HuntProfile,objective:HuntObjec
     const incoming=enemyDps(enemy,resolved,player)
     const timeToFaint=combatHp/Math.max(.01,incoming)
     const fightMargin=timeToFaint/Math.max(.2,ttk)
-    const safety=clamp(Math.round(fightMargin*45),0,100)
+    const theoreticalSafety=clamp(Math.round(fightMargin*45),0,100)
     const cycle=Math.max(.85,movementOverhead(region)+ttk)
-    const killsPerHour=Math.min(3600,3600/cycle)
+    const theoreticalKillsPerHour=Math.min(3600,3600/cycle)
     const perKill=xpPerKill(level)
-    const pokemonPerKill=perKill*pokemonMultiplier
-    const pokemonXpHour=killsPerHour*pokemonPerKill
-    const trainerXpHour=killsPerHour*perKill*trainerMultiplier
+    const theoreticalPokemonPerKill=perKill*pokemonMultiplier
+    const theoreticalTrainerPerKill=perKill*trainerMultiplier
+    const calibration=calibrationFor(resolved,key)
+    const confidence:HuntConfidence=calibration?'CALIBRADO':'ESTIMADO'
+    const killsPerHour=calibration ? calibration.kills/calibration.sampleSeconds*3600 : theoreticalKillsPerHour
+    const pokemonPerKill=calibration?.pokemonXpGained !== undefined && calibration.kills>0
+      ? calibration.pokemonXpGained/calibration.kills
+      : theoreticalPokemonPerKill
+    const pokemonXpHour=calibration?.pokemonXpGained !== undefined
+      ? calibration.pokemonXpGained/calibration.sampleSeconds*3600
+      : killsPerHour*pokemonPerKill
+    const trainerXpHour=calibration?.trainerXpGained !== undefined
+      ? calibration.trainerXpGained/calibration.sampleSeconds*3600
+      : killsPerHour*theoreticalTrainerPerKill
+    const observedSafety=calibration && (calibration.deaths??0)>0
+      ? clamp(Math.round(100*(1-(calibration.deaths??0)/Math.max(1,calibration.kills+(calibration.deaths??0)))),0,100)
+      : 100
+    const safety=Math.min(theoreticalSafety,observedSafety)
     const survivalFactor=clamp((fightMargin-.45)/1.45,.08,1)
     const score=objective==='safe'
       ? safety*1_000_000+pokemonXpHour
       : objective==='xp'
         ? pokemonXpHour*survivalFactor
         : pokemonXpHour*survivalFactor*(.92+.08*clamp(matchup,.16,5.5))
-    return {id,name,types,region,area:explicitArea||name,level,killsPerHour,xpPerKill:perKill,pokemonXpPerKill:pokemonPerKill,trainerXpPerHour:trainerXpHour,pokemonXpPerHour:pokemonXpHour,safety,matchup,score,confidence:'ROTA_V2'}
+    return {key,id,name,types,region,area:explicitArea||name,level,killsPerHour,xpPerKill:perKill,pokemonXpPerKill:pokemonPerKill,trainerXpPerHour:trainerXpHour,pokemonXpPerHour:pokemonXpHour,safety,matchup,score,confidence}
   }).sort((a,b)=>b.score-a.score||b.pokemonXpPerHour-a.pokemonXpPerHour||b.level-a.level)
 }
 
+const rankCache=new WeakMap<HuntSpecies[],Map<string,HuntRecommendation[]>>()
+
+function profileCacheKey(profile:HuntProfile,objective:HuntObjective):string {
+  return `${objective}|${JSON.stringify(profile)}`
+}
+
 export function rankHunts(data:HuntSpecies[],profile:HuntProfile,objective:HuntObjective='route'):HuntRecommendation[] {
-  return rankInternal(data,profile,objective)
+  let cache=rankCache.get(data)
+  if(!cache){ cache=new Map(); rankCache.set(data,cache) }
+  const key=profileCacheKey(profile,objective)
+  const existing=cache.get(key)
+  if(existing) return existing
+  const ranked=rankInternal(data,profile,objective)
+  if(cache.size>=MAX_RANK_CACHE) cache.delete(cache.keys().next().value as string)
+  cache.set(key,ranked)
+  return ranked
+}
+
+export function shouldSwitchHunt(current:HuntRecommendation,next:HuntRecommendation,minGain=ROUTE_SWITCH_GAIN):boolean {
+  if(current.key===next.key) return false
+  return next.score>current.score*(1+Math.max(0,minGain))
 }
 
 function nextThreshold(level:number):number { return xpTotalForLevel(level+1) }
@@ -244,16 +367,21 @@ export function buildRoute(data:HuntSpecies[],profile:HuntProfile,maxStages=6):R
   let pokemonXp=initialXp(pokemonLevel,profile.pokemonXp)
   let elapsedSeconds=0
   const stages:RouteStage[]=[]
-  let lastId=-1
+  let currentKey=''
 
   for(let step=0;step<420;step+=1){
     const projected:HuntProfile={...profile,trainerLevel,pokemonLevel,trainerXp,pokemonXp,stats:statsAtPokemonLevel(profile,pokemonLevel)}
-    const best=rankInternal(data,projected,'route')[0]
+    const rows=rankInternal(data,projected,'route')
+    let best=rows[0]
     if(!best) break
-    if(best.id!==lastId){
+    if(currentKey){
+      const current=rows.find((row)=>row.key===currentKey)
+      if(current && !shouldSwitchHunt(current,best)) best=current
+    }
+    if(best.key!==currentKey){
       if(stages.length) stages[stages.length-1].toLevel=trainerLevel-1
       stages.push({fromLevel:trainerLevel,fromPokemonLevel:pokemonLevel,toLevel:null,etaHours:elapsedSeconds/3600,hunt:best})
-      lastId=best.id
+      currentKey=best.key
       if(stages.length>=maxStages) break
     }
 
