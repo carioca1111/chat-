@@ -11,6 +11,7 @@ export function SettingsView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const setMode = (id: AccountId, mode: AccountPowerMode) => void window.gridium2.setAccountPowerMode(id, mode)
   const setAll = (mode: AccountPowerMode) => void window.gridium2.setAllAccountsPowerMode(mode)
   const setAutomation = (key: PowerAutomationKey, enabled: boolean) => void window.gridium2.setPowerAutomation(key, enabled)
+  const setKeepDisplayAwake = (enabled: boolean) => void window.gridium2.setKeepDisplayAwake(enabled)
 
   return <main class="settings-shell poke-frame">
     <div class="settings-head">
@@ -61,6 +62,20 @@ export function SettingsView({ snapshot }: { snapshot: GridiumSnapshot }) {
                 >{modeLabel[mode]}</button>)}
               </div>
             </div>)}
+          </div>
+        </div>
+
+        <div class="settings-section poke-card">
+          <div class="settings-section-title">
+            <div><span>ENERGIA DO PC</span><small>Comportamento do monitor enquanto o Gridium está aberto</small></div>
+          </div>
+          <div class="settings-switches">
+            <SettingSwitch
+              title="Manter tela do PC ligada"
+              description="Impede o Windows de desligar o monitor enquanto o Gridium estiver aberto. Ao fechar o app, o bloqueio é removido e o Windows volta ao normal."
+              checked={snapshot.keepDisplayAwake}
+              onChange={setKeepDisplayAwake}
+            />
           </div>
         </div>
 
