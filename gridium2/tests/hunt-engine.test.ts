@@ -6,6 +6,7 @@ import {
   huntTypeEffectiveness,
   rankHunts,
   shouldSwitchHunt,
+  statPowerMultiplier,
   type HuntProfile,
   typeEffectiveness,
   xpPerKill,
@@ -55,6 +56,16 @@ describe('Hunt Route V2.1', () => {
     expect(xpTotalForLevel(20)).toBe(98800)
     expect(xpTotalForLevel(67)).toBe(4582600)
     expect(xpTotalForLevel(165)).toBe(72192800)
+  })
+
+  it('locks official potency bonuses and shiny x2 stat multiplier', () => {
+    expect(statPowerMultiplier(1,false)).toBe(1)
+    expect(statPowerMultiplier(2,false)).toBe(1.05)
+    expect(statPowerMultiplier(3,false)).toBe(1.1)
+    expect(statPowerMultiplier(4,false)).toBe(1.25)
+    expect(statPowerMultiplier(5,false)).toBe(2)
+    expect(statPowerMultiplier(1,true)).toBe(2)
+    expect(statPowerMultiplier(5,true)).toBe(4)
   })
 
   it('keeps standard chart separate from amplified Hunt effectiveness', () => {
