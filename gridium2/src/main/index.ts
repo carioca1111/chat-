@@ -13,6 +13,7 @@ import type {
   PowerAutomationKey
 } from '../shared/contracts'
 import { AccountRuntime } from './account-runtime'
+import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
 import { TelemetryService } from './telemetry'
@@ -20,6 +21,7 @@ import { TelemetryService } from './telemetry'
 let mainWindow: BrowserWindow | null = null
 let accounts: AccountRuntime | null = null
 let telemetry: TelemetryService | null = null
+let displayPower: DisplayPowerController | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
@@ -31,6 +33,7 @@ function currentSnapshot(): GridiumSnapshot {
     selectedAccount,
     performanceMode,
     activeModule,
+    keepDisplayAwake: displayPower?.isEnabled() ?? true,
     powerAutomation: accounts?.getPowerAutomation() ?? { ...DEFAULT_POWER_AUTOMATION },
     accounts: accounts?.snapshots() ?? [],
     autoMarket: accounts?.autoMarketSnapshot() ?? { mode: 'observe', uiActive: false, accounts: [], catalog: [], lastTickAt: 0 },
@@ -85,6 +88,11 @@ function registerIpc(): void {
     accounts?.setAutoMarketUiActive(next === 'automarket')
     applyLayout(); publish()
   })
+  ipcMain.handle('gridium2:set-keep-display-awake', (_event, enabled: boolean) => {
+    if (typeof enabled !== 'boolean') return
+    displayPower?.setEnabled(enabled)
+    publish()
+  })
   ipcMain.handle('gridium2:set-account-zoom', (_event, id: AccountId, zoomPercent: number) => {
     if (![1, 2, 3, 4].includes(id) || !Number.isFinite(zoomPercent)) return
     accounts?.setZoom(id, zoomPercent); publish()
@@ -132,7 +140,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.5 AutoMarket',
+    title: 'Gridium 2 — Alpha 0.5.7 Display Awake',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -169,9 +177,16 @@ async function createWindow(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  displayPower = new DisplayPowerController()
+  displayPower.start()
   registerIpc()
   await createWindow()
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
-app.on('before-quit', () => { telemetry?.stop(); accounts?.destroy() })
+app.on('before-quit', () => {
+  telemetry?.stop()
+  accounts?.destroy()
+  displayPower?.destroy()
+  displayPower = null
+})
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
