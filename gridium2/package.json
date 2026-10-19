@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.5.2",
+  "version": "2.0.0-alpha.5.3",
   "private": true,
-  "description": "Gridium 2 Alpha 0.5.2 - AutoMarket visual catalog with safe server-bound item discovery for four isolated PokeIdle accounts",
+  "description": "Gridium 2 Alpha 0.5.3 - canonical PokeIdle AutoMarket catalog with local item visuals and server-authoritative IDs, stock and prices",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
