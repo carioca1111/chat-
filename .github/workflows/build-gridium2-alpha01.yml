@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 0.5.4 AutoMarket Macro
+name: Build Gridium 2 Alpha 0.5.5 AutoMarket Category Hotfix
 
 on:
   push:
     branches:
-      - gridium2-alpha0.5.4-automarket-macro
+      - gridium2-alpha0.5.5-category-hotfix
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha01.yml'
@@ -43,7 +43,7 @@ jobs:
       - name: Verify installer exists
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.5.4-Setup.exe" -Recurse | Select-Object -First 1
+          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.5.5-Setup.exe" -Recurse | Select-Object -First 1
           if (-not $installer) { throw "Installer not found" }
           Write-Host "Installer: $($installer.FullName)"
           Get-FileHash $installer.FullName -Algorithm SHA256
@@ -51,7 +51,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-0.5.4-AutoMarket-Macro-Windows
-          path: gridium2/release/Gridium-2-Alpha-0.5.4-Setup.exe
+          name: Gridium-2-Alpha-0.5.5-AutoMarket-Category-Hotfix-Windows
+          path: gridium2/release/Gridium-2-Alpha-0.5.5-Setup.exe
           if-no-files-found: error
           retention-days: 90
