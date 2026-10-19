@@ -18,6 +18,11 @@ const categoryMeta: Record<AutoMarketCategory, { icon: string; title: string; su
 }
 
 const categories: AutoMarketCategory[] = ['balls','potions','revives']
+const recommendedItemName: Record<AutoMarketCategory, string> = {
+  balls: 'Ultra Ball',
+  potions: 'Ultra Potion',
+  revives: 'Revive'
+}
 type PickerItem = AutoMarketCatalogItem & { preset?: boolean }
 
 export function AutoMarketView({ state }: { state: AutoMarketSnapshot }) {
@@ -101,11 +106,12 @@ function RuleCell({
 
   const inventory = account.inventory.find((row) => row.itemId === rule.itemId)
   const options = mergeOptions(category, catalog, account, rule)
+  const configured = Boolean(rule.itemId || rule.itemName)
   const selectedItem = rule.itemId
     ? options.find((row) => row.itemId === rule.itemId)
     : rule.itemName
       ? options.find((row) => normalizeItemName(row.name) === normalizeItemName(rule.itemName))
-      : undefined
+      : options.find((row) => normalizeItemName(row.name) === normalizeItemName(recommendedItemName[category]))
   const commit = (patch: Partial<AutoMarketRule>): void => {
     void window.gridium2.setAutoMarketRule(id, { ...rule, ...patch })
   }
@@ -116,6 +122,7 @@ function RuleCell({
         category={category}
         items={options}
         selected={selectedItem}
+        configured={configured}
         onSelect={(item) => commit({ itemId: item && !item.preset ? item.itemId : '', itemName: item?.name || '' })}
       />
       <label class="am-switch"><input type="checkbox" checked={rule.enabled} onChange={(event) => commit({ enabled: event.currentTarget.checked })} /><span /> <b>{rule.enabled ? 'ATIVO' : 'PAUSADO'}</b></label>
@@ -124,7 +131,7 @@ function RuleCell({
     <div class="am-stock-line">
       <div class="am-selected-item">
         <ItemSprite item={selectedItem} category={category} />
-        <div><b>{selectedItem?.name || rule.itemName || 'Nenhum item'}</b><small>{inventory ? `×${formatNumber(inventory.quantity)} no estoque` : selectedItem?.preset ? 'imagem pronta · aguardando ID real do servidor' : 'estoque aguardando servidor'}</small></div>
+        <div><b>{selectedItem?.name || rule.itemName || 'Nenhum item'}</b><small>{inventory ? `×${formatNumber(inventory.quantity)} no estoque` : !configured ? 'sugestão visual · escolha o item acima' : selectedItem?.preset ? 'imagem pronta · aguardando ID real do servidor' : 'estoque aguardando servidor'}</small></div>
       </div>
       {status?.bestUnitPrice !== null && status?.bestUnitPrice !== undefined && <em>{rule.currency === 'gems' ? '💎' : '🪙'} {formatNumber(status.bestUnitPrice)}</em>}
     </div>
@@ -141,17 +148,18 @@ function RuleCell({
 }
 
 function ItemPicker({
-  category, items, selected, onSelect
+  category, items, selected, configured, onSelect
 }: {
   category: AutoMarketCategory
   items: PickerItem[]
   selected?: PickerItem
+  configured: boolean
   onSelect: (item?: PickerItem) => void
 }) {
   return <details class="am-item-picker">
     <summary>
       <ItemSprite item={selected} category={category} compact />
-      <span><b>{selected?.name || '— escolher item —'}</b><small>{selected?.preset ? 'aguardando vínculo' : selected ? 'item do servidor' : 'trocar item'}</small></span>
+      <span><b>{selected?.name || '— escolher item —'}</b><small>{!configured ? 'sugestão · clique para escolher' : selected?.preset ? 'aguardando vínculo' : selected ? 'item do servidor' : 'trocar item'}</small></span>
       <i>⌄</i>
     </summary>
     <div class="am-item-menu">
