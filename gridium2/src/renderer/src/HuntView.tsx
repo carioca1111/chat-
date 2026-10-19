@@ -63,13 +63,16 @@ export function HuntView({
       types: species[2],
       baseStats: species[3],
       stats: serverProfile.stats,
-      refinement: serverProfile.refinement
+      refinement: serverProfile.refinement,
+      tmElemental: serverProfile.tmElemental,
+      tmAoe: serverProfile.tmAoe
     }
   }, [serverProfile, species, missing.join('|')])
 
   const ranking = useMemo(() => profile ? rankHunts(data, profile, 'route').slice(0, 30) : [], [data, profile])
   const route = useMemo(() => profile ? buildRoute(data, profile, 6) : [], [data, profile])
   const best = ranking[0]
+  const next = route[1]
   const displayName = species?.[1] ?? serverProfile?.speciesName ?? (serverProfile?.speciesId !== undefined ? `Espécie #${serverProfile.speciesId}` : '—')
   const lastRead = serverProfile?.detectedAt ? new Date(serverProfile.detectedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : null
 
@@ -77,7 +80,7 @@ export function HuntView({
     <section class="hunt-header poke-card">
       <div class="hunt-title">
         <span class="hunt-title-icon">⚔</span>
-        <div><h1>HUNT ROUTE V2</h1><p>Uma rota por conta · foco em XP do Pokémon · cálculo local e cacheado</p></div>
+        <div><h1>HUNT INTELLIGENCE</h1><p>Rota por conta · foco exclusivo no XP do Pokémon · servidor ao vivo</p></div>
       </div>
       <div class="hunt-objectives"><button class="active" disabled>ROTA PERFEITA</button></div>
     </section>
@@ -93,24 +96,28 @@ export function HuntView({
         <b>{displayName}</b>
         <span>Pokémon Nv {serverProfile?.pokemonLevel ?? '—'}</span>
         <span>Treinador Nv {serverProfile?.trainerLevel ?? '—'}</span>
-        <span>XP do Pokémon ×{formatMultiplier(serverProfile?.pokemonXpMultiplier)}</span>
+        <span>P{serverProfile?.potency ?? '—'}</span>
       </div>
-      <small class="hunt-auto-note">O Gridium usa os dados técnicos do Pokémon e da conta somente por baixo do cálculo. A tela mostra apenas a decisão de rota e o XP do Pokémon.</small>
+      <small class="hunt-auto-note">activeId → registro exato do Pokémon. O Gridium usa IVs/stats/bônus por baixo do cálculo e mantém a tela focada apenas na decisão de rota.</small>
       {protocolStatus === 'live' && !serverProfile && <small class="hunt-error">O servidor está conectado, mas ainda não enviou o registro do Pokémon ativo.</small>}
       {protocolStatus === 'live' && serverProfile && missing.length > 0 && <small class="hunt-error">Aguardando o servidor fornecer: {missing.join(', ')}. Nenhum valor será inventado.</small>}
     </section>
 
     {profile && best ? <>
       <section class="hunt-summary-grid route-v2-summary">
-        <Summary label="MELHOR HUNT AGORA" value={best.area} sub={`${best.name} · ${best.region} · Nv ${best.level}`} accent />
+        <Summary label="MELHOR AGORA" value={best.area} sub={`${best.name} · ${best.region} · Nv ${best.level}`} accent />
         <Summary label="XP/H DO POKÉMON" value={compact(best.pokemonXpPerHour)} sub={`${compact(best.pokemonXpPerKill)} XP do Pokémon por abate`} />
+        <Summary label="PRÓXIMA TROCA" value={next ? `Nv ${next.fromPokemonLevel}` : 'MANTER'} sub={next ? `${next.hunt.area} · treinador Nv ${next.fromLevel}` : 'nenhuma troca vantajosa na projeção atual'} />
+        <Summary label="SEGURANÇA" value={safetyLabel(best.safety)} sub={`${best.safety}/100`} />
+        <Summary label="ABATES/H" value={Math.round(best.killsPerHour).toLocaleString('pt-BR')} sub="inclui tempo de deslocamento modelado" />
+        <Summary label="PRECISÃO" value={best.confidence} sub={best.confidence === 'CALIBRADO' ? 'medição real desta conta/Hunt' : 'combate + deslocamento ainda modelados'} />
       </section>
 
       <section class="hunt-route poke-card">
-        <div class="hunt-section-title"><strong>ROTA DE PROGRESSÃO</strong><span>troca somente quando outra hunt passa a render mais XP para este Pokémon</span></div>
+        <div class="hunt-section-title"><strong>ROTA DE PROGRESSÃO</strong><span>troca somente quando outra Hunt supera a atual por margem relevante</span></div>
         <div class="route-track">{route.map((stage,index) =>
-          <div class={`route-stage ${index === 0 ? 'current' : ''}`} key={`${stage.fromLevel}-${stage.fromPokemonLevel}-${stage.hunt.id}`}>
-            <small>{index === 0 ? 'AGORA' : `TREINADOR ${stage.fromLevel} · POKÉMON ${stage.fromPokemonLevel}`}</small>
+          <div class={`route-stage ${index === 0 ? 'current' : ''}`} key={`${stage.fromLevel}-${stage.fromPokemonLevel}-${stage.hunt.key}`}>
+            <small>{index === 0 ? 'AGORA' : `TROCAR · POKÉMON NV ${stage.fromPokemonLevel} · TREINADOR NV ${stage.fromLevel}`}</small>
             <b>{stage.hunt.area}</b>
             <span>{stage.hunt.name} · {compact(stage.hunt.pokemonXpPerHour)} XP/h do Pokémon</span>
             {index > 0 && <em>estimativa: {formatEta(stage.etaHours)}</em>}
@@ -119,15 +126,15 @@ export function HuntView({
       </section>
 
       <section class="hunt-ranking poke-card">
-        <div class="hunt-section-title"><strong>OUTRAS OPÇÕES AGORA</strong><span>ranking interno pelo XP/h do Pokémon com risco de desmaio penalizado</span></div>
+        <div class="hunt-section-title"><strong>OUTRAS OPÇÕES AGORA</strong><span>XP/h do Pokémon com risco de desmaio penalizado</span></div>
         <div class="hunt-table-wrap"><table class="hunt-table route-v2-table"><thead><tr><th>#</th><th>HUNT / ALVO</th><th>REGIÃO</th><th>NÍVEL</th><th>XP/H DO POKÉMON</th></tr></thead><tbody>
-          {ranking.map((row,index) => <tr class={index === 0 ? 'best' : ''} key={row.id}>
+          {ranking.map((row,index) => <tr class={index === 0 ? 'best' : ''} key={row.key}>
             <td>{index+1}</td><td><b>{row.area}</b><small>{row.name}</small></td><td><span class="region-chip">{row.region}</span></td>
             <td>{row.level.toLocaleString('pt-BR')}</td><td><strong>{compact(row.pokemonXpPerHour)}</strong></td>
           </tr>)}
         </tbody></table></div>
       </section>
-      <p class="hunt-disclaimer">A rota usa o Pokémon ativo confirmado pelo servidor, seus stats/IVs reais, potência, qualidade, shiny, bônus de XP do Pokémon e as regras de combate da Hunt. Caminhada e ondas ainda são modeladas, então o Gridium trata o resultado como a melhor estimativa disponível — não soma XP do treinador no número exibido.</p>
+      <p class="hunt-disclaimer">XP por abate usa a curva atual medida no jogo (nível² + 12). O Pokémon ativo, IVs, stats, qualidade, potência, shiny, refino, bônus de XP e TM vêm do estado do servidor quando disponíveis. Golpes completos do Pokémon, rolagem exata do inimigo e ondas/deslocamento ainda não chegam completos em welcome/estado; por isso a precisão permanece ESTIMADO até existir amostra real suficiente. XP do treinador nunca é somado ao XP/h exibido.</p>
     </> : <section class="hunt-empty poke-card"><b>{protocolStatus === 'unavailable' ? 'Monitor do servidor indisponível.' : 'Aguardando estado completo do Pokémon ativo.'}</b><span>A rota só aparece quando o estado real da conta está completo.</span></section>}
   </main>
 }
@@ -136,8 +143,11 @@ function Summary({ label, value, sub, accent = false }: { label: string; value: 
   return <div class={`hunt-summary poke-card ${accent ? 'accent' : ''}`}><small>{label}</small><b>{value}</b><span>{sub}</span></div>
 }
 
-function formatMultiplier(value: number | undefined): string {
-  return (value ?? 1).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function safetyLabel(value:number):string {
+  if(value>=85) return 'ALTA'
+  if(value>=65) return 'BOA'
+  if(value>=45) return 'MÉDIA'
+  return 'RISCO'
 }
 
 function formatEta(hours: number): string {
