@@ -9,6 +9,7 @@ const initial: GridiumSnapshot = {
   selectedAccount: 1,
   performanceMode: 'auto',
   activeModule: 'accounts',
+  keepDisplayAwake: true,
   powerAutomation: { blackUnfocused: false, blackWhenMinimized: true, wakeOnSelect: true },
   accounts: [],
   autoMarket: { mode: 'observe', uiActive: false, accounts: [], catalog: [], lastTickAt: 0 },
@@ -44,7 +45,7 @@ export function App() {
   return <div class="shell">
     <aside class="sidebar poke-frame">
       <div class="brand-panel"><div class="brand-ball"><span /></div><div class="brand-copy"><strong>GRIDIIUM <em>2</em></strong><span>POKEIDLE MANAGER</span></div></div>
-      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 0.5</span></div>
+      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 0.5.7</span></div>
       <div class="accounts">
         {snapshot.accounts.length === 0 ? <div class="skeleton-card poke-card">Preparando as 4 sessões…</div> : snapshot.accounts.map((account) => <div class={`account-block ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} key={account.id}>
           <button class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} onClick={() => select(account.id)}>
