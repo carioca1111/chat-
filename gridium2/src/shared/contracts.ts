@@ -35,8 +35,8 @@ export interface PanelAnalyticsSnapshot {
   capturesTotal: number
   capturesLastHour: number
   capturesByPotency: [number, number, number, number, number]
-  qualityBands: [number, number, number, number, number]
-  quality35Plus: number
+  noteBands: [number, number, number, number, number, number, number, number]
+  note35Plus: number
   shiniesSeen: number | null
   shiniesCaught: number
   rareItems: PanelRareItemSnapshot[]
