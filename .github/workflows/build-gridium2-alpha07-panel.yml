@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 0.7 Panel Analytics
+name: Build Gridium 2 Alpha 0.7.1 Panel Note Fix
 
 on:
   push:
     branches:
-      - gridium2-alpha0.7-panel-analytics
+      - gridium2-alpha0.7.1-panel-note-fix
     paths:
       - '.github/workflows/build-gridium2-alpha07-panel.yml'
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
       - name: Checkout final branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha0.7-panel-analytics
+          ref: gridium2-alpha0.7.1-panel-note-fix
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -38,14 +38,14 @@ jobs:
       - name: Verify installer
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.7.0-Setup.exe" -Recurse | Select-Object -First 1
+          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.7.1-Setup.exe" -Recurse | Select-Object -First 1
           if (-not $installer) { throw "Installer not found" }
           Write-Host "Installer: $($installer.FullName)"
           Get-FileHash $installer.FullName -Algorithm SHA256
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-0.7.0-Panel-Analytics-Windows
-          path: gridium2/release/Gridium-2-Alpha-0.7.0-Setup.exe
+          name: Gridium-2-Alpha-0.7.1-Panel-Note-Fix-Windows
+          path: gridium2/release/Gridium-2-Alpha-0.7.1-Setup.exe
           if-no-files-found: error
           retention-days: 90
