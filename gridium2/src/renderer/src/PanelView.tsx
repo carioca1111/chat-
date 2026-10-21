@@ -23,7 +23,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const analytics = accounts.map((account) => account.panelAnalytics ?? EMPTY)
   const total = useMemo(() => combine(analytics), [analytics.map((row) => row.revision).join('|')])
   const online = accounts.filter((account) => account.status === 'ready').length
-  const accountBars = accounts.map((account) => ({ account, value: account.huntProfile?.analytics?.capturesLastHour ?? 0 }))
+  const accountBars = accounts.map((account) => ({ account, value: account.panelAnalytics?.capturesLastHour ?? 0 }))
   const rare = combineRare(analytics)
   const events = combineEvents(accounts)
 
