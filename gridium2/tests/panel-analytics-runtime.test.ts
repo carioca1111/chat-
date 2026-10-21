@@ -4,15 +4,15 @@ import { PanelAnalyticsTracker, isRareItemName } from '../src/main/panel-analyti
 describe('PanelAnalyticsTracker', () => {
   it('uses welcome as baseline and counts only new pokemon ids', () => {
     const tracker = new PanelAnalyticsTracker()
-    tracker.ingestState({ pokemons: [{ id: 1, potencia: 2, qualidade: 3.2 }] }, true, 1_000)
+    tracker.ingestState({ pokemons: [{ id: 1, potencia: 2, nota: 3.2, quality: 1.2 }] }, true, 1_000)
     expect(tracker.snapshot(1_000).capturesTotal).toBe(0)
 
-    tracker.ingestState({ pkMud: [{ id: 2, speciesName: 'Blastoise', potencia: 3, qualidade: 3.7 }] }, false, 2_000)
+    tracker.ingestState({ pkMud: [{ id: 2, speciesName: 'Blastoise', potencia: 3, nota: 3.7, quality: 1.4 }] }, false, 2_000)
     const snap = tracker.snapshot(2_000)
     expect(snap.capturesTotal).toBe(1)
     expect(snap.capturesByPotency).toEqual([0,0,1,0,0])
-    expect(snap.qualityBands).toEqual([0,1,0,0,0])
-    expect(snap.quality35Plus).toBe(1)
+    expect(snap.noteBands).toEqual([0,0,0,0,1,0,0,0])
+    expect(snap.note35Plus).toBe(1)
   })
 
   it('does not double count updates to an existing pokemon', () => {
