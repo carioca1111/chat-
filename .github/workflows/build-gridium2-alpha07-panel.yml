@@ -5,6 +5,7 @@ on:
     branches:
       - gridium2-alpha0.7.1-panel-note-fix
     paths:
+      - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha07-panel.yml'
   workflow_dispatch:
 
