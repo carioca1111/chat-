@@ -184,3 +184,5 @@ jobs:
           path: gridium2/release/Gridium-2-Alpha-0.7.0-Setup.exe
           if-no-files-found: error
           retention-days: 90
+
+# final rebuild after account-chart source fix
