@@ -21,6 +21,7 @@ const potency = (value: unknown): 1|2|3|4|5|undefined => {
   const parsed = finite(typeof value === 'string' ? value.replace(/^P/i, '') : value)
   return parsed && [1,2,3,4,5].includes(parsed) ? parsed as 1|2|3|4|5 : undefined
 }
+const officialNote = (row: JsonRecord): number | undefined => finite(first(row.nota, row.note, row.rating, row.score))
 
 interface InventoryRow { id: string; name: string; quantity: number }
 
@@ -31,7 +32,19 @@ function pokemonId(row: JsonRecord): string {
 
 function pokemonName(row: JsonRecord): string {
   const species = isRecord(row.species) ? row.species : isRecord(row.especie) ? row.especie : undefined
-  return text(first(row.speciesName, row.nomeEspecie, row.especieNome, species?.name, species?.nome)) || `Pokémon #${pokemonId(row) || '?'}`
+  return text(first(row.speciesName, row.nomeEspecie, row.especieNome, species?.name, species?.nome, row.nome, row.name)) || `Pokémon #${pokemonId(row) || '?'}`
+}
+
+function noteBand(note: number): number | undefined {
+  if (note < 0) return undefined
+  if (note >= 5) return 7
+  if (note >= 4.5) return 6
+  if (note >= 4) return 5
+  if (note >= 3.5) return 4
+  if (note >= 3) return 3
+  if (note >= 2) return 2
+  if (note >= 1) return 1
+  return 0
 }
 
 function inventoryRows(estado: JsonRecord): InventoryRow[] {
@@ -76,7 +89,7 @@ export class PanelAnalyticsTracker {
   private readonly inventory = new Map<string, InventoryRow>()
   private readonly rareItems = new Map<string, PanelRareItemSnapshot>()
   private capturesByPotency = [0,0,0,0,0]
-  private qualityBands = [0,0,0,0,0]
+  private noteBands = [0,0,0,0,0,0,0,0]
   private capturesTotal = 0
   private shiniesCaught = 0
   private shiniesSeen: number | null = null
@@ -90,7 +103,7 @@ export class PanelAnalyticsTracker {
     this.inventory.clear()
     this.rareItems.clear()
     this.capturesByPotency = [0,0,0,0,0]
-    this.qualityBands = [0,0,0,0,0]
+    this.noteBands = [0,0,0,0,0,0,0,0]
     this.capturesTotal = 0
     this.shiniesCaught = 0
     this.shiniesSeen = null
@@ -162,8 +175,8 @@ export class PanelAnalyticsTracker {
       capturesTotal: this.capturesTotal,
       capturesLastHour,
       capturesByPotency: [...this.capturesByPotency] as [number,number,number,number,number],
-      qualityBands: [...this.qualityBands] as [number,number,number,number,number],
-      quality35Plus: this.qualityBands.slice(1).reduce((sum, value) => sum + value, 0),
+      noteBands: [...this.noteBands] as [number,number,number,number,number,number,number,number],
+      note35Plus: this.noteBands.slice(4).reduce((sum, value) => sum + value, 0),
       shiniesSeen: this.shiniesSeen,
       shiniesCaught: this.shiniesCaught,
       rareItems: [...this.rareItems.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)).slice(0, 8),
@@ -178,18 +191,15 @@ export class PanelAnalyticsTracker {
     this.captureTimes.push(at)
     const p = potency(first(row.potencia, row.potency))
     if (p) this.capturesByPotency[p - 1]++
-    const quality = finite(first(row.qualidade, row.quality, row.nota, row.score))
-    if (quality !== undefined) {
-      if (quality >= 5) this.qualityBands[4]++
-      else if (quality >= 4.5) this.qualityBands[3]++
-      else if (quality >= 4) this.qualityBands[2]++
-      else if (quality >= 3.5) this.qualityBands[1]++
-      else if (quality >= 3) this.qualityBands[0]++
-    }
+
+    const note = officialNote(row)
+    const band = note === undefined ? undefined : noteBand(note)
+    if (band !== undefined) this.noteBands[band]++
+
     const shiny = truthy(first(row.shiny, row.isShiny))
     if (shiny) this.shiniesCaught++
-    const details = [p ? `P${p}` : '', quality !== undefined ? `nota ${quality.toFixed(2).replace('.', ',')}` : '', shiny ? 'SHINY' : ''].filter(Boolean).join(' · ')
-    this.pushEvent({ at, accountEvent: shiny ? 'shiny-caught' : 'capture', label: pokemonName(row), detail: details || 'Captura confirmada pelo servidor' })
+    const details = [p ? `P${p}` : '', note !== undefined ? `nota ${note.toFixed(3).replace('.', ',')}` : 'nota indisponível', shiny ? 'SHINY' : ''].filter(Boolean).join(' · ')
+    this.pushEvent({ at, accountEvent: shiny ? 'shiny-caught' : 'capture', label: pokemonName(row), detail: details })
   }
 
   private pushEvent(event: PanelEventSnapshot): void {
