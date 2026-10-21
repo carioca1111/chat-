@@ -8,8 +8,8 @@ const EMPTY: PanelAnalyticsSnapshot = {
   capturesTotal: 0,
   capturesLastHour: 0,
   capturesByPotency: [0,0,0,0,0],
-  qualityBands: [0,0,0,0,0],
-  quality35Plus: 0,
+  noteBands: [0,0,0,0,0,0,0,0],
+  note35Plus: 0,
   shiniesSeen: null,
   shiniesCaught: 0,
   rareItems: [],
@@ -32,7 +32,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <div>
         <span class="panel-kicker">▥ PAINEL ANALYTICS</span>
         <h1>VISÃO GERAL DAS 4 CONTAS</h1>
-        <p>Capturas, potência, nota/qualidade, shinies e itens confirmados pelo estado do servidor.</p>
+        <p>Capturas, potência, nota oficial, shinies e itens confirmados pelo estado do servidor.</p>
       </div>
       <span class="panel-live"><i class="status-ok" /> SERVIDOR · {online}/4 ONLINE</span>
     </section>
@@ -41,7 +41,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <PanelMetric icon="●" label="CONTAS ONLINE" value={`${online}/4`} sub="sessões ativas" tone="green" />
       <PanelMetric icon="◉" label="CAPTURAS/H" value={fmt(total.capturesLastHour)} sub="últimos 60 min" tone="cyan" />
       <PanelMetric icon="⌁" label="CAPTURAS" value={fmt(total.capturesTotal)} sub="sessão atual" tone="purple" />
-      <PanelMetric icon="★" label="NOTA ≥ 3,5" value={fmt(total.quality35Plus)} sub="qualidade do servidor" tone="gold" />
+      <PanelMetric icon="★" label="NOTA ≥ 3,5" value={fmt(total.note35Plus)} sub="nota oficial do servidor" tone="gold" />
       <PanelMetric icon="✦" label="SHINYS VISTOS" value={total.shiniesSeen === null ? '—' : fmt(total.shiniesSeen)} sub={total.shiniesSeen === null ? 'evento ainda não exposto' : 'contador do servidor'} tone="pink" />
       <PanelMetric icon="✧" label="SHINYS PEGOS" value={fmt(total.shiniesCaught)} sub="captura confirmada" tone="pink" />
       <PanelMetric icon="◆" label="ITENS RAROS" value={fmt(total.rareItemsTotal)} sub="aumentos no inventário" tone="gold" />
@@ -55,8 +55,8 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <ChartCard title="CAPTURAS POR POTÊNCIA" subtitle={`${fmt(total.capturesTotal)} capturas confirmadas`}>
         <ColumnChart labels={['P1','P2','P3','P4','P5']} values={total.capturesByPotency} classes={['p1','p2','p3','p4','p5']} />
       </ChartCard>
-      <ChartCard title="POKÉMONS NOTA ALTA" subtitle={`${fmt(total.quality35Plus)} com nota/qualidade ≥ 3,5`}>
-        <ColumnChart labels={['3,0–3,49','3,5–3,99','4,0–4,49','4,5–4,99','5,0+']} values={total.qualityBands} classes={['q1','q2','q3','q4','q5']} />
+      <ChartCard title="DISTRIBUIÇÃO DE NOTAS" subtitle={`${fmt(total.note35Plus)} capturas com nota oficial ≥ 3,5`}>
+        <ColumnChart labels={['0–0,99','1–1,99','2–2,99','3–3,49','3,5–3,99','4–4,49','4,5–4,99','5,0+']} values={total.noteBands} classes={['q0','q1','q2','q3','q35','q4','q45','q5']} />
       </ChartCard>
       <ChartCard title="SHINYS VISTOS × PEGOS" subtitle={total.shiniesSeen === null ? 'Vistos aguardando evento explícito do servidor' : `${ratio(total.shiniesCaught, total.shiniesSeen)}% de conversão`}>
         <ColumnChart labels={['Vistos','Pegos']} values={[total.shiniesSeen ?? 0,total.shiniesCaught]} classes={['seen','caught']} unknown={[total.shiniesSeen === null,false]} />
@@ -76,7 +76,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
     <section class="panel-note poke-card">
       <b>LEITURA SEM NÚMEROS INVENTADOS</b>
-      <span>Captura = novo ID de Pokémon recebido depois do estado inicial. P1–P5, nota/qualidade e shiny pego vêm do registro capturado. Itens raros usam aumentos confirmados no inventário; o servidor atual não informa a origem do aumento, então compras/transferências podem aparecer como recebimentos. “Shiny visto” só será preenchido quando o servidor expuser um contador/evento explícito.</span>
+      <span>Captura = novo ID de Pokémon recebido depois do estado inicial. P1–P5 e a nota usam os campos oficiais do registro capturado; a nota é lida de “nota” e não de “quality”. A distribuição contabiliza desde 0. Itens raros usam aumentos confirmados no inventário; compras/transferências ainda podem aparecer como recebimentos. “Shiny visto” só será preenchido quando o servidor expuser um contador/evento explícito.</span>
     </section>
   </main>
 }
@@ -89,7 +89,7 @@ function AccountPanel({ account }: { account: AccountSnapshot }) {
   return <article class={`panel-account poke-card ${ready ? 'online' : 'offline'}`}>
     <div class="panel-account-head"><span class="panel-account-number">{account.id}</span><b>CONTA {account.id}</b><small><i class={`status-dot ${account.status}`} /> {ready ? 'ONLINE' : 'OFFLINE'}</small></div>
     <div class="panel-pokemon"><div class="panel-pokeball">◉</div><div><strong>{name}</strong><span>Nv {profile?.pokemonLevel ?? '—'} · P{profile?.potency ?? '—'}{profile?.shiny ? ' · ✦ SHINY' : ''}</span><small>{profile?.huntSlug ? `Hunt: ${profile.huntSlug}` : 'Hunt aguardando servidor'}</small></div></div>
-    <div class="panel-account-stats"><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="CAPTURAS" value={fmt(stats.capturesTotal)} /><Stat label="NOTA ≥3,5" value={fmt(stats.quality35Plus)} /><Stat label="SHINY" value={fmt(stats.shiniesCaught)} /></div>
+    <div class="panel-account-stats"><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="CAPTURAS" value={fmt(stats.capturesTotal)} /><Stat label="NOTA ≥3,5" value={fmt(stats.note35Plus)} /><Stat label="SHINY" value={fmt(stats.shiniesCaught)} /></div>
     <div class="panel-account-foot"><span>Última captura</span><b>{stats.lastCaptureAt ? relative(stats.lastCaptureAt) : '—'}</b></div>
   </article>
 }
@@ -116,14 +116,15 @@ function Stat({ label,value }: { label:string; value:string }) { return <div><sm
 
 function combine(rows: PanelAnalyticsSnapshot[]): PanelAnalyticsSnapshot {
   const seenRows = rows.map((row) => row.shiniesSeen).filter((value): value is number => value !== null)
+  const noteBands = [0,1,2,3,4,5,6,7].map((index) => rows.reduce((sum,row) => sum + row.noteBands[index],0)) as [number,number,number,number,number,number,number,number]
   return {
     revision: rows.reduce((sum,row) => sum + row.revision,0),
     sessionStartedAt: Math.min(...rows.filter((row) => row.sessionStartedAt > 0).map((row) => row.sessionStartedAt), Date.now()),
     capturesTotal: rows.reduce((sum,row) => sum + row.capturesTotal,0),
     capturesLastHour: rows.reduce((sum,row) => sum + row.capturesLastHour,0),
     capturesByPotency: [0,1,2,3,4].map((index) => rows.reduce((sum,row) => sum + row.capturesByPotency[index],0)) as [number,number,number,number,number],
-    qualityBands: [0,1,2,3,4].map((index) => rows.reduce((sum,row) => sum + row.qualityBands[index],0)) as [number,number,number,number,number],
-    quality35Plus: rows.reduce((sum,row) => sum + row.quality35Plus,0),
+    noteBands,
+    note35Plus: noteBands.slice(4).reduce((sum,value) => sum + value,0),
     shiniesSeen: seenRows.length === rows.length && rows.length > 0 ? seenRows.reduce((sum,value) => sum + value,0) : null,
     shiniesCaught: rows.reduce((sum,row) => sum + row.shiniesCaught,0),
     rareItems: [],
