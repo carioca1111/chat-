@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.7.0",
+  "version": "2.0.0-alpha.7.1",
   "private": true,
-  "description": "Gridium 2 Alpha 0.7 - real-time panel analytics for four PokeIdle accounts",
+  "description": "Gridium 2 Alpha 0.7.1 - fixes official Pokemon note analytics from zero",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
