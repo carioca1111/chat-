@@ -1,5 +1,4 @@
 import type { ComponentChildren } from 'preact'
-import type { ComponentChildren } from 'preact'
 import { useMemo } from 'preact/hooks'
 import type { AccountSnapshot, GridiumSnapshot, PanelAnalyticsSnapshot, PanelEventSnapshot, PanelRareItemSnapshot } from '../../shared/contracts'
 
