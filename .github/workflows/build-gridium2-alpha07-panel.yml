@@ -1,0 +1,186 @@
+name: Build Gridium 2 Alpha 0.7 Panel Analytics
+
+on:
+  push:
+    branches:
+      - gridium2-alpha0.7-panel-analytics
+    paths:
+      - '.github/workflows/build-gridium2-alpha07-panel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gridium2-alpha0.7-panel-analytics
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Integrate panel into Gridium 2
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f'pattern not found in {path}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          contracts = 'gridium2/src/shared/contracts.ts'
+          replace_once(contracts,
+              "export type AppModule = 'accounts' | 'hunt' | 'automarket' | 'settings'",
+              "export type AppModule = 'accounts' | 'hunt' | 'automarket' | 'panel' | 'settings'")
+          replace_once(contracts,
+              "export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'\n",
+              "export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'\n\nexport type PanelEventKind = 'capture' | 'shiny-caught' | 'rare-item'\n\nexport interface PanelEventSnapshot {\n  at: number\n  accountEvent: PanelEventKind\n  label: string\n  detail: string\n}\n\nexport interface PanelRareItemSnapshot {\n  itemId: string\n  name: string\n  quantity: number\n}\n\nexport interface PanelAnalyticsSnapshot {\n  revision: number\n  sessionStartedAt: number\n  capturesTotal: number\n  capturesLastHour: number\n  capturesByPotency: [number, number, number, number, number]\n  qualityBands: [number, number, number, number, number]\n  quality35Plus: number\n  shiniesSeen: number | null\n  shiniesCaught: number\n  rareItems: PanelRareItemSnapshot[]\n  rareItemsTotal: number\n  lastCaptureAt: number | null\n  events: PanelEventSnapshot[]\n}\n")
+          replace_once(contracts,
+              "  suspendSupported: boolean\n  huntProfile: HuntProfileScan | null\n",
+              "  suspendSupported: boolean\n  panelAnalytics: PanelAnalyticsSnapshot\n  huntProfile: HuntProfileScan | null\n")
+
+          server = 'gridium2/src/main/pokeidle-server-state.ts'
+          replace_once(server,
+              "import type { HuntProfileScan, HuntStatBlock } from '../shared/contracts'\n",
+              "import type { HuntProfileScan, HuntStatBlock } from '../shared/contracts'\nimport { PanelAnalyticsTracker } from './panel-analytics-runtime'\n")
+          replace_once(server,
+              "export class PokeIdleServerState {\n  private readonly pokemons = new Map<string, JsonRecord>()\n",
+              "export class PokeIdleServerState {\n  private readonly analyticsTracker = new PanelAnalyticsTracker()\n  private readonly pokemons = new Map<string, JsonRecord>()\n")
+          replace_once(server,
+              "  profile(): HuntProfileScan | null {\n    return this.current\n  }\n",
+              "  analytics() {\n    return this.analyticsTracker.snapshot()\n  }\n\n  profile(): HuntProfileScan | null {\n    return this.current\n  }\n")
+          replace_once(server,
+              "    if (accountChanged) {\n      this.activeId = undefined\n",
+              "    if (accountChanged) {\n      this.analyticsTracker.reset(at)\n      this.activeId = undefined\n")
+          replace_once(server,
+              "    if (nextServerAccountId) this.serverAccountId = nextServerAccountId\n",
+              "    const analyticsChanged = this.analyticsTracker.ingestState(estado, fullState, at)\n\n    if (nextServerAccountId) this.serverAccountId = nextServerAccountId\n")
+          replace_once(server,
+              "    const changed = previousSignature !== profileSignature(this.current)\n",
+              "    const changed = previousSignature !== profileSignature(this.current) || analyticsChanged\n")
+
+          runtime = 'gridium2/src/main/account-runtime.ts'
+          replace_once(runtime,
+              "      suspendSupported: account.suspendSupported,\n      huntProfile: account.huntProfile ? { ...account.huntProfile } : null,\n",
+              "      suspendSupported: account.suspendSupported,\n      panelAnalytics: account.serverState.analytics(),\n      huntProfile: account.huntProfile ? { ...account.huntProfile } : null,\n")
+
+          index = 'gridium2/src/main/index.ts'
+          replace_once(index,
+              "    if (!['accounts', 'hunt', 'automarket', 'settings'].includes(next)) return\n",
+              "    if (!['accounts', 'hunt', 'automarket', 'panel', 'settings'].includes(next)) return\n")
+          replace_once(index,
+              "    title: 'Gridium 2 — Alpha 0.5.7 Display Awake',\n",
+              "    title: 'Gridium 2 — Alpha 0.7 Panel Analytics',\n")
+
+          app = 'gridium2/src/renderer/src/App.tsx'
+          replace_once(app,
+              "import { HuntView } from './HuntView'\n",
+              "import { HuntView } from './HuntView'\nimport { PanelView } from './PanelView'\n")
+          replace_once(app,
+              "  ['◉','CONTAS','accounts'], ['⚔','HUNT','hunt'], ['✦','SHINY',null], ['▣','MARKET',null], ['⌖','SNIPER',null], ['▤','AUTOMARKET','automarket'], ['▥','PAINEL',null]\n",
+              "  ['◉','CONTAS','accounts'], ['⚔','HUNT','hunt'], ['✦','SHINY',null], ['▣','MARKET',null], ['⌖','SNIPER',null], ['▤','AUTOMARKET','automarket'], ['▥','PAINEL','panel']\n")
+          replace_once(app,
+              "<span class=\"tiny-chip\">ALPHA 0.5.7</span>",
+              "<span class=\"tiny-chip\">ALPHA 0.7</span>")
+          replace_once(app,
+              " : snapshot.activeModule === 'automarket' ? <div class=\"hunt-top-status\"><span>▤ AUTOMARKET</span><b>{snapshot.autoMarket.mode === 'auto' ? `AUTO ARMADO · ${autoRules} REGRAS` : `OBSERVAR · ${autoRules} REGRAS`}</b><Control label=\"⚙\" title=\"Configurações\" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class=\"settings-top-status\"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}",
+              " : snapshot.activeModule === 'automarket' ? <div class=\"hunt-top-status\"><span>▤ AUTOMARKET</span><b>{snapshot.autoMarket.mode === 'auto' ? `AUTO ARMADO · ${autoRules} REGRAS` : `OBSERVAR · ${autoRules} REGRAS`}</b><Control label=\"⚙\" title=\"Configurações\" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class=\"hunt-top-status\"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label=\"⚙\" title=\"Configurações\" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class=\"settings-top-status\"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}")
+          replace_once(app,
+              "        : snapshot.activeModule === 'automarket'\n          ? <AutoMarketView state={snapshot.autoMarket} />\n          : <SettingsView snapshot={snapshot} />}\n",
+              "        : snapshot.activeModule === 'automarket'\n          ? <AutoMarketView state={snapshot.autoMarket} />\n          : snapshot.activeModule === 'panel'\n            ? <PanelView snapshot={snapshot} />\n            : <SettingsView snapshot={snapshot} />}\n")
+          replace_once(app,
+              "snapshot.activeModule === 'automarket' ? '▤ AUTOMARKET · DADOS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`",
+              "snapshot.activeModule === 'automarket' ? '▤ AUTOMARKET · DADOS DO SERVIDOR' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`")
+
+          main = 'gridium2/src/renderer/src/main.tsx'
+          replace_once(main,
+              "import './automarket-items.css'\n",
+              "import './automarket-items.css'\nimport './panel.css'\n")
+
+          panel = Path('gridium2/src/renderer/src/PanelView.tsx')
+          panel_text = panel.read_text(encoding='utf-8')
+          panel_text = panel_text.replace("import { useMemo } from 'preact/hooks'\n", "import type { ComponentChildren } from 'preact'\nimport { useMemo } from 'preact/hooks'\n")
+          panel_text = panel_text.replace("useMemo(() => combine(analytics), analytics.map((row) => row.revision).join('|'))", "useMemo(() => combine(analytics), [analytics.map((row) => row.revision).join('|')])")
+          panel_text = panel_text.replace("account.huntProfile?.analytics ?? EMPTY", "account.panelAnalytics ?? EMPTY")
+          panel_text = panel_text.replace("profile?.analytics ?? EMPTY", "account.panelAnalytics ?? EMPTY")
+          panel_text = panel_text.replace("account.huntProfile?.analytics?.events ?? []", "account.panelAnalytics?.events ?? []")
+          panel_text = panel_text.replace("children:preact.ComponentChildren", "children:ComponentChildren")
+          panel.write_text(panel_text, encoding='utf-8')
+
+          tracker = Path('gridium2/src/main/panel-analytics-runtime.ts')
+          tracker_text = tracker.read_text(encoding='utf-8')
+          tracker_text = tracker_text.replace("      const previous = this.inventory.get(row.id)\n      this.inventory.set(row.id, row)\n      if (!previous || row.quantity <= previous.quantity) continue\n      const gained = row.quantity - previous.quantity\n", "      const previous = this.inventory.get(row.id)\n      this.inventory.set(row.id, row)\n      const previousQuantity = previous?.quantity ?? 0\n      if (row.quantity <= previousQuantity) continue\n      const gained = row.quantity - previousQuantity\n")
+          tracker.write_text(tracker_text, encoding='utf-8')
+
+          package = Path('gridium2/package.json')
+          data = json.loads(package.read_text(encoding='utf-8'))
+          data['version'] = '2.0.0-alpha.7.0'
+          data['description'] = 'Gridium 2 Alpha 0.7 - real-time panel analytics for four PokeIdle accounts'
+          package.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          builder = Path('gridium2/electron-builder.yml')
+          builder_text = builder.read_text(encoding='utf-8').replace('artifactName: Gridium-2-Alpha-0.6.1-Setup.${ext}', 'artifactName: Gridium-2-Alpha-0.7.0-Setup.${ext}')
+          builder.write_text(builder_text, encoding='utf-8')
+          PY
+      - name: Commit integrated panel
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Panel already integrated"
+          else
+            git config user.name "gridium-ci"
+            git config user.email "actions@users.noreply.github.com"
+            git add gridium2
+            git commit -m "feat(gridium2): integrate Alpha 0.7 panel analytics"
+            git push origin HEAD:gridium2-alpha0.7-panel-analytics
+          fi
+
+  windows:
+    needs: patch
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: gridium2
+    steps:
+      - name: Checkout patched branch
+        uses: actions/checkout@v4
+        with:
+          ref: gridium2-alpha0.7-panel-analytics
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Unit tests
+        run: npm test
+      - name: Build Electron app
+        run: npm run build
+      - name: Build Windows installer
+        run: npx electron-builder --win nsis --x64
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.7.0-Setup.exe" -Recurse | Select-Object -First 1
+          if (-not $installer) { throw "Installer not found" }
+          Get-FileHash $installer.FullName -Algorithm SHA256
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-2-Alpha-0.7.0-Panel-Analytics-Windows
+          path: gridium2/release/Gridium-2-Alpha-0.7.0-Setup.exe
+          if-no-files-found: error
+          retention-days: 90
