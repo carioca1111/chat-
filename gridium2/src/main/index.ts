@@ -83,7 +83,7 @@ function registerIpc(): void {
     performanceMode = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
-    if (!['accounts', 'hunt', 'automarket', 'settings'].includes(next)) return
+    if (!['accounts', 'hunt', 'automarket', 'panel', 'settings'].includes(next)) return
     activeModule = next
     accounts?.setAutoMarketUiActive(next === 'automarket')
     applyLayout(); publish()
@@ -140,7 +140,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.5.7 Display Awake',
+    title: 'Gridium 2 — Alpha 0.7 Panel Analytics',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

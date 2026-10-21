@@ -1,4 +1,5 @@
 import type { HuntProfileScan, HuntStatBlock } from '../shared/contracts'
+import { PanelAnalyticsTracker } from './panel-analytics-runtime'
 
 type JsonRecord = Record<string, unknown>
 
@@ -124,6 +125,7 @@ function profileSignature(profile: HuntProfileScan | null): string {
 }
 
 export class PokeIdleServerState {
+  private readonly analyticsTracker = new PanelAnalyticsTracker()
   private readonly pokemons = new Map<string, JsonRecord>()
   private activeId?: string
   private trainerLevel?: number
@@ -154,6 +156,10 @@ export class PokeIdleServerState {
     return hadData
   }
 
+  analytics() {
+    return this.analyticsTracker.snapshot()
+  }
+
   profile(): HuntProfileScan | null {
     return this.current
   }
@@ -172,6 +178,7 @@ export class PokeIdleServerState {
 
     if (fullState) this.pokemons.clear()
     if (accountChanged) {
+      this.analyticsTracker.reset(at)
       this.activeId = undefined
       this.trainerLevel = undefined
       this.trainerXp = undefined
@@ -182,6 +189,8 @@ export class PokeIdleServerState {
       this.huntSlug = undefined
       this.serverNick = undefined
     }
+
+    const analyticsChanged = this.analyticsTracker.ingestState(estado, fullState, at)
 
     if (nextServerAccountId) this.serverAccountId = nextServerAccountId
     const nick = safeString(firstDefined(estado.nick, estado.nickname, estado.usuario))
@@ -223,7 +232,7 @@ export class PokeIdleServerState {
     }
 
     this.current = this.buildProfile(at)
-    const changed = previousSignature !== profileSignature(this.current)
+    const changed = previousSignature !== profileSignature(this.current) || analyticsChanged
     return { accepted: true, changed, profile: this.current }
   }
 

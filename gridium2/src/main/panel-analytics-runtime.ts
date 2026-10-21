@@ -138,8 +138,9 @@ export class PanelAnalyticsTracker {
     for (const row of inventoryRows(estado)) {
       const previous = this.inventory.get(row.id)
       this.inventory.set(row.id, row)
-      if (!previous || row.quantity <= previous.quantity) continue
-      const gained = row.quantity - previous.quantity
+      const previousQuantity = previous?.quantity ?? 0
+      if (row.quantity <= previousQuantity) continue
+      const gained = row.quantity - previousQuantity
       if (!isRareItemName(row.name)) continue
       const current = this.rareItems.get(row.id)
       this.rareItems.set(row.id, { itemId: row.id, name: row.name, quantity: (current?.quantity ?? 0) + gained })

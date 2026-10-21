@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.6.1",
+  "version": "2.0.0-alpha.7.0",
   "private": true,
-  "description": "Gridium 2 Alpha 0.6.1 - Hunt Intelligence route engine focused on real Pokemon XP per hour",
+  "description": "Gridium 2 Alpha 0.7 - real-time panel analytics for four PokeIdle accounts",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",

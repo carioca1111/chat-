@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact'
 import { useMemo } from 'preact/hooks'
 import type { AccountSnapshot, GridiumSnapshot, PanelAnalyticsSnapshot, PanelEventSnapshot, PanelRareItemSnapshot } from '../../shared/contracts'
 
@@ -19,8 +20,8 @@ const EMPTY: PanelAnalyticsSnapshot = {
 
 export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const accounts = snapshot.accounts
-  const analytics = accounts.map((account) => account.huntProfile?.analytics ?? EMPTY)
-  const total = useMemo(() => combine(analytics), analytics.map((row) => row.revision).join('|'))
+  const analytics = accounts.map((account) => account.panelAnalytics ?? EMPTY)
+  const total = useMemo(() => combine(analytics), [analytics.map((row) => row.revision).join('|')])
   const online = accounts.filter((account) => account.status === 'ready').length
   const accountBars = accounts.map((account) => ({ account, value: account.huntProfile?.analytics?.capturesLastHour ?? 0 }))
   const rare = combineRare(analytics)
@@ -82,7 +83,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
 function AccountPanel({ account }: { account: AccountSnapshot }) {
   const profile = account.huntProfile
-  const stats = profile?.analytics ?? EMPTY
+  const stats = account.panelAnalytics ?? EMPTY
   const ready = account.status === 'ready'
   const name = profile?.speciesName || (profile?.speciesId !== undefined ? `Espécie #${profile.speciesId}` : 'Pokémon ativo')
   return <article class={`panel-account poke-card ${ready ? 'online' : 'offline'}`}>
@@ -97,7 +98,7 @@ function PanelMetric({ icon,label,value,sub,tone }: { icon:string; label:string;
   return <div class={`panel-metric poke-card ${tone}`}><span class="panel-metric-icon">{icon}</span><div><small>{label}</small><b>{value}</b><em>{sub}</em></div></div>
 }
 
-function ChartCard({ title,subtitle,children,wide=false }: { title:string; subtitle:string; children:preact.ComponentChildren; wide?:boolean }) {
+function ChartCard({ title,subtitle,children,wide=false }: { title:string; subtitle:string; children:ComponentChildren; wide?:boolean }) {
   return <article class={`panel-chart poke-card ${wide ? 'wide' : ''}`}><header><div><b>{title}</b><small>{subtitle}</small></div></header>{children}</article>
 }
 
@@ -143,7 +144,7 @@ function combineRare(rows: PanelAnalyticsSnapshot[]): PanelRareItemSnapshot[] {
 
 function combineEvents(accounts: AccountSnapshot[]): Array<PanelEventSnapshot & { accountId:number }> {
   const out: Array<PanelEventSnapshot & { accountId:number }> = []
-  for (const account of accounts) for (const event of account.huntProfile?.analytics?.events ?? []) out.push({ ...event, accountId: account.id })
+  for (const account of accounts) for (const event of account.panelAnalytics?.events ?? []) out.push({ ...event, accountId: account.id })
   return out.sort((a,b) => b.at - a.at)
 }
 

@@ -2,7 +2,7 @@ export type AccountId = 1 | 2 | 3 | 4
 export type LayoutMode = 1 | 2 | 4
 export type PerformanceMode = 'auto' | 'full'
 export type VisualMode = 'full' | 'eco'
-export type AppModule = 'accounts' | 'hunt' | 'automarket' | 'settings'
+export type AppModule = 'accounts' | 'hunt' | 'automarket' | 'panel' | 'settings'
 export type AccountCommand = 'home' | 'reload' | 'back' | 'forward'
 export type AccountPowerMode = 'auto' | 'on' | 'black' | 'suspended'
 export type EffectivePowerState = 'on' | 'black' | 'suspended'
@@ -13,6 +13,37 @@ export type MarketCurrency = 'coins' | 'gems'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
+
+export type PanelEventKind = 'capture' | 'shiny-caught' | 'rare-item'
+
+export interface PanelEventSnapshot {
+  at: number
+  accountEvent: PanelEventKind
+  label: string
+  detail: string
+}
+
+export interface PanelRareItemSnapshot {
+  itemId: string
+  name: string
+  quantity: number
+}
+
+export interface PanelAnalyticsSnapshot {
+  revision: number
+  sessionStartedAt: number
+  capturesTotal: number
+  capturesLastHour: number
+  capturesByPotency: [number, number, number, number, number]
+  qualityBands: [number, number, number, number, number]
+  quality35Plus: number
+  shiniesSeen: number | null
+  shiniesCaught: number
+  rareItems: PanelRareItemSnapshot[]
+  rareItemsTotal: number
+  lastCaptureAt: number | null
+  events: PanelEventSnapshot[]
+}
 
 export interface PowerAutomationSettings {
   blackUnfocused: boolean
@@ -134,6 +165,7 @@ export interface AccountSnapshot {
   powerMode: AccountPowerMode
   effectivePowerState: EffectivePowerState
   suspendSupported: boolean
+  panelAnalytics: PanelAnalyticsSnapshot
   huntProfile: HuntProfileScan | null
   huntProtocolStatus: HuntProtocolStatus
 }

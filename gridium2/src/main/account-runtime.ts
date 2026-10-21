@@ -123,6 +123,7 @@ export class AccountRuntime {
       powerMode: account.powerMode,
       effectivePowerState: account.desiredPowerState,
       suspendSupported: account.suspendSupported,
+      panelAnalytics: account.serverState.analytics(),
       huntProfile: account.huntProfile ? { ...account.huntProfile } : null,
       huntProtocolStatus: account.huntProtocolStatus
     }))

@@ -8,5 +8,6 @@ import './hunt-scan.css'
 import './account-control.css'
 import './automarket.css'
 import './automarket-items.css'
+import './panel.css'
 
 render(<App />, document.getElementById('app')!)
