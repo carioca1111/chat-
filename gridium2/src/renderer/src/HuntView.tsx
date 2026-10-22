@@ -1,9 +1,26 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { AccountId, HuntProfileScan, HuntProtocolStatus } from '../../shared/contracts'
 import { loadHuntSpecies, type HuntSpecies } from './hunt-data'
-import { buildRoute, rankHunts, type HuntProfile } from './hunt-engine'
+import { rankHunts, type HuntProfile, type RouteStage } from './hunt-engine'
+import type { HuntRouteProjection } from './hunt-route-projection'
+import type { HuntRouteWorkerResponse } from './hunt-route.worker'
 import { buildPredictiveHuntCard, formatEtaCompact } from './hunt-predictive'
 import { PokemonSprite } from './PokemonSprite'
+
+const ROUTE_REFRESH_MS = 15_000
+
+interface RouteState extends HuntRouteProjection {
+  profileKey: string
+  loading: boolean
+  error?: string
+}
+
+const EMPTY_ROUTE_STATE: RouteState = {
+  profileKey: '',
+  route: [],
+  baseRoute: [],
+  loading: false
+}
 
 export function HuntView({
   accountId,
@@ -15,6 +32,7 @@ export function HuntView({
   protocolStatus: HuntProtocolStatus
 }) {
   const [data, setData] = useState<HuntSpecies[]>([])
+  const [routeState, setRouteState] = useState<RouteState>(EMPTY_ROUTE_STATE)
   useEffect(() => { void loadHuntSpecies().then(setData) }, [])
 
   const species = useMemo(() => {
@@ -76,20 +94,69 @@ export function HuntView({
     }
   }, [serverProfile, species, missing.join('|')])
 
-  const ranking = useMemo(() => profile ? rankHunts(data, profile, 'route').slice(0, 30) : [], [data, profile])
-  const route = useMemo(() => profile ? buildRoute(data, profile, 6) : [], [data, profile])
+  // `serverProfile` is refreshed frequently. This key contains only values that can
+  // materially change the current Hunt ranking, so a new server object alone does
+  // not force hundreds of combat calculations on the renderer thread.
+  const profileKey = profile ? huntProfileKey(profile) : ''
+  const ranking = useMemo(() => profile ? rankHunts(data, profile, 'route').slice(0, 30) : [], [data, profileKey])
   const best = ranking[0]
+
+  // ETA can move with current XP, but recalculating the entire future route on every
+  // server packet is wasteful. Refresh at most once per 15 s unless a material
+  // profile value changes; the heavy work itself runs in a Web Worker.
+  const routeRefreshBucket = Math.floor((serverProfile?.detectedAt ?? 0) / ROUTE_REFRESH_MS)
+  const routeRequestKey = profile ? `${accountId}|${profileKey}|${routeRefreshBucket}` : ''
+
+  useEffect(() => {
+    if (!profile || !data.length || !routeRequestKey) {
+      setRouteState(EMPTY_ROUTE_STATE)
+      return
+    }
+
+    const worker = new Worker(new URL('./hunt-route.worker.ts', import.meta.url), { type: 'module' })
+    const workerProfile: HuntProfile = {
+      ...profile,
+      trainerXp: serverProfile?.trainerXp,
+      pokemonXp: serverProfile?.pokemonXp
+    }
+
+    setRouteState((current) => current.profileKey === profileKey
+      ? { ...current, loading: true, error: undefined }
+      : { profileKey, route: [], baseRoute: [], loading: true })
+
+    worker.onmessage = (event: MessageEvent<HuntRouteWorkerResponse>) => {
+      if (event.data.key !== routeRequestKey) return
+      if (event.data.error || !event.data.projection) {
+        setRouteState((current) => current.profileKey === profileKey
+          ? { ...current, loading: false, error: event.data.error || 'Falha ao calcular a rota.' }
+          : current)
+        return
+      }
+      setRouteState({
+        profileKey,
+        route: event.data.projection.route,
+        baseRoute: event.data.projection.baseRoute,
+        loading: false
+      })
+    }
+    worker.onerror = () => {
+      setRouteState((current) => current.profileKey === profileKey
+        ? { ...current, loading: false, error: 'Falha no cálculo paralelo da rota.' }
+        : current)
+    }
+    worker.postMessage({ key: routeRequestKey, data, profile: workerProfile })
+
+    return () => worker.terminate()
+  }, [data, routeRequestKey])
+
+  const route = routeState.profileKey === profileKey ? routeState.route : []
+  const baseRoute = routeState.profileKey === profileKey ? routeState.baseRoute : []
+  const routeLoading = routeState.profileKey === profileKey && routeState.loading
+  const routeError = routeState.profileKey === profileKey ? routeState.error : undefined
   const next = route[1]
-  const baseRoute = useMemo(() => {
-    if (!profile || !next) return []
-    const trainerBonus = Math.abs((profile.trainerXpMultiplier ?? 1) - 1) > 0.0001
-    const pokemonBonus = Math.abs((profile.pokemonXpMultiplier ?? 1) - 1) > 0.0001
-    if (!trainerBonus && !pokemonBonus) return route
-    return buildRoute(data, { ...profile, trainerXpMultiplier: 1, pokemonXpMultiplier: 1 }, 12)
-  }, [data, profile, route, next])
   const prediction = useMemo(
-    () => profile && best ? buildPredictiveHuntCard(profile, best, route, baseRoute, serverProfile) : null,
-    [profile, best, route, baseRoute, serverProfile]
+    () => profile && best && next ? buildPredictiveHuntCard(profile, best, route, baseRoute, serverProfile) : null,
+    [profileKey, best?.key, route, baseRoute, serverProfile]
   )
   const displayName = species?.[1] ?? serverProfile?.speciesName ?? (serverProfile?.speciesId !== undefined ? `Espécie #${serverProfile.speciesId}` : '—')
   const lastRead = serverProfile?.detectedAt ? new Date(serverProfile.detectedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : null
@@ -133,13 +200,18 @@ export function HuntView({
       <small class="hunt-auto-note">activeId → registro exato do Pokémon. O Gridium usa IVs/stats/bônus por baixo do cálculo e mantém a tela focada apenas na decisão de rota.</small>
       {protocolStatus === 'live' && !serverProfile && <small class="hunt-error">O servidor está conectado, mas ainda não enviou o registro do Pokémon ativo.</small>}
       {protocolStatus === 'live' && serverProfile && missing.length > 0 && <small class="hunt-error">Aguardando o servidor fornecer: {missing.join(', ')}. Nenhum valor será inventado.</small>}
+      {routeError && <small class="hunt-error">Rota futura: {routeError} O ranking atual continua disponível.</small>}
     </section>
 
     {profile && best ? <>
       <section class="hunt-summary-grid route-v2-summary">
         <Summary label="MELHOR AGORA" value={best.area} sub={`${best.name} · ${best.region} · Nv ${best.level}`} accent />
         <Summary label="XP/H DO POKÉMON" value={compact(best.pokemonXpPerHour)} sub={`${compact(best.pokemonXpPerKill)} XP do Pokémon por abate`} />
-        <Summary label="PRÓXIMA TROCA" value={next ? `Nv ${next.fromPokemonLevel}` : 'MANTER'} sub={next ? `${next.hunt.area} · treinador Nv ${next.fromLevel}` : 'nenhuma troca vantajosa na projeção atual'} />
+        <Summary
+          label="PRÓXIMA TROCA"
+          value={next ? `Nv ${next.fromPokemonLevel}` : routeLoading ? 'CALCULANDO…' : routeError ? 'INDISPONÍVEL' : 'MANTER'}
+          sub={next ? `${next.hunt.area} · treinador Nv ${next.fromLevel}` : routeLoading ? 'projeção futura em segundo plano' : routeError ? 'ranking atual continua funcionando' : 'nenhuma troca vantajosa na projeção atual'}
+        />
         <Summary label="SEGURANÇA" value={safetyLabel(best.safety)} sub={`${best.safety}/100`} />
         <Summary label="ABATES/H" value={Math.round(best.killsPerHour).toLocaleString('pt-BR')} sub="inclui tempo de deslocamento modelado" />
         <Summary label="PRECISÃO" value={best.confidence} sub={best.confidence === 'CALIBRADO' ? 'medição real desta conta/Hunt' : 'combate + deslocamento ainda modelados'} />
@@ -147,7 +219,7 @@ export function HuntView({
 
       <section class="hunt-route poke-card">
         <div class="hunt-section-title"><strong>ROTA DE PROGRESSÃO</strong><span>troca somente quando outra Hunt supera a atual por margem relevante</span></div>
-        <div class="route-track">{route.map((stage,index) =>
+        <div class="route-track">{route.length ? route.map((stage,index) =>
           <div class={`route-stage ${index === 0 ? 'current' : ''}`} key={`${stage.fromLevel}-${stage.fromPokemonLevel}-${stage.hunt.key}`}>
             <PokemonSprite speciesId={stage.hunt.id} name={stage.hunt.name} className="hunt-route-sprite" />
             <div class="route-stage-copy">
@@ -157,7 +229,13 @@ export function HuntView({
               {index > 0 && <em>estimativa: {formatEta(stage.etaHours)}</em>}
             </div>
           </div>
-        )}</div>
+        ) : <div class="route-stage current">
+          <PokemonSprite speciesId={best.id} name={best.name} className="hunt-route-sprite" />
+          <div class="route-stage-copy">
+            <small>AGORA</small><b>{best.area}</b><span>{best.name} · {compact(best.pokemonXpPerHour)} XP/h do Pokémon</span>
+            <em>{routeLoading ? 'calculando próximas trocas em segundo plano…' : routeError ? 'projeção futura indisponível' : 'nenhuma troca futura encontrada'}</em>
+          </div>
+        </div>}</div>
       </section>
 
       <section class="hunt-ranking poke-card">
@@ -172,6 +250,33 @@ export function HuntView({
       <p class="hunt-disclaimer">XP por abate usa a curva atual medida no jogo (nível² + 12). O Pokémon ativo, IVs, stats, qualidade, potência, shiny, refino, bônus de XP e TM vêm do estado do servidor quando disponíveis. Golpes completos do Pokémon, rolagem exata do inimigo e ondas/deslocamento ainda não chegam completos em welcome/estado; por isso a precisão permanece ESTIMADO até existir amostra real suficiente. XP do treinador nunca é somado ao XP/h exibido.</p>
     </> : <section class="hunt-empty poke-card"><b>{protocolStatus === 'unavailable' ? 'Monitor do servidor indisponível.' : 'Aguardando estado completo do Pokémon ativo.'}</b><span>A rota só aparece quando o estado real da conta está completo.</span></section>}
   </main>
+}
+
+function huntProfileKey(profile: HuntProfile): string {
+  const stats = profile.stats ?? {}
+  const refinement = profile.refinement ?? {}
+  return [
+    profile.trainerLevel,
+    profile.speciesId,
+    profile.pokemonLevel,
+    profile.quality,
+    profile.potency,
+    profile.shiny ? 1 : 0,
+    profile.ivAtk,
+    profile.ivSpAtk,
+    profile.ivDef,
+    profile.ivSpDef,
+    profile.ivHp,
+    profile.ivSpeed ?? '',
+    profile.trainerXpMultiplier ?? 1,
+    profile.pokemonXpMultiplier ?? 1,
+    profile.tmElemental ?? '',
+    profile.tmAoe ? 1 : 0,
+    ...profile.types,
+    ...(profile.baseStats ?? []),
+    stats.hp ?? '', stats.atk ?? '', stats.def ?? '', stats.spAtk ?? '', stats.spDef ?? '', stats.speed ?? '',
+    refinement.hp ?? '', refinement.atk ?? '', refinement.def ?? '', refinement.spAtk ?? '', refinement.spDef ?? '', refinement.speed ?? ''
+  ].join('|')
 }
 
 function Summary({ label, value, sub, accent = false }: { label: string; value: string; sub: string; accent?: boolean }) {
