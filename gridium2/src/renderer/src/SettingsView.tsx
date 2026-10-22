@@ -1,4 +1,4 @@
-import type { AccountId, AccountPowerMode, GridiumSnapshot, PowerAutomationKey } from '../../shared/contracts'
+import type { AccountId, AccountPowerMode, GridiumSnapshot, PowerAutomationKey, UpdateSnapshot } from '../../shared/contracts'
 
 const modeLabel: Record<AccountPowerMode, string> = {
   auto: 'AUTO',
@@ -7,18 +7,28 @@ const modeLabel: Record<AccountPowerMode, string> = {
   suspended: 'SUSPENSA'
 }
 
+const EMPTY_UPDATE: UpdateSnapshot = {
+  currentVersion: '—',
+  status: 'idle',
+  progress: 0,
+  message: 'Atualizador iniciando…'
+}
+
 export function SettingsView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const setMode = (id: AccountId, mode: AccountPowerMode) => void window.gridium2.setAccountPowerMode(id, mode)
   const setAll = (mode: AccountPowerMode) => void window.gridium2.setAllAccountsPowerMode(mode)
   const setAutomation = (key: PowerAutomationKey, enabled: boolean) => void window.gridium2.setPowerAutomation(key, enabled)
   const setKeepDisplayAwake = (enabled: boolean) => void window.gridium2.setKeepDisplayAwake(enabled)
+  const update = snapshot.updater ?? EMPTY_UPDATE
+  const checking = update.status === 'checking'
+  const downloading = update.status === 'downloading'
 
   return <main class="settings-shell poke-frame">
     <div class="settings-head">
       <div>
         <span class="settings-kicker">⚙ CENTRO DE CONTROLE</span>
         <h1>CONFIGURAÇÕES</h1>
-        <p>Controle de tela, execução e economia das quatro contas.</p>
+        <p>Controle de tela, execução, economia e atualizações do Gridium.</p>
       </div>
       <button class="settings-close" onClick={() => void window.gridium2.setModule('accounts')}>✕ FECHAR</button>
     </div>
@@ -32,6 +42,24 @@ export function SettingsView({ snapshot }: { snapshot: GridiumSnapshot }) {
       </nav>
 
       <section class="settings-content">
+        <div class="settings-section poke-card">
+          <div class="settings-section-title">
+            <div><span>ATUALIZAÇÕES DO GRIDIUM</span><small>Versão instalada: {update.currentVersion}</small></div>
+          </div>
+          <div class="global-power-actions">
+            <button disabled={checking || downloading} onClick={() => void window.gridium2.checkForUpdates()}>
+              {checking ? '⌛ VERIFICANDO…' : '↻ VERIFICAR ATUALIZAÇÃO'}
+            </button>
+            {update.status === 'available' && <button onClick={() => void window.gridium2.downloadUpdate()}>⬇ BAIXAR {update.availableVersion}</button>}
+            {downloading && <button disabled>⬇ BAIXANDO {update.progress}%</button>}
+            {update.status === 'ready' && <button onClick={() => void window.gridium2.installUpdate()}>✓ INSTALAR E REINICIAR</button>}
+          </div>
+          <div style={{ marginTop: '8px' }}>
+            <small>{update.message}</small>
+            {downloading && <progress max={100} value={update.progress} style={{ width: '100%', marginTop: '6px' }} />}
+          </div>
+        </div>
+
         <div class="settings-section poke-card">
           <div class="settings-section-title">
             <div><span>CONTROLE RÁPIDO</span><small>Aplica nas quatro contas</small></div>
