@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { AccountId, HuntProfileScan, HuntProtocolStatus } from '../../shared/contracts'
 import { loadHuntSpecies, type HuntSpecies } from './hunt-data'
 import { buildRoute, rankHunts, type HuntProfile } from './hunt-engine'
+import { buildPredictiveHuntCard, formatEtaCompact } from './hunt-predictive'
 import { PokemonSprite } from './PokemonSprite'
 
 export function HuntView({
@@ -79,6 +80,17 @@ export function HuntView({
   const route = useMemo(() => profile ? buildRoute(data, profile, 6) : [], [data, profile])
   const best = ranking[0]
   const next = route[1]
+  const baseRoute = useMemo(() => {
+    if (!profile || !next) return []
+    const trainerBonus = Math.abs((profile.trainerXpMultiplier ?? 1) - 1) > 0.0001
+    const pokemonBonus = Math.abs((profile.pokemonXpMultiplier ?? 1) - 1) > 0.0001
+    if (!trainerBonus && !pokemonBonus) return route
+    return buildRoute(data, { ...profile, trainerXpMultiplier: 1, pokemonXpMultiplier: 1 }, 12)
+  }, [data, profile, route, next])
+  const prediction = useMemo(
+    () => profile && best ? buildPredictiveHuntCard(profile, best, route, baseRoute, serverProfile) : null,
+    [profile, best, route, baseRoute, serverProfile]
+  )
   const displayName = species?.[1] ?? serverProfile?.speciesName ?? (serverProfile?.speciesId !== undefined ? `Espécie #${serverProfile.speciesId}` : '—')
   const lastRead = serverProfile?.detectedAt ? new Date(serverProfile.detectedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : null
 
@@ -108,6 +120,14 @@ export function HuntView({
             <span>P{serverProfile?.potency ?? '—'}</span>
             {serverProfile?.shiny && <span>✦ SHINY</span>}
           </div>
+          {prediction && <div class="hunt-predictive-chips" aria-label="Previsão compacta da próxima Hunt">
+            <span class="predict-next" title={`${prediction.lockedNow ? 'Hunt ainda bloqueada hoje. ' : ''}Próxima prevista: ${prediction.targetArea} · ${prediction.targetName} · ${prediction.targetRegion}. Troca projetada no treinador Nv ${prediction.trainerLevel}.`}>{prediction.lockedNow ? '🔒' : '↗'} NV {prediction.pokemonLevel}</span>
+            <span title="ETA usando os multiplicadores de XP que o servidor informa neste momento.">ATUAL {formatEtaCompact(prediction.etaCurrentHours)}</span>
+            <span title="ETA de referência removendo todos os multiplicadores de XP informados pelo servidor. O protocolo atual não separa com segurança evento, guilda, VIP e outros bônus.">BASE {formatEtaCompact(prediction.etaBaseHours)}</span>
+            <span title={`XP/h do Pokémon projetado em ${prediction.targetArea} quando a troca ocorrer.`}>{compact(prediction.projectedXpPerHour)}/H</span>
+            <span class={prediction.gainPercent >= 0 ? 'predict-gain' : 'predict-loss'} title="Ganho projetado de XP/h da próxima Hunt em relação à melhor Hunt de agora.">{formatSignedPercent(prediction.gainPercent)}</span>
+            <span class="predict-confidence" title="Índice interno de confiança da previsão, calculado pela qualidade dos dados reais disponíveis e pela distância temporal da projeção. Não é probabilidade de sucesso.">CONF {prediction.confidencePercent}%</span>
+          </div>}
         </div>
       </div>
       <small class="hunt-auto-note">activeId → registro exato do Pokémon. O Gridium usa IVs/stats/bônus por baixo do cálculo e mantém a tela focada apenas na decisão de rota.</small>
@@ -170,6 +190,12 @@ function formatEta(hours: number): string {
   if (hours < 1) return `~${Math.max(1,Math.round(hours*60))} min`
   if (hours < 48) return `~${hours.toFixed(1).replace('.',',')} h`
   return `~${(hours/24).toFixed(1).replace('.',',')} dias`
+}
+
+function formatSignedPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  const sign = rounded > 0 ? '+' : ''
+  return `${sign}${rounded.toFixed(1).replace('.', ',')}%`
 }
 
 function compact(value: number): string {
