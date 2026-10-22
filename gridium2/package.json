@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.12.2",
+  "version": "2.0.0-alpha.12.3",
   "private": true,
-  "description": "Gridium 2 Alpha 1.2.2 - farm-only Gold analytics",
+  "description": "Gridium 2 Alpha 1.2.3 - non-blocking Hunt route worker",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
