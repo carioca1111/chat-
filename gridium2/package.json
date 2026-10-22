@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.8.3",
+  "version": "2.0.0-alpha.9.0",
   "private": true,
-  "description": "Gridium 2 Alpha 0.8.3 - clean hover charts with Brasilia 60m/24h/30d windows",
+  "description": "Gridium 2 Alpha 0.9.0 - verified in-app updater backed by GitHub Releases",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
