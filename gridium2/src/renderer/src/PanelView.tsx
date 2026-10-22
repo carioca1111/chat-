@@ -14,6 +14,8 @@ import './panel-history.css'
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
+const BRASILIA_TIME_ZONE = 'America/Sao_Paulo'
+const BRASILIA_UTC_OFFSET_MS = -3 * HOUR
 
 type HistoryMetric = 'pokemonXp' | 'captures' | 'goldEarned' | 'marketCoins' | 'marketGems' | 'rmtBrl'
 
@@ -68,7 +70,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <div>
         <span class="panel-kicker">▥ PAINEL ANALYTICS · HISTÓRICO PERSISTENTE</span>
         <h1>VISÃO GERAL DAS 4 CONTAS</h1>
-        <p>Dados compactos, persistentes e agrupados por minuto, hora ou dia.</p>
+        <p>Dados compactos, persistentes e sincronizados pelo horário de Brasília.</p>
       </div>
       <span class="panel-live"><i class="status-ok" /> SERVIDOR · {online}/4 ONLINE</span>
     </section>
@@ -90,11 +92,11 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
     </section>
 
     <section class="panel-timeseries-grid">
-      <ChartCard title="XP DO POKÉMON" subtitle={`${granularityLabel(granularity)} · ganho real observado`} wide>
+      <ChartCard title="XP DO POKÉMON" subtitle={`${granularityLabel(granularity)} · horário de Brasília`} wide>
         <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
         <LineChart points={xpSeries} valueFormatter={compact} tone="xp" />
       </ChartCard>
-      <ChartCard title="POKÉMONS CAPTURADOS" subtitle={`${granularityLabel(granularity)} · cada ponto representa um período`} wide>
+      <ChartCard title="POKÉMONS CAPTURADOS" subtitle={`${granularityLabel(granularity)} · horário de Brasília`} wide>
         <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
         <LineChart points={captureSeries} valueFormatter={fmt} tone="captures" />
       </ChartCard>
@@ -104,7 +106,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
         <div class="panel-revenue-accounts">
           {goldByAccount.map((row) => <div key={row.accountId}><small>CONTA {row.accountId}</small><b>{compact(row.value)} Gold</b></div>)}
         </div>
-        <div class="panel-money-note">Cada coluna mede <b>Gold ganho bruto</b> pelo aumento real de <b>estado.gold</b>. Gastos não apagam o que já foi ganho. Vendas no Market entram pelo aumento do saldo e não são duplicadas.</div>
+        <div class="panel-money-note">Cada coluna mede <b>Gold ganho bruto</b> pelo aumento real de <b>estado.gold</b>. 1m mostra 60 minutos, 1h mostra 24 horas e 1d mostra 30 dias, sempre no horário de Brasília.</div>
       </ChartCard>
       <ChartCard title="CAPTURAS POR CONTA" subtitle="Últimos 60 minutos">
         <ColumnChart labels={accountBars.map((row) => `Conta ${row.account.id}`)} values={accountBars.map((row) => row.value)} classes={['account a1','account a2','account a3','account a4']} />
@@ -133,7 +135,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
     <section class="panel-note poke-card">
       <b>HISTÓRICO PERSISTENTE</b>
-      <span>O painel restaura os dados após reiniciar o PC. As janelas exibem 60 minutos, 24 horas ou 30 dias. O Gold é calculado por aumento positivo do saldo real; notas usam o campo oficial “nota”.</span>
+      <span>O painel restaura os dados após reiniciar o PC. As janelas exibem exatamente 60 minutos, 24 horas ou 30 dias e os rótulos seguem America/Sao_Paulo. O Gold é calculado por aumento positivo do saldo real; notas usam o campo oficial “nota”.</span>
     </section>
   </main>
 }
@@ -249,8 +251,7 @@ function historyOf(row: PanelAnalyticsSnapshot, granularity: PanelGranularity): 
 function bucketStart(at: number, granularity: PanelGranularity): number {
   if (granularity === 'minute') return Math.floor(at / MINUTE) * MINUTE
   if (granularity === 'hour') return Math.floor(at / HOUR) * HOUR
-  const date = new Date(at)
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  return Math.floor((at + BRASILIA_UTC_OFFSET_MS) / DAY) * DAY - BRASILIA_UTC_OFFSET_MS
 }
 function sumMetric(row: PanelAnalyticsSnapshot, granularity: PanelGranularity, metric: HistoryMetric, start: number, end: number): number {
   return historyOf(row, granularity).filter((bucket) => bucket.at >= start && bucket.at <= end).reduce((sum,bucket) => sum + Number(bucket[metric] || 0), 0)
@@ -329,12 +330,12 @@ function compact(value:number):string {
 }
 function ratio(caught:number, seen:number):number { return seen > 0 ? Math.round((caught / seen) * 100) : 0 }
 function short(value:string):string { return value.length > 13 ? `${value.slice(0,12)}…` : value }
-function clock(at:number):string { return new Date(at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }
+function clock(at:number):string { return new Date(at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:BRASILIA_TIME_ZONE}) }
 function timeLabel(at:number, granularity:PanelGranularity):string {
   const date = new Date(at)
-  if (granularity === 'minute') return date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
-  if (granularity === 'hour') return `${date.getHours().toString().padStart(2,'0')}h`
-  return date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})
+  if (granularity === 'minute') return date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:BRASILIA_TIME_ZONE})
+  if (granularity === 'hour') return `${date.toLocaleTimeString('pt-BR',{hour:'2-digit',hour12:false,timeZone:BRASILIA_TIME_ZONE})}h`
+  return date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:BRASILIA_TIME_ZONE})
 }
 function granularityLabel(value:PanelGranularity):string { return value === 'minute' ? '1m por ponto · 60 minutos' : value === 'hour' ? '1h por ponto · 24 horas' : '1d por ponto · 30 dias' }
 function relative(at:number):string {
