@@ -9,6 +9,7 @@ import type {
   GridiumApi,
   GridiumSnapshot,
   LayoutMode,
+  PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey
 } from '../shared/contracts'
@@ -25,6 +26,7 @@ const api: GridiumApi = {
   setPowerAutomation: (key: PowerAutomationKey, enabled: boolean) => ipcRenderer.invoke('gridium2:set-power-automation', key, enabled),
   setAutoMarketMode: (mode: AutoMarketMode) => ipcRenderer.invoke('gridium2:set-automarket-mode', mode),
   setAutoMarketRule: (accountId: AccountId, rule: AutoMarketRule) => ipcRenderer.invoke('gridium2:set-automarket-rule', accountId, rule),
+  addPanelRmtSale: (accountId: AccountId, sale: PanelRmtSaleInput) => ipcRenderer.invoke('gridium2:add-panel-rmt-sale', accountId, sale),
   scanHuntProfile: (accountId: AccountId) => ipcRenderer.invoke('gridium2:scan-hunt-profile', accountId),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
   accountCommand: (accountId: AccountId, command: AccountCommand) => ipcRenderer.invoke('gridium2:account-command', accountId, command),
