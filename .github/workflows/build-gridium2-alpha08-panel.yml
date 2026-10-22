@@ -1,16 +1,16 @@
-name: Build Gridium 2 Alpha 0.8.3 Hover Charts
+name: Build Gridium 2 Alpha 0.9 In-App Updater
 
 on:
   push:
     branches:
-      - gridium2-alpha0.8.3-chart-hover-brasilia
+      - gridium2-alpha0.9-inapp-updater
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows:
@@ -20,33 +20,72 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 0.8.3 branch
+      - name: Checkout Alpha 0.9 branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha0.8.3-chart-hover-brasilia
+          ref: gridium2-alpha0.9-inapp-updater
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
       - name: Unit tests
         run: npm test
+
       - name: Build Electron app
         run: npm run build
+
       - name: Build Windows installer
         run: npx electron-builder --win nsis --x64
-      - name: Verify installer
+
+      - name: Read release metadata
+        id: meta
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.8.3-Setup.exe" -Recurse | Select-Object -First 1
-          if (-not $installer) { throw "Installer not found" }
-          Write-Host "Installer: $($installer.FullName)"
-          Get-FileHash $installer.FullName -Algorithm SHA256
-      - name: Upload Windows installer
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-0.9.0-Setup.exe" >> $env:GITHUB_OUTPUT
+
+      - name: Verify installer and create update manifest
+        shell: pwsh
+        run: |
+          $installer = Join-Path "release" "${{ steps.meta.outputs.installer }}"
+          if (-not (Test-Path $installer)) { throw "Installer not found: $installer" }
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest = [ordered]@{
+            version = "${{ steps.meta.outputs.version }}"
+            installer = "${{ steps.meta.outputs.installer }}"
+            sha256 = $hash
+          } | ConvertTo-Json -Compress
+          Set-Content -Path "release/gridium2-update.json" -Value $manifest -Encoding utf8NoBOM -NoNewline
+          Write-Host "SHA256: $hash"
+          Get-Content "release/gridium2-update.json"
+
+      - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-0.8.3-Hover-Charts-Windows
-          path: gridium2/release/Gridium-2-Alpha-0.8.3-Setup.exe
+          name: Gridium-2-Alpha-0.9.0-In-App-Updater-Windows
+          path: |
+            gridium2/release/Gridium-2-Alpha-0.9.0-Setup.exe
+            gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish Gridium update release
+        if: ${{ startsWith(github.event.head_commit.message, 'release:') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gridium2-v${{ steps.meta.outputs.version }}
+          name: Gridium 2 ${{ steps.meta.outputs.version }}
+          body: |
+            Atualização oficial do Gridium 2.
+
+            A partir da Alpha 0.9.0, o próprio aplicativo verifica, baixa, valida por SHA-256 e instala novas versões.
+          prerelease: false
+          files: |
+            gridium2/release/Gridium-2-Alpha-0.9.0-Setup.exe
+            gridium2/release/gridium2-update.json
