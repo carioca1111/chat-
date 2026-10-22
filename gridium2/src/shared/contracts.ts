@@ -13,6 +13,9 @@ export type MarketCurrency = 'coins' | 'gems'
 export type PanelGranularity = 'minute' | 'hour' | 'day'
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date' | 'error'
 export type WhatsAppStatus = 'unconfigured' | 'idle' | 'sending' | 'sent' | 'error'
+export type SentinelState = 'learning' | 'healthy' | 'anomaly' | 'recovering' | 'offline' | 'paused'
+export type SentinelMetric = 'xp' | 'captures' | 'gold'
+export type SentinelSeverity = 'warning' | 'critical'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
@@ -56,6 +59,55 @@ export interface WhatsAppSettingsInput {
   alertShiny: boolean
   alertP5: boolean
   accessToken?: string
+}
+
+export interface SentinelMetricSnapshot {
+  metric: SentinelMetric
+  currentPerHour: number
+  baselinePerHour: number
+  deltaPercent: number
+  severity: SentinelSeverity
+}
+
+export interface HuntLearningSnapshot {
+  accountId: AccountId
+  huntSlug: string
+  speciesId?: number
+  speciesName?: string
+  observedXpPerHour: number
+  minutesObserved: number
+  samples: number
+  confidence: number
+}
+
+export interface SentinelAccountSnapshot {
+  accountId: AccountId
+  state: SentinelState
+  healthScore: number
+  issue: string
+  lastServerAt: number | null
+  lastRecoveryAt?: number
+  recoveryAttempts: number
+  anomaly: SentinelMetricSnapshot | null
+  huntLearning?: HuntLearningSnapshot
+  recoveryNeeded: boolean
+}
+
+export interface SentinelSnapshot {
+  enabled: boolean
+  autoRecover: boolean
+  anomalyDetection: boolean
+  whatsappAlerts: boolean
+  accounts: SentinelAccountSnapshot[]
+  learning: HuntLearningSnapshot[]
+  updatedAt: number
+}
+
+export interface SentinelSettingsInput {
+  enabled: boolean
+  autoRecover: boolean
+  anomalyDetection: boolean
+  whatsappAlerts: boolean
 }
 
 export interface PanelEventSnapshot {
@@ -223,6 +275,8 @@ export interface AccountSnapshot {
   id: AccountId
   name: string
   status: AccountStatus
+  statusSince: number
+  lastServerAt: number | null
   url: string
   title: string
   canGoBack: boolean
@@ -259,6 +313,7 @@ export interface GridiumSnapshot {
   telemetry: TelemetrySnapshot
   updater?: UpdateSnapshot
   whatsapp?: WhatsAppSnapshot
+  sentinel?: SentinelSnapshot
 }
 
 export interface GridiumApi {
@@ -283,5 +338,7 @@ export interface GridiumApi {
   saveWhatsAppSettings: (settings: WhatsAppSettingsInput) => Promise<WhatsAppSnapshot>
   sendWhatsAppTest: () => Promise<WhatsAppSnapshot>
   sendWhatsAppReportNow: () => Promise<WhatsAppSnapshot>
+  saveSentinelSettings: (settings: SentinelSettingsInput) => Promise<SentinelSnapshot>
+  recoverAccountNow: (accountId: AccountId) => Promise<boolean>
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => () => void
 }
