@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact'
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 import type {
   AccountId,
   AccountSnapshot,
@@ -10,15 +10,13 @@ import type {
   PanelHistoryBucket,
   PanelRareItemSnapshot
 } from '../../shared/contracts'
-import { pokemonArtworkUrl, pokemonSpriteUrl, resolvePokemonSpeciesId } from './pokemon-sprites'
 import './panel-history.css'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-type HistoryMetric = 'pokemonXp' | 'captures' | 'marketCoins' | 'marketGems' | 'rmtBrl'
-type RevenueMetric = 'rmtBrl' | 'marketCoins' | 'marketGems'
+type HistoryMetric = 'pokemonXp' | 'captures' | 'goldEarned' | 'marketCoins' | 'marketGems' | 'rmtBrl'
 
 const EMPTY: PanelAnalyticsSnapshot = {
   revision: 0,
@@ -35,6 +33,8 @@ const EMPTY: PanelAnalyticsSnapshot = {
   lastCaptureAt: null,
   pokemonXpTotal: 0,
   pokemonXpLastHour: 0,
+  goldEarnedTotal: 0,
+  goldEarnedLastHour: 0,
   marketCoinsRevenue: 0,
   marketGemsRevenue: 0,
   rmtBrlRevenue: 0,
@@ -50,7 +50,6 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const revisions = analytics.map((row) => row.revision).join('|')
   const total = useMemo(() => combine(analytics), [revisions])
   const [granularity, setGranularity] = useState<PanelGranularity>('hour')
-  const [revenueMetric, setRevenueMetric] = useState<RevenueMetric>('rmtBrl')
   const [rmtAccount, setRmtAccount] = useState<AccountId>(1)
   const [rmtValue, setRmtValue] = useState('')
   const [rmtDescription, setRmtDescription] = useState('')
@@ -61,12 +60,12 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const events = combineEvents(accounts)
   const xpSeries = useMemo(() => buildSeries(analytics, granularity, 'pokemonXp'), [revisions, granularity])
   const captureSeries = useMemo(() => buildSeries(analytics, granularity, 'captures'), [revisions, granularity])
-  const revenueSeries = useMemo(() => buildSeries(analytics, granularity, revenueMetric, revenuePointCount(granularity)), [revisions, granularity, revenueMetric])
-  const visibleRevenueStart = revenueSeries[0]?.at ?? 0
-  const visibleRevenueEnd = revenueSeries.at(-1)?.at ?? Date.now()
-  const revenueByAccount = accounts.map((account) => ({
+  const goldSeries = useMemo(() => buildSeries(analytics, granularity, 'goldEarned', revenuePointCount(granularity)), [revisions, granularity])
+  const visibleGoldStart = goldSeries[0]?.at ?? 0
+  const visibleGoldEnd = goldSeries.at(-1)?.at ?? Date.now()
+  const goldByAccount = accounts.map((account) => ({
     accountId: account.id,
-    value: sumMetric(account.panelAnalytics ?? EMPTY, granularity, revenueMetric, visibleRevenueStart, visibleRevenueEnd)
+    value: sumMetric(account.panelAnalytics ?? EMPTY, granularity, 'goldEarned', visibleGoldStart, visibleGoldEnd)
   }))
 
   const submitRmt = async (event: Event): Promise<void> => {
@@ -89,7 +88,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <div>
         <span class="panel-kicker">▥ PAINEL ANALYTICS · HISTÓRICO PERSISTENTE</span>
         <h1>VISÃO GERAL DAS 4 CONTAS</h1>
-        <p>O histórico agora é salvo no disco e continua depois de fechar o Gridium ou reiniciar o PC.</p>
+        <p>Dados compactos, persistentes e agrupados por minuto, hora ou dia.</p>
       </div>
       <span class="panel-live"><i class="status-ok" /> SERVIDOR · {online}/4 ONLINE</span>
     </section>
@@ -99,11 +98,11 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <PanelMetric icon="↗" label="XP/H POKÉMON" value={compact(total.pokemonXpLastHour)} sub="últimos 60 min" tone="cyan" />
       <PanelMetric icon="◉" label="CAPTURAS/H" value={fmt(total.capturesLastHour)} sub="últimos 60 min" tone="cyan" />
       <PanelMetric icon="⌁" label="CAPTURAS" value={fmt(total.capturesTotal)} sub="histórico salvo" tone="purple" />
-      <PanelMetric icon="★" label="NOTA ≥ 3,5" value={fmt(total.note35Plus)} sub="nota oficial do servidor" tone="gold" />
-      <PanelMetric icon="✦" label="SHINYS VISTOS" value={total.shiniesSeen === null ? '—' : fmt(total.shiniesSeen)} sub={total.shiniesSeen === null ? 'evento ainda não exposto' : 'contador do servidor'} tone="pink" />
+      <PanelMetric icon="★" label="NOTA ≥ 3,5" value={fmt(total.note35Plus)} sub="nota oficial" tone="gold" />
+      <PanelMetric icon="✦" label="SHINYS VISTOS" value={total.shiniesSeen === null ? '—' : fmt(total.shiniesSeen)} sub={total.shiniesSeen === null ? 'evento não exposto' : 'contador do servidor'} tone="pink" />
       <PanelMetric icon="✧" label="SHINYS PEGOS" value={fmt(total.shiniesCaught)} sub="captura confirmada" tone="pink" />
       <PanelMetric icon="◆" label="ITENS RAROS" value={fmt(total.rareItemsTotal)} sub="histórico salvo" tone="gold" />
-      <PanelMetric icon="R$" label="RMT" value={brl(total.rmtBrlRevenue)} sub="vendas registradas" tone="green" />
+      <PanelMetric icon="$" label="GOLD GANHO" value={compact(total.goldEarnedTotal)} sub={`${compact(total.goldEarnedLastHour)} na última hora`} tone="green" />
     </section>
 
     <section class="panel-account-grid">
@@ -111,38 +110,31 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
     </section>
 
     <section class="panel-timeseries-grid">
-      <ChartCard title="XP DO POKÉMON" subtitle={`${granularityLabel(granularity)} · ganho real observado no estado do servidor`} wide>
+      <ChartCard title="XP DO POKÉMON" subtitle={`${granularityLabel(granularity)} · ganho real observado`} wide>
         <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
         <LineChart points={xpSeries} valueFormatter={compact} tone="xp" />
       </ChartCard>
-      <ChartCard title="POKÉMONS CAPTURADOS" subtitle={`${granularityLabel(granularity)} · cada ponto representa um período completo`} wide>
+      <ChartCard title="POKÉMONS CAPTURADOS" subtitle={`${granularityLabel(granularity)} · cada ponto representa um período`} wide>
         <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
         <LineChart points={captureSeries} valueFormatter={fmt} tone="captures" />
       </ChartCard>
-      <ChartCard title="DINHEIRO / RECEITA" subtitle="4 contas somadas · verde superou o período anterior; vermelho não superou" wide>
-        <div class="panel-money-toolbar">
-          <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
-          <div class="panel-segmented revenue-source">
-            <button class={revenueMetric === 'rmtBrl' ? 'active' : ''} onClick={() => setRevenueMetric('rmtBrl')}>RMT R$</button>
-            <button class={revenueMetric === 'marketCoins' ? 'active' : ''} onClick={() => setRevenueMetric('marketCoins')}>MARKET GOLD</button>
-            <button class={revenueMetric === 'marketGems' ? 'active' : ''} onClick={() => setRevenueMetric('marketGems')}>MARKET ORBS</button>
-          </div>
-        </div>
-        <TrendColumnChart points={revenueSeries} valueFormatter={revenueMetric === 'rmtBrl' ? brl : compact} />
+      <ChartCard title="GOLD GANHO" subtitle="4 contas somadas · batalha, Hunt, Market e qualquer aumento confirmado do saldo" wide>
+        <div class="panel-money-toolbar single-source"><ChartToolbar granularity={granularity} onGranularity={setGranularity} /></div>
+        <TrendColumnChart points={goldSeries} valueFormatter={compact} />
         <div class="panel-revenue-accounts">
-          {revenueByAccount.map((row) => <div key={row.accountId}><small>CONTA {row.accountId}</small><b>{revenueMetric === 'rmtBrl' ? brl(row.value) : compact(row.value)}</b></div>)}
+          {goldByAccount.map((row) => <div key={row.accountId}><small>CONTA {row.accountId}</small><b>{compact(row.value)} Gold</b></div>)}
         </div>
-        <div class="panel-money-note">Market usa somente <b>marketVendido</b> de Pokémon confirmado pelo servidor. RMT fica separado em R$; Gold/Orbs não são convertidos para reais sem uma taxa definida por você.</div>
+        <div class="panel-money-note">Cada coluna mede <b>Gold ganho bruto</b> pelo aumento real de <b>estado.gold</b>. Gastos não apagam o que já foi ganho. Vendas no Market entram pelo aumento do saldo e não são duplicadas.</div>
       </ChartCard>
-      <ChartCard title="REGISTRAR VENDA RMT" subtitle="Venda fora do jogo: informe o valor real para entrar no histórico">
+      <ChartCard title="REGISTRAR VENDA RMT" subtitle={`RMT continua separado do Gold · total registrado: ${brl(total.rmtBrlRevenue)}`}>
         <form class="panel-rmt-form" onSubmit={submitRmt}>
           <label>Conta<select value={rmtAccount} onChange={(event) => setRmtAccount(Number(event.currentTarget.value) as AccountId)}>
             <option value={1}>Conta 1</option><option value={2}>Conta 2</option><option value={3}>Conta 3</option><option value={4}>Conta 4</option>
           </select></label>
           <label>Valor em R$<input value={rmtValue} inputMode="decimal" placeholder="Ex.: 35,00" onInput={(event) => setRmtValue(event.currentTarget.value)} /></label>
-          <label class="rmt-description">Descrição<input value={rmtDescription} placeholder="Ex.: Brave Charizard" maxLength={80} onInput={(event) => setRmtDescription(event.currentTarget.value)} /></label>
+          <label class="rmt-description">Descrição<input value={rmtDescription} placeholder="Ex.: venda de Pokémon" maxLength={80} onInput={(event) => setRmtDescription(event.currentTarget.value)} /></label>
           <button type="submit">+ REGISTRAR RMT</button>
-          <small>{rmtStatus || 'O Gridium não inventa RMT: só entra quando você registra a venda.'}</small>
+          <small>{rmtStatus || 'RMT é R$ externo e não é somado ao Gold do jogo.'}</small>
         </form>
       </ChartCard>
     </section>
@@ -151,21 +143,20 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <ChartCard title="CAPTURAS POR POTÊNCIA" subtitle={`${fmt(total.capturesTotal)} capturas confirmadas`}>
         <ColumnChart labels={['P1','P2','P3','P4','P5']} values={total.capturesByPotency} classes={['p1','p2','p3','p4','p5']} />
       </ChartCard>
-      <ChartCard title="DISTRIBUIÇÃO DE NOTAS" subtitle={`${fmt(total.note35Plus)} capturas com nota oficial ≥ 3,5`}>
+      <ChartCard title="DISTRIBUIÇÃO DE NOTAS" subtitle={`${fmt(total.note35Plus)} capturas com nota ≥ 3,5`}>
         <ColumnChart labels={['0–0,99','1–1,99','2–2,99','3–3,49','3,5–3,99','4–4,49','4,5–4,99','5,0+']} values={total.noteBands} classes={['q0','q1','q2','q3','q35','q4','q45','q5']} />
       </ChartCard>
       <ChartCard title="SHINYS VISTOS × PEGOS" subtitle={total.shiniesSeen === null ? 'Vistos aguardando evento explícito do servidor' : `${ratio(total.shiniesCaught, total.shiniesSeen)}% de conversão`}>
         <ColumnChart labels={['Vistos','Pegos']} values={[total.shiniesSeen ?? 0,total.shiniesCaught]} classes={['seen','caught']} unknown={[total.shiniesSeen === null,false]} />
       </ChartCard>
-      <ChartCard title="ITENS RAROS RECEBIDOS" subtitle="Somente aumentos de inventário com nomes raros conhecidos">
+      <ChartCard title="ITENS RAROS RECEBIDOS" subtitle="Aumentos confirmados no inventário">
         {rare.length ? <ColumnChart labels={rare.map((item) => short(item.name))} values={rare.map((item) => item.quantity)} classes={rare.map((_,index) => `rare r${index}`)} /> : <EmptyChart text="Nenhum item raro confirmado" />}
       </ChartCard>
       <ChartCard title="CAPTURAS POR CONTA" subtitle="Últimos 60 minutos">
         <ColumnChart labels={accountBars.map((row) => `Conta ${row.account.id}`)} values={accountBars.map((row) => row.value)} classes={['account a1','account a2','account a3','account a4']} />
       </ChartCard>
-      <ChartCard title="ATIVIDADE RECENTE" subtitle="Capturas, drops, vendas Market e RMT persistidos" wide>
+      <ChartCard title="ATIVIDADE RECENTE" subtitle="Capturas, drops, Market e RMT persistidos" wide>
         <div class="panel-events">{events.length ? events.slice(0,12).map((event) => <div class="panel-event" key={`${event.accountId}-${event.at}-${event.label}`}>
-          <PokemonSprite speciesId={event.speciesId} name={event.label} small />
           <time>{clock(event.at)}</time><b>Conta {event.accountId}</b><span>{event.label}</span><small>{event.detail}</small>
         </div>) : <div class="panel-event-empty">Aguardando as primeiras atividades.</div>}</div>
       </ChartCard>
@@ -173,7 +164,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
     <section class="panel-note poke-card">
       <b>HISTÓRICO PERSISTENTE</b>
-      <span>Os acumulados e os buckets 1m/1h/1d são gravados em userData e restaurados na próxima abertura. Minutos ficam por 48 h, horas por 90 dias e dias por 2 anos. A captura continua usando novo ID confirmado pelo servidor; a nota usa “nota”, nunca “quality”.</span>
+      <span>O painel restaura os dados após reiniciar o PC. O Gold é calculado por aumento positivo do saldo real; notas usam o campo oficial “nota”.</span>
     </section>
   </main>
 }
@@ -185,37 +176,10 @@ function AccountPanel({ account }: { account: AccountSnapshot }) {
   const name = profile?.speciesName || (profile?.speciesId !== undefined ? `Espécie #${profile.speciesId}` : 'Pokémon ativo')
   return <article class={`panel-account poke-card ${ready ? 'online' : 'offline'}`}>
     <div class="panel-account-head"><span class="panel-account-number">{account.id}</span><b>CONTA {account.id}</b><small><i class={`status-dot ${account.status}`} /> {ready ? 'ONLINE' : 'OFFLINE'}</small></div>
-    <div class="panel-pokemon"><PokemonSprite speciesId={profile?.speciesId} name={name} /><div><strong>{name}</strong><span>Nv {profile?.pokemonLevel ?? '—'} · P{profile?.potency ?? '—'}{profile?.shiny ? ' · ✦ SHINY' : ''}</span><small>{profile?.huntSlug ? `Hunt: ${profile.huntSlug}` : 'Hunt aguardando servidor'}</small></div></div>
-    <div class="panel-account-stats"><Stat label="XP/H" value={compact(stats.pokemonXpLastHour)} /><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="NOTA ≥3,5" value={fmt(stats.note35Plus)} /><Stat label="SHINY" value={fmt(stats.shiniesCaught)} /></div>
+    <div class="panel-pokemon panel-pokemon-text"><div><strong>{name}</strong><span>Nv {profile?.pokemonLevel ?? '—'} · P{profile?.potency ?? '—'}{profile?.shiny ? ' · ✦ SHINY' : ''}</span><small>{profile?.huntSlug ? `Hunt: ${profile.huntSlug}` : 'Hunt aguardando servidor'}</small></div></div>
+    <div class="panel-account-stats"><Stat label="XP/H" value={compact(stats.pokemonXpLastHour)} /><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="GOLD/H" value={compact(stats.goldEarnedLastHour)} /><Stat label="NOTA ≥3,5" value={fmt(stats.note35Plus)} /></div>
     <div class="panel-account-foot"><span>Última captura</span><b>{stats.lastCaptureAt ? relative(stats.lastCaptureAt) : '—'}</b></div>
   </article>
-}
-
-function PokemonSprite({ speciesId, name, small = false }: { speciesId?: number; name: string; small?: boolean }) {
-  const direct = Number.isFinite(speciesId) && Number(speciesId) > 0 ? Math.floor(Number(speciesId)) : null
-  const [resolvedId, setResolvedId] = useState<number | null>(direct)
-  const [fallbackArtwork, setFallbackArtwork] = useState(false)
-  const [failed, setFailed] = useState(false)
-  useEffect(() => {
-    let active = true
-    setFallbackArtwork(false)
-    setFailed(false)
-    if (direct) {
-      setResolvedId(direct)
-      return () => { active = false }
-    }
-    setResolvedId(null)
-    void resolvePokemonSpeciesId(undefined, name).then((id) => { if (active) setResolvedId(id) })
-    return () => { active = false }
-  }, [direct, name])
-  if (!resolvedId || failed) return <span class={`panel-sprite-fallback ${small ? 'small' : ''}`}>◉</span>
-  return <img
-    class={`panel-pokemon-sprite ${small ? 'small' : ''}`}
-    src={fallbackArtwork ? pokemonArtworkUrl(resolvedId) : pokemonSpriteUrl(resolvedId)}
-    alt={name}
-    loading="lazy"
-    onError={() => fallbackArtwork ? setFailed(true) : setFallbackArtwork(true)}
-  />
 }
 
 function PanelMetric({ icon,label,value,sub,tone }: { icon:string; label:string; value:string; sub:string; tone:string }) {
@@ -271,7 +235,7 @@ function TrendColumnChart({ points, valueFormatter }: { points: TimePoint[]; val
       const height = Math.max(point.value > 0 ? 7 : 2, Math.round((point.value / max) * 100))
       return <div class="trend-column-slot" key={point.at}>
         <span>{valueFormatter(point.value)}</span>
-        <div class="trend-column-track"><i class={`trend-column ${trend}`} style={{height:`${height}%`}}><title>{`${timeLabel(point.at, point.granularity)} · ${valueFormatter(point.value)}`}</title></i></div>
+        <div class="trend-column-track"><i class={`trend-column ${trend}`} style={{height:`${height}%`}}><title>{`${timeLabel(point.at, point.granularity)} · ${valueFormatter(point.value)} Gold`}</title></i></div>
         <b>{timeLabel(point.at, point.granularity)}</b>
       </div>
     })}
@@ -318,7 +282,7 @@ function bucketStart(at: number, granularity: PanelGranularity): number {
   const date = new Date(at)
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 }
-function sumMetric(row: PanelAnalyticsSnapshot, granularity: PanelGranularity, metric: RevenueMetric, start: number, end: number): number {
+function sumMetric(row: PanelAnalyticsSnapshot, granularity: PanelGranularity, metric: HistoryMetric, start: number, end: number): number {
   return historyOf(row, granularity).filter((bucket) => bucket.at >= start && bucket.at <= end).reduce((sum,bucket) => sum + Number(bucket[metric] || 0), 0)
 }
 
@@ -340,6 +304,8 @@ function combine(rows: PanelAnalyticsSnapshot[]): PanelAnalyticsSnapshot {
     lastCaptureAt: Math.max(0,...rows.map((row) => row.lastCaptureAt ?? 0)) || null,
     pokemonXpTotal: rows.reduce((sum,row) => sum + row.pokemonXpTotal,0),
     pokemonXpLastHour: rows.reduce((sum,row) => sum + row.pokemonXpLastHour,0),
+    goldEarnedTotal: rows.reduce((sum,row) => sum + row.goldEarnedTotal,0),
+    goldEarnedLastHour: rows.reduce((sum,row) => sum + row.goldEarnedLastHour,0),
     marketCoinsRevenue: rows.reduce((sum,row) => sum + row.marketCoinsRevenue,0),
     marketGemsRevenue: rows.reduce((sum,row) => sum + row.marketGemsRevenue,0),
     rmtBrlRevenue: rows.reduce((sum,row) => sum + row.rmtBrlRevenue,0),
@@ -353,9 +319,10 @@ function combine(rows: PanelAnalyticsSnapshot[]): PanelAnalyticsSnapshot {
 function combineHistory(groups: PanelHistoryBucket[][]): PanelHistoryBucket[] {
   const map = new Map<number, PanelHistoryBucket>()
   for (const group of groups) for (const item of group) {
-    const current = map.get(item.at) ?? { at: item.at, pokemonXp: 0, captures: 0, marketCoins: 0, marketGems: 0, rmtBrl: 0 }
+    const current = map.get(item.at) ?? { at: item.at, pokemonXp: 0, captures: 0, goldEarned: 0, marketCoins: 0, marketGems: 0, rmtBrl: 0 }
     current.pokemonXp += item.pokemonXp
     current.captures += item.captures
+    current.goldEarned += item.goldEarned
     current.marketCoins += item.marketCoins
     current.marketGems += item.marketGems
     current.rmtBrl += item.rmtBrl
