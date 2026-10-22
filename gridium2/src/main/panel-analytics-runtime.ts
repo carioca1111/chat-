@@ -48,6 +48,7 @@ export interface PanelAnalyticsPersistedState {
   lastCaptureAt: number | null
   captureTimes: number[]
   pokemonXpTotal: number
+  goldEarnedTotal: number
   marketCoinsRevenue: number
   marketGemsRevenue: number
   rmtBrlRevenue: number
@@ -116,7 +117,7 @@ function inventoryRows(estado: JsonRecord): InventoryRow[] {
 }
 
 function emptyBucket(at: number): PanelHistoryBucket {
-  return { at, pokemonXp: 0, captures: 0, marketCoins: 0, marketGems: 0, rmtBrl: 0 }
+  return { at, pokemonXp: 0, captures: 0, goldEarned: 0, marketCoins: 0, marketGems: 0, rmtBrl: 0 }
 }
 
 function sanitizeBucket(value: unknown): PanelHistoryBucket | null {
@@ -127,6 +128,7 @@ function sanitizeBucket(value: unknown): PanelHistoryBucket | null {
     at: Math.floor(at),
     pokemonXp: Math.max(0, finite(value.pokemonXp) ?? 0),
     captures: Math.max(0, Math.floor(finite(value.captures) ?? 0)),
+    goldEarned: Math.max(0, finite(value.goldEarned) ?? finite(value.marketCoins) ?? 0),
     marketCoins: Math.max(0, finite(value.marketCoins) ?? 0),
     marketGems: Math.max(0, finite(value.marketGems) ?? 0),
     rmtBrl: Math.max(0, finite(value.rmtBrl) ?? 0)
@@ -161,6 +163,9 @@ export class PanelAnalyticsTracker {
   private lastCaptureAt: number | null = null
   private captureTimes: number[] = []
   private pokemonXpTotal = 0
+  private goldEarnedTotal = 0
+  private observedGold: number | null = null
+  private observedAccountId: string | null = null
   private marketCoinsRevenue = 0
   private marketGemsRevenue = 0
   private rmtBrlRevenue = 0
@@ -190,6 +195,9 @@ export class PanelAnalyticsTracker {
     this.lastCaptureAt = null
     this.captureTimes = []
     this.pokemonXpTotal = 0
+    this.goldEarnedTotal = 0
+    this.observedGold = null
+    this.observedAccountId = null
     this.marketCoinsRevenue = 0
     this.marketGemsRevenue = 0
     this.rmtBrlRevenue = 0
@@ -199,6 +207,8 @@ export class PanelAnalyticsTracker {
 
   ingestState(estado: JsonRecord, fullState: boolean, at = Date.now()): boolean {
     let changed = false
+    if (this.ingestGoldState(estado, fullState, at) > 0) changed = true
+
     const seenValue = finite(first(estado.shiniesSeen, estado.shinySeen, estado.shinysVistos, estado.shiniesVistos))
     if (seenValue !== undefined && seenValue >= 0 && seenValue !== this.shiniesSeen) {
       this.shiniesSeen = Math.floor(seenValue)
@@ -257,7 +267,17 @@ export class PanelAnalyticsTracker {
     if (!isRecord(packet) || String(packet.t || '') !== 'batalha' || !Array.isArray(packet.ev)) return false
     let changed = false
     for (const rawEvent of packet.ev) {
-      if (!isRecord(rawEvent) || String(rawEvent.k || '') !== 'marketVendido') continue
+      if (!isRecord(rawEvent)) continue
+      const eventKind = String(rawEvent.k || '')
+
+      if (eventKind === 'marketComprado') {
+        const currency = text(first(rawEvent.moeda, rawEvent.currency)).toLowerCase()
+        const remaining = finite(first(rawEvent.sobra, rawEvent.remaining))
+        if (remaining !== undefined && remaining >= 0 && ['gold','coin','coins','ouro'].includes(currency)) this.observedGold = remaining
+        continue
+      }
+
+      if (eventKind !== 'marketVendido') continue
       const type = text(first(rawEvent.tipo, rawEvent.assetType)).toLowerCase()
       const pokemonIdValue = first(rawEvent.pokemonId, rawEvent.pkId)
       if (!pokemonIdValue && type && !type.includes('pokemon')) continue
@@ -306,7 +326,9 @@ export class PanelAnalyticsTracker {
     this.pruneHistory(at)
     const minute = this.sortedHistory(this.historyMinute)
     const capturesLastHour = this.captureTimes.filter((captureAt) => captureAt >= at - HOUR && captureAt <= at).length
-    const pokemonXpLastHour = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at).reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
+    const rollingMinute = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at)
+    const pokemonXpLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
+    const goldEarnedLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.goldEarned, 0)
     return {
       revision: this.revision,
       sessionStartedAt: this.sessionStartedAt,
@@ -322,6 +344,8 @@ export class PanelAnalyticsTracker {
       lastCaptureAt: this.lastCaptureAt,
       pokemonXpTotal: this.pokemonXpTotal,
       pokemonXpLastHour,
+      goldEarnedTotal: this.goldEarnedTotal,
+      goldEarnedLastHour,
       marketCoinsRevenue: this.marketCoinsRevenue,
       marketGemsRevenue: this.marketGemsRevenue,
       rmtBrlRevenue: this.rmtBrlRevenue,
@@ -346,6 +370,7 @@ export class PanelAnalyticsTracker {
       lastCaptureAt: this.lastCaptureAt,
       captureTimes: [...this.captureTimes],
       pokemonXpTotal: this.pokemonXpTotal,
+      goldEarnedTotal: this.goldEarnedTotal,
       marketCoinsRevenue: this.marketCoinsRevenue,
       marketGemsRevenue: this.marketGemsRevenue,
       rmtBrlRevenue: this.rmtBrlRevenue,
@@ -370,6 +395,7 @@ export class PanelAnalyticsTracker {
     this.captureTimes = Array.isArray(initial.captureTimes) ? initial.captureTimes.map(finite).filter((value): value is number => value !== undefined && value >= 0).sort((a,b) => a-b) : []
     this.pokemonXpTotal = Math.max(0, finite(initial.pokemonXpTotal) ?? 0)
     this.marketCoinsRevenue = Math.max(0, finite(initial.marketCoinsRevenue) ?? 0)
+    this.goldEarnedTotal = Math.max(0, finite(initial.goldEarnedTotal) ?? this.marketCoinsRevenue)
     this.marketGemsRevenue = Math.max(0, finite(initial.marketGemsRevenue) ?? 0)
     this.rmtBrlRevenue = Math.max(0, finite(initial.rmtBrlRevenue) ?? 0)
 
@@ -418,6 +444,31 @@ export class PanelAnalyticsTracker {
       xpLevelStart: finite(first(row.xpNivel, row.xpLevelStart)),
       xpNext: finite(first(row.xpProximo, row.xpNext))
     })
+  }
+
+  private ingestGoldState(estado: JsonRecord, fullState: boolean, at: number): number {
+    const accountRaw = first(estado.id, estado.accountId, estado.trainerId, estado.userId)
+    const accountId = accountRaw === undefined || accountRaw === null ? '' : String(accountRaw)
+    const gold = finite(first(estado.gold, estado.coins, estado.ouro))
+
+    if (accountId && this.observedAccountId && accountId !== this.observedAccountId) {
+      this.observedAccountId = accountId
+      this.observedGold = gold ?? null
+      return 0
+    }
+    if (accountId) this.observedAccountId = accountId
+    if (gold === undefined) return 0
+    if (fullState || this.observedGold === null) {
+      this.observedGold = gold
+      return 0
+    }
+
+    const gained = gold - this.observedGold
+    this.observedGold = gold
+    if (!Number.isFinite(gained) || gained <= 0 || gained > 1e15) return 0
+    this.goldEarnedTotal += gained
+    this.addHistory(at, { goldEarned: gained })
+    return gained
   }
 
   private registerPokemonXp(row: JsonRecord, at: number): number {
@@ -476,6 +527,7 @@ export class PanelAnalyticsTracker {
     const bucket = target.get(at) ?? emptyBucket(at)
     bucket.pokemonXp += Math.max(0, delta.pokemonXp ?? 0)
     bucket.captures += Math.max(0, delta.captures ?? 0)
+    bucket.goldEarned += Math.max(0, delta.goldEarned ?? 0)
     bucket.marketCoins += Math.max(0, delta.marketCoins ?? 0)
     bucket.marketGems += Math.max(0, delta.marketGems ?? 0)
     bucket.rmtBrl += Math.max(0, delta.rmtBrl ?? 0)
