@@ -149,7 +149,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.8 Persistent Analytics',
+    title: 'Gridium 2 — Alpha 0.8.1 Compact Analytics',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -178,11 +178,17 @@ async function createWindow(): Promise<void> {
     mainWindow = null
   })
 
-  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
+    applyLayout()
+    publish()
+  })
 
-  mainWindow.once('ready-to-show', () => { mainWindow?.show(); applyLayout(); publish() })
-  void accounts.boot().finally(() => { applyLayout(); publish() })
+  if (process.env.ELECTRON_RENDERER_URL) {
+    await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
 }
 
 app.whenReady().then(async () => {
@@ -190,12 +196,18 @@ app.whenReady().then(async () => {
   displayPower.start()
   registerIpc()
   await createWindow()
-  app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
+
+  app.on('activate', async () => {
+    if (BrowserWindow.getAllWindows().length === 0) await createWindow()
+  })
 })
+
 app.on('before-quit', () => {
-  telemetry?.stop()
-  accounts?.destroy()
-  displayPower?.destroy()
+  accounts?.flushPersistenceSync()
+  displayPower?.stop()
   displayPower = null
 })
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
