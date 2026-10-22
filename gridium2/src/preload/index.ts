@@ -11,7 +11,8 @@ import type {
   LayoutMode,
   PanelRmtSaleInput,
   PerformanceMode,
-  PowerAutomationKey
+  PowerAutomationKey,
+  WhatsAppSettingsInput
 } from '../shared/contracts'
 
 const api: GridiumApi = {
@@ -33,6 +34,9 @@ const api: GridiumApi = {
   checkForUpdates: () => ipcRenderer.invoke('gridium2:check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('gridium2:download-update'),
   installUpdate: () => ipcRenderer.invoke('gridium2:install-update'),
+  saveWhatsAppSettings: (settings: WhatsAppSettingsInput) => ipcRenderer.invoke('gridium2:whatsapp-save-settings', settings),
+  sendWhatsAppTest: () => ipcRenderer.invoke('gridium2:whatsapp-test'),
+  sendWhatsAppReportNow: () => ipcRenderer.invoke('gridium2:whatsapp-report-now'),
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: GridiumSnapshot): void => callback(snapshot)
     ipcRenderer.on('gridium2:snapshot', listener)
