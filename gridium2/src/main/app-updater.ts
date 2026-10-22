@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto'
 import { appendFileSync, createReadStream, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { spawn } from 'node:child_process'
 import { Transform, Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { UpdateSnapshot } from '../shared/contracts'
+import { buildInstallerBatch, launchInstallerBatch } from './update-installer-helper'
 
 const RELEASES_API = 'https://api.github.com/repos/carioca1111/chat-/releases?per_page=20'
 const RELEASE_TAG_PREFIX = 'gridium2-v'
@@ -191,11 +191,11 @@ export class GridiumAppUpdater {
     const installer = this.downloadedPath
     const executable = process.execPath
     const installDir = dirname(executable)
-    const helperPath = join(this.updatesDir, 'apply-update.ps1')
+    const helperPath = join(this.updatesDir, 'apply-update.cmd')
     const expectedVersion = this.resolved.version
     const attempt: PendingUpdateAttempt = { expectedVersion, executable, installDir, startedAt: Date.now() }
     writeFileSync(this.pendingPath, JSON.stringify(attempt, null, 2), 'utf8')
-    writeFileSync(helperPath, buildInstallerPowerShell({
+    writeFileSync(helperPath, buildInstallerBatch({
       pid: process.pid,
       installer,
       executable,
@@ -203,20 +203,11 @@ export class GridiumAppUpdater {
       logPath: this.logPath
     }), 'utf8')
 
-    this.log(`install:start expected=${expectedVersion} installDir=${installDir}`)
-    this.setState({ status: 'ready', progress: 100, message: `Instalando ${expectedVersion} no mesmo diretório do Gridium…` })
+    this.log(`install:start expected=${expectedVersion} installDir=${installDir} helper=cmd`)
+    this.setState({ status: 'ready', progress: 100, message: `Instalando ${expectedVersion} e reiniciando o Gridium…` })
     try {
-      const child = spawn('powershell.exe', [
-        '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-WindowStyle', 'Hidden',
-        '-File', helperPath
-      ], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
-      })
-      child.unref()
+      launchInstallerBatch(helperPath)
+      this.log('install:bootstrap-launched')
       app.quit()
       return true
     } catch (error) {
@@ -299,40 +290,6 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-export function buildInstallerPowerShell(input: {
-  pid: number
-  installer: string
-  executable: string
-  installDir: string
-  logPath: string
-}): string {
-  const installer = psEscape(input.installer)
-  const executable = psEscape(input.executable)
-  const installDir = psEscape(input.installDir)
-  const logPath = psEscape(input.logPath)
-  return [
-    `$ErrorActionPreference='Stop'`,
-    `$targetPid=${Math.max(1, Math.floor(input.pid))}`,
-    `$installer='${installer}'`,
-    `$executable='${executable}'`,
-    `$installDir='${installDir}'`,
-    `$logPath='${logPath}'`,
-    `while(Get-Process -Id $targetPid -ErrorAction SilentlyContinue){Start-Sleep -Milliseconds 250}`,
-    `try {`,
-    `  Add-Content -Path $logPath -Value "$(Get-Date -Format o) helper:install-start dir=$installDir"`,
-    `  $proc=Start-Process -FilePath $installer -ArgumentList "/S /D=$installDir" -PassThru -Wait`,
-    `  Add-Content -Path $logPath -Value "$(Get-Date -Format o) helper:installer-exit=$($proc.ExitCode)"`,
-    `  if($proc.ExitCode -ne 0){throw "installer exit $($proc.ExitCode)"}`,
-    `  if(-not (Test-Path $executable)){throw "updated executable not found"}`,
-    `  Start-Sleep -Milliseconds 500`,
-    `  Start-Process -FilePath $executable`,
-    `} catch {`,
-    `  Add-Content -Path $logPath -Value "$(Get-Date -Format o) helper:error=$($_.Exception.Message)"`,
-    `  if(Test-Path $executable){Start-Process -FilePath $executable}`,
-    `}`
-  ].join('\r\n')
-}
-
 async function sha256File(path: string): Promise<string> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(path)) hash.update(chunk)
@@ -341,10 +298,6 @@ async function sha256File(path: string): Promise<string> {
 
 function safeFileName(value: string): string {
   return basename(value).replace(/[^a-zA-Z0-9._-]/g, '_')
-}
-
-function psEscape(value: string): string {
-  return value.replace(/'/g, "''")
 }
 
 function errorMessage(error: unknown): string {
