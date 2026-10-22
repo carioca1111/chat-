@@ -46,6 +46,7 @@ export interface PanelAnalyticsPersistedState {
   shiniesCaught: number
   rareItems: PanelRareItemSnapshot[]
   lastCaptureAt: number | null
+  captureTimes: number[]
   pokemonXpTotal: number
   marketCoinsRevenue: number
   marketGemsRevenue: number
@@ -158,6 +159,7 @@ export class PanelAnalyticsTracker {
   private shiniesCaught = 0
   private shiniesSeen: number | null = null
   private lastCaptureAt: number | null = null
+  private captureTimes: number[] = []
   private pokemonXpTotal = 0
   private marketCoinsRevenue = 0
   private marketGemsRevenue = 0
@@ -186,6 +188,7 @@ export class PanelAnalyticsTracker {
     this.shiniesCaught = 0
     this.shiniesSeen = null
     this.lastCaptureAt = null
+    this.captureTimes = []
     this.pokemonXpTotal = 0
     this.marketCoinsRevenue = 0
     this.marketGemsRevenue = 0
@@ -302,7 +305,7 @@ export class PanelAnalyticsTracker {
   snapshot(at = Date.now()): PanelAnalyticsSnapshot {
     this.pruneHistory(at)
     const minute = this.sortedHistory(this.historyMinute)
-    const capturesLastHour = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at).reduce((sum, bucket) => sum + bucket.captures, 0)
+    const capturesLastHour = this.captureTimes.filter((captureAt) => captureAt >= at - HOUR && captureAt <= at).length
     const pokemonXpLastHour = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at).reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
     return {
       revision: this.revision,
@@ -341,6 +344,7 @@ export class PanelAnalyticsTracker {
       shiniesCaught: this.shiniesCaught,
       rareItems: [...this.rareItems.values()],
       lastCaptureAt: this.lastCaptureAt,
+      captureTimes: [...this.captureTimes],
       pokemonXpTotal: this.pokemonXpTotal,
       marketCoinsRevenue: this.marketCoinsRevenue,
       marketGemsRevenue: this.marketGemsRevenue,
@@ -363,6 +367,7 @@ export class PanelAnalyticsTracker {
     this.shiniesSeen = initial.shiniesSeen === null ? null : seen !== undefined && seen >= 0 ? Math.floor(seen) : null
     this.shiniesCaught = Math.max(0, Math.floor(finite(initial.shiniesCaught) ?? 0))
     this.lastCaptureAt = finite(initial.lastCaptureAt) ?? null
+    this.captureTimes = Array.isArray(initial.captureTimes) ? initial.captureTimes.map(finite).filter((value): value is number => value !== undefined && value >= 0).sort((a,b) => a-b) : []
     this.pokemonXpTotal = Math.max(0, finite(initial.pokemonXpTotal) ?? 0)
     this.marketCoinsRevenue = Math.max(0, finite(initial.marketCoinsRevenue) ?? 0)
     this.marketGemsRevenue = Math.max(0, finite(initial.marketGemsRevenue) ?? 0)
@@ -444,6 +449,7 @@ export class PanelAnalyticsTracker {
   private registerCapture(row: JsonRecord, at: number): void {
     this.capturesTotal++
     this.lastCaptureAt = at
+    this.captureTimes.push(at)
     this.addHistory(at, { captures: 1 })
     const p = potency(first(row.potencia, row.potency))
     if (p) this.capturesByPotency[p - 1]++
@@ -477,6 +483,8 @@ export class PanelAnalyticsTracker {
   }
 
   private pruneHistory(at: number): void {
+    const captureCutoff = at - MINUTE_RETENTION
+    if (this.captureTimes.length) this.captureTimes = this.captureTimes.filter((captureAt) => captureAt >= captureCutoff)
     this.pruneMap(this.historyMinute, at - MINUTE_RETENTION)
     this.pruneMap(this.historyHour, at - HOUR_RETENTION)
     this.pruneMap(this.historyDay, at - DAY_RETENTION)
