@@ -234,10 +234,11 @@ export function buildSeries(rows: PanelAnalyticsSnapshot[], granularity: PanelGr
   const starts = Array.from({ length: count }, (_, index) => end - (count - 1 - index) * step)
   const totals = new Map(starts.map((at) => [at, 0]))
   for (const row of rows) {
-    const history = historyOf(row, granularity)
+    const history = granularity === 'day' ? row.historyHour : historyOf(row, granularity)
     for (const bucket of history) {
-      if (!totals.has(bucket.at)) continue
-      totals.set(bucket.at, (totals.get(bucket.at) ?? 0) + Number(bucket[metric] || 0))
+      const bucketAt = granularity === 'day' ? bucketStart(bucket.at, 'day') : bucket.at
+      if (!totals.has(bucketAt)) continue
+      totals.set(bucketAt, (totals.get(bucketAt) ?? 0) + Number(bucket[metric] || 0))
     }
   }
   return starts.map((at) => ({ at, value: totals.get(at) ?? 0, granularity }))
@@ -253,7 +254,11 @@ function bucketStart(at: number, granularity: PanelGranularity): number {
   return Math.floor((at + BRASILIA_UTC_OFFSET_MS) / DAY) * DAY - BRASILIA_UTC_OFFSET_MS
 }
 function sumMetric(row: PanelAnalyticsSnapshot, granularity: PanelGranularity, metric: HistoryMetric, start: number, end: number): number {
-  return historyOf(row, granularity).filter((bucket) => bucket.at >= start && bucket.at <= end).reduce((sum,bucket) => sum + Number(bucket[metric] || 0), 0)
+  const history = granularity === 'day' ? row.historyHour : historyOf(row, granularity)
+  return history.reduce((sum,bucket) => {
+    const bucketAt = granularity === 'day' ? bucketStart(bucket.at, 'day') : bucket.at
+    return bucketAt >= start && bucketAt <= end ? sum + Number(bucket[metric] || 0) : sum
+  }, 0)
 }
 
 function combine(rows: PanelAnalyticsSnapshot[]): PanelAnalyticsSnapshot {
