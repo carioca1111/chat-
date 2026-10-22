@@ -178,17 +178,11 @@ async function createWindow(): Promise<void> {
     mainWindow = null
   })
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
-    applyLayout()
-    publish()
-  })
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  else await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
-    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  mainWindow.once('ready-to-show', () => { mainWindow?.show(); applyLayout(); publish() })
+  void accounts.boot().finally(() => { applyLayout(); publish() })
 }
 
 app.whenReady().then(async () => {
@@ -196,18 +190,12 @@ app.whenReady().then(async () => {
   displayPower.start()
   registerIpc()
   await createWindow()
-
-  app.on('activate', async () => {
-    if (BrowserWindow.getAllWindows().length === 0) await createWindow()
-  })
+  app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
-
 app.on('before-quit', () => {
-  accounts?.flushPersistenceSync()
-  displayPower?.stop()
+  telemetry?.stop()
+  accounts?.destroy()
+  displayPower?.destroy()
   displayPower = null
 })
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
