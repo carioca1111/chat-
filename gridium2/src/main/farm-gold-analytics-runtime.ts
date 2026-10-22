@@ -48,12 +48,14 @@ export class FarmGoldAnalyticsTracker {
   private readonly farmDay = new Map<number, number>()
 
   constructor(options: PanelAnalyticsTrackerOptions = {}) {
-    this.inner = new PanelAnalyticsTracker(options)
+    this.inner = new PanelAnalyticsTracker({
+      initial: options.initial,
+      onPersist: () => options.onPersist?.(this.persisted())
+    })
     this.restoreFarmGold(options.initial)
   }
 
   reset(at = Date.now()): void {
-    this.inner.reset(at)
     this.observedGold = null
     this.observedAccountId = null
     this.pendingMarketGold = 0
@@ -62,6 +64,7 @@ export class FarmGoldAnalyticsTracker {
     this.farmMinute.clear()
     this.farmHour.clear()
     this.farmDay.clear()
+    this.inner.reset(at)
   }
 
   ingestState(estado: JsonRecord, fullState: boolean, at = Date.now()): boolean {
