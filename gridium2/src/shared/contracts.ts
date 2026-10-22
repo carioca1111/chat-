@@ -225,7 +225,7 @@ export interface GridiumSnapshot {
   accounts: AccountSnapshot[]
   autoMarket: AutoMarketSnapshot
   telemetry: TelemetrySnapshot
-  updater: UpdateSnapshot
+  updater?: UpdateSnapshot
 }
 
 export interface GridiumApi {
