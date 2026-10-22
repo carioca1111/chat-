@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.10.0",
+  "version": "2.0.0-alpha.11.0",
   "private": true,
-  "description": "Gridium 2 Alpha 1.0 - WhatsApp Daily Report and proactive account alerts",
+  "description": "Gridium 2 Alpha 1.1 - Sentinel, anomaly detection and Hunt Learning",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
