@@ -1,5 +1,6 @@
-import type { HuntProfileScan, HuntStatBlock } from '../shared/contracts'
+import type { HuntProfileScan, HuntStatBlock, PanelRmtSaleInput } from '../shared/contracts'
 import { PanelAnalyticsTracker } from './panel-analytics-runtime'
+import type { PanelAnalyticsPersistedState } from './panel-analytics-runtime'
 
 type JsonRecord = Record<string, unknown>
 
@@ -7,6 +8,11 @@ export interface ServerIngestResult {
   accepted: boolean
   changed: boolean
   profile: HuntProfileScan | null
+}
+
+export interface PokeIdleServerStateOptions {
+  analyticsInitial?: Partial<PanelAnalyticsPersistedState> | null
+  onAnalyticsPersist?: (state: PanelAnalyticsPersistedState) => void
 }
 
 const isRecord = (value: unknown): value is JsonRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -125,7 +131,7 @@ function profileSignature(profile: HuntProfileScan | null): string {
 }
 
 export class PokeIdleServerState {
-  private readonly analyticsTracker = new PanelAnalyticsTracker()
+  private readonly analyticsTracker: PanelAnalyticsTracker
   private readonly pokemons = new Map<string, JsonRecord>()
   private activeId?: string
   private trainerLevel?: number
@@ -138,6 +144,10 @@ export class PokeIdleServerState {
   private serverAccountId?: string
   private serverNick?: string
   private current: HuntProfileScan | null = null
+
+  constructor(options: PokeIdleServerStateOptions = {}) {
+    this.analyticsTracker = new PanelAnalyticsTracker({ initial: options.analyticsInitial, onPersist: options.onAnalyticsPersist })
+  }
 
   reset(): boolean {
     const hadData = this.current !== null || this.activeId !== undefined || this.pokemons.size > 0
@@ -158,6 +168,18 @@ export class PokeIdleServerState {
 
   analytics() {
     return this.analyticsTracker.snapshot()
+  }
+
+  analyticsPersisted(): PanelAnalyticsPersistedState {
+    return this.analyticsTracker.persisted()
+  }
+
+  ingestAuxiliary(packet: unknown, at = Date.now()): boolean {
+    return this.analyticsTracker.ingestPacket(packet, at)
+  }
+
+  registerRmtSale(sale: PanelRmtSaleInput, at = Date.now()): boolean {
+    return this.analyticsTracker.registerRmtSale(Number(sale.amountBrl), String(sale.description || ''), at)
   }
 
   profile(): HuntProfileScan | null {
