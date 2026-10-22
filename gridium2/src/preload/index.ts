@@ -12,6 +12,7 @@ import type {
   PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey,
+  SentinelSettingsInput,
   WhatsAppSettingsInput
 } from '../shared/contracts'
 
@@ -37,6 +38,8 @@ const api: GridiumApi = {
   saveWhatsAppSettings: (settings: WhatsAppSettingsInput) => ipcRenderer.invoke('gridium2:whatsapp-save-settings', settings),
   sendWhatsAppTest: () => ipcRenderer.invoke('gridium2:whatsapp-test'),
   sendWhatsAppReportNow: () => ipcRenderer.invoke('gridium2:whatsapp-report-now'),
+  saveSentinelSettings: (settings: SentinelSettingsInput) => ipcRenderer.invoke('gridium2:sentinel-save-settings', settings),
+  recoverAccountNow: (accountId: AccountId) => ipcRenderer.invoke('gridium2:sentinel-recover-now', accountId),
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: GridiumSnapshot): void => callback(snapshot)
     ipcRenderer.on('gridium2:snapshot', listener)
