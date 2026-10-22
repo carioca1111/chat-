@@ -10,23 +10,34 @@ export type PowerAutomationKey = 'blackUnfocused' | 'blackWhenMinimized' | 'wake
 export type AutoMarketMode = 'observe' | 'auto'
 export type AutoMarketCategory = 'balls' | 'potions' | 'revives'
 export type MarketCurrency = 'coins' | 'gems'
+export type PanelGranularity = 'minute' | 'hour' | 'day'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
 
-export type PanelEventKind = 'capture' | 'shiny-caught' | 'rare-item'
+export type PanelEventKind = 'capture' | 'shiny-caught' | 'rare-item' | 'market-sale' | 'rmt-sale'
 
 export interface PanelEventSnapshot {
   at: number
   accountEvent: PanelEventKind
   label: string
   detail: string
+  speciesId?: number
 }
 
 export interface PanelRareItemSnapshot {
   itemId: string
   name: string
   quantity: number
+}
+
+export interface PanelHistoryBucket {
+  at: number
+  pokemonXp: number
+  captures: number
+  marketCoins: number
+  marketGems: number
+  rmtBrl: number
 }
 
 export interface PanelAnalyticsSnapshot {
@@ -42,7 +53,20 @@ export interface PanelAnalyticsSnapshot {
   rareItems: PanelRareItemSnapshot[]
   rareItemsTotal: number
   lastCaptureAt: number | null
+  pokemonXpTotal: number
+  pokemonXpLastHour: number
+  marketCoinsRevenue: number
+  marketGemsRevenue: number
+  rmtBrlRevenue: number
+  historyMinute: PanelHistoryBucket[]
+  historyHour: PanelHistoryBucket[]
+  historyDay: PanelHistoryBucket[]
   events: PanelEventSnapshot[]
+}
+
+export interface PanelRmtSaleInput {
+  amountBrl: number
+  description?: string
 }
 
 export interface PowerAutomationSettings {
@@ -203,6 +227,7 @@ export interface GridiumApi {
   setPowerAutomation: (key: PowerAutomationKey, enabled: boolean) => Promise<void>
   setAutoMarketMode: (mode: AutoMarketMode) => Promise<void>
   setAutoMarketRule: (accountId: AccountId, rule: AutoMarketRule) => Promise<void>
+  addPanelRmtSale: (accountId: AccountId, sale: PanelRmtSaleInput) => Promise<boolean>
   scanHuntProfile: (accountId: AccountId) => Promise<HuntProfileScan | null>
   selectAccount: (accountId: AccountId) => Promise<void>
   accountCommand: (accountId: AccountId, command: AccountCommand) => Promise<void>
