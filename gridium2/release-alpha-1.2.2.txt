@@ -1,0 +1,3 @@
+Gridium 2 Alpha 1.2.2
+Farm-only Gold analytics.
+Market and RMT sales do not inflate Gold gained.
