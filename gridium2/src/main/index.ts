@@ -9,6 +9,7 @@ import type {
   AutoMarketRule,
   GridiumSnapshot,
   LayoutMode,
+  PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey
 } from '../shared/contracts'
@@ -117,6 +118,14 @@ function registerIpc(): void {
     if (![1,2,3,4].includes(id) || !rule || typeof rule !== 'object') return
     accounts?.setAutoMarketRule(id, rule); publish()
   })
+  ipcMain.handle('gridium2:add-panel-rmt-sale', (_event, id: AccountId, sale: PanelRmtSaleInput) => {
+    if (![1,2,3,4].includes(id) || !sale || typeof sale !== 'object') return false
+    const amount = Number(sale.amountBrl)
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000) return false
+    const ok = accounts?.addPanelRmtSale(id, { amountBrl: amount, description: String(sale.description || '').slice(0,80) }) ?? false
+    if (ok) publish()
+    return ok
+  })
   ipcMain.handle('gridium2:scan-hunt-profile', async (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return null
     return await accounts?.scanHuntProfile(id) ?? null
@@ -140,7 +149,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.7 Panel Analytics',
+    title: 'Gridium 2 — Alpha 0.8 Persistent Analytics',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
