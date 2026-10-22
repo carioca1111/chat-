@@ -207,8 +207,7 @@ function TrendColumnChart({ points, valueFormatter }: { points: TimePoint[]; val
       const height = Math.max(point.value > 0 ? 7 : 2, Math.round((point.value / max) * 100))
       const showTime = index % labelEvery === 0 || index === points.length - 1
       return <div class="trend-column-slot" key={point.at}>
-        <span>{point.value > 0 ? valueFormatter(point.value) : ''}</span>
-        <div class="trend-column-track"><i class={`trend-column ${trend}`} style={{height:`${height}%`}}><title>{`${timeLabel(point.at, point.granularity)} · ${valueFormatter(point.value)} Gold`}</title></i></div>
+        <div class="trend-column-track"><i class={`trend-column ${trend}`} style={{height:`${height}%`}}><title>{`${valueFormatter(point.value)} Gold`}</title></i></div>
         <b>{showTime ? timeLabel(point.at, point.granularity) : ''}</b>
       </div>
     })}
