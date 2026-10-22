@@ -14,6 +14,7 @@ import type {
   PowerAutomationKey
 } from '../shared/contracts'
 import { AccountRuntime } from './account-runtime'
+import { GridiumAppUpdater } from './app-updater'
 import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
@@ -23,6 +24,7 @@ let mainWindow: BrowserWindow | null = null
 let accounts: AccountRuntime | null = null
 let telemetry: TelemetryService | null = null
 let displayPower: DisplayPowerController | null = null
+let updater: GridiumAppUpdater | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
@@ -45,6 +47,12 @@ function currentSnapshot(): GridiumSnapshot {
       mainEventLoopMaxMs: 0,
       processCount: 0,
       capturedAt: Date.now()
+    },
+    updater: updater?.snapshot() ?? {
+      currentVersion: app.getVersion(),
+      status: 'idle',
+      progress: 0,
+      message: 'Atualizador iniciando…'
     }
   }
 }
@@ -138,6 +146,9 @@ function registerIpc(): void {
     if (![1, 2, 3, 4].includes(id) || !['home', 'reload', 'back', 'forward'].includes(command)) return
     await accounts?.command(id, command); publish()
   })
+  ipcMain.handle('gridium2:check-for-updates', async () => await updater?.check(false) ?? currentSnapshot().updater)
+  ipcMain.handle('gridium2:download-update', async () => await updater?.download() ?? currentSnapshot().updater)
+  ipcMain.handle('gridium2:install-update', async () => await updater?.installAndRestart() ?? false)
 }
 
 async function createWindow(): Promise<void> {
@@ -149,7 +160,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.8.3 Hover Charts',
+    title: 'Gridium 2 — Alpha 0.9 Auto Update',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -188,8 +199,10 @@ async function createWindow(): Promise<void> {
 app.whenReady().then(async () => {
   displayPower = new DisplayPowerController()
   displayPower.start()
+  updater = new GridiumAppUpdater(publish)
   registerIpc()
   await createWindow()
+  if (app.isPackaged) setTimeout(() => void updater?.check(true), 6_000)
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
 app.on('before-quit', () => {
