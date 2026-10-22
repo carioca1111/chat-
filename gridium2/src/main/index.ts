@@ -11,7 +11,8 @@ import type {
   LayoutMode,
   PanelRmtSaleInput,
   PerformanceMode,
-  PowerAutomationKey
+  PowerAutomationKey,
+  WhatsAppSettingsInput
 } from '../shared/contracts'
 import { AccountRuntime } from './account-runtime'
 import { GridiumAppUpdater } from './app-updater'
@@ -19,12 +20,14 @@ import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
 import { TelemetryService } from './telemetry'
+import { WhatsAppReporter } from './whatsapp-reporter'
 
 let mainWindow: BrowserWindow | null = null
 let accounts: AccountRuntime | null = null
 let telemetry: TelemetryService | null = null
 let displayPower: DisplayPowerController | null = null
 let updater: GridiumAppUpdater | null = null
+let whatsapp: WhatsAppReporter | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
@@ -53,13 +56,16 @@ function currentSnapshot(): GridiumSnapshot {
       status: 'idle',
       progress: 0,
       message: 'Atualizador iniciando…'
-    }
+    },
+    whatsapp: whatsapp?.snapshot()
   }
 }
 
 function publish(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.webContents.send('gridium2:snapshot', currentSnapshot())
+  const snapshot = currentSnapshot()
+  whatsapp?.observe(snapshot.accounts)
+  mainWindow.webContents.send('gridium2:snapshot', snapshot)
 }
 
 function hostIsActive(): boolean {
@@ -149,6 +155,9 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:check-for-updates', async () => await updater?.check(false) ?? currentSnapshot().updater)
   ipcMain.handle('gridium2:download-update', async () => await updater?.download() ?? currentSnapshot().updater)
   ipcMain.handle('gridium2:install-update', async () => await updater?.installAndRestart() ?? false)
+  ipcMain.handle('gridium2:whatsapp-save-settings', (_event, settings: WhatsAppSettingsInput) => whatsapp?.updateSettings(settings) ?? currentSnapshot().whatsapp)
+  ipcMain.handle('gridium2:whatsapp-test', async () => await whatsapp?.sendTest() ?? currentSnapshot().whatsapp)
+  ipcMain.handle('gridium2:whatsapp-report-now', async () => await whatsapp?.sendReportNow() ?? currentSnapshot().whatsapp)
 }
 
 async function createWindow(): Promise<void> {
@@ -160,7 +169,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 0.9 Auto Update',
+    title: 'Gridium 2 — Alpha 1.0 WhatsApp Daily',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -200,13 +209,16 @@ app.whenReady().then(async () => {
   displayPower = new DisplayPowerController()
   displayPower.start()
   updater = new GridiumAppUpdater(publish)
+  whatsapp = new WhatsAppReporter(() => accounts?.snapshots() ?? [], publish)
   registerIpc()
   await createWindow()
+  whatsapp.start()
   if (app.isPackaged) setTimeout(() => void updater?.check(true), 6_000)
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
 app.on('before-quit', () => {
   telemetry?.stop()
+  whatsapp?.stop()
   accounts?.destroy()
   displayPower?.destroy()
   displayPower = null
