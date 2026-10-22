@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 1.1 Sentinel
+name: Build Gridium 2 Alpha 1.1.1 Updater Fix
 
 on:
   push:
     branches:
-      - gridium2-alpha1.1-sentinel-anomaly
+      - gridium2-alpha1.1.1-updater-hardening
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -20,10 +20,10 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 1.1 branch
+      - name: Checkout Alpha 1.1.1 branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha1.1-sentinel-anomaly
+          ref: gridium2-alpha1.1.1-updater-hardening
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,7 +48,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.1.0-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.1.1-Setup.exe" >> $env:GITHUB_OUTPUT
 
       - name: Verify installer and create update manifest
         shell: pwsh
@@ -68,9 +68,9 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.1-Sentinel-Windows
+          name: Gridium-2-Alpha-1.1.1-Updater-Fix-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.1.0-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.1.1-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -80,19 +80,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
-          name: Gridium 2 Alpha 1.1 · Sentinel
+          name: Gridium 2 Alpha 1.1.1 · Updater Fix
           body: |
-            Gridium 2 Alpha 1.1 — Sentinel + Detector de Anomalias + Hunt Learning.
+            Gridium 2 Alpha 1.1.1 — correção de confiabilidade do atualizador interno.
 
-            - Saúde 0–100 por conta
-            - Recuperação automática para crash, offline, carregamento travado ou servidor silencioso
-            - Detector de anomalias de XP/h, Capturas/h e Gold/h
-            - Auto-recovery nunca é disparado só por queda de desempenho
-            - Hunt Learning registra XP/h real por Hunt + Pokémon e aprende o padrão da conta
-            - Botão de recuperação manual por conta
-            - Configurações persistentes do Sentinel
-            - Atualização distribuída pelo atualizador interno do Gridium
+            - atualização silenciosa preserva o diretório real onde o Gridium está instalado
+            - verificação pós-reinício confirma que a versão realmente foi aplicada
+            - falha de instalação deixa mensagem explícita em vez de parecer sucesso
+            - updater.log registra detecção, download, SHA-256, instalação e código de saída
+            - timeouts e no-cache nas consultas/downloads do GitHub
+            - mantém Sentinel, Detector de Anomalias, Hunt Learning e WhatsApp Daily
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.1.0-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.1.1-Setup.exe
             gridium2/release/gridium2-update.json
