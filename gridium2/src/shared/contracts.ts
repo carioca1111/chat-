@@ -12,6 +12,7 @@ export type AutoMarketCategory = 'balls' | 'potions' | 'revives'
 export type MarketCurrency = 'coins' | 'gems'
 export type PanelGranularity = 'minute' | 'hour' | 'day'
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date' | 'error'
+export type WhatsAppStatus = 'unconfigured' | 'idle' | 'sending' | 'sent' | 'error'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
@@ -24,6 +25,37 @@ export interface UpdateSnapshot {
   availableVersion?: string
   progress: number
   message: string
+}
+
+export interface WhatsAppSnapshot {
+  enabled: boolean
+  recipient: string
+  phoneNumberId: string
+  reportTime: string
+  templateName: string
+  alertTemplateName: string
+  languageCode: string
+  alertShiny: boolean
+  alertP5: boolean
+  tokenConfigured: boolean
+  status: WhatsAppStatus
+  message: string
+  lastSentAt?: number
+  lastMessageId?: string
+  lastError?: string
+}
+
+export interface WhatsAppSettingsInput {
+  enabled: boolean
+  recipient: string
+  phoneNumberId: string
+  reportTime: string
+  templateName: string
+  alertTemplateName: string
+  languageCode: string
+  alertShiny: boolean
+  alertP5: boolean
+  accessToken?: string
 }
 
 export interface PanelEventSnapshot {
@@ -226,6 +258,7 @@ export interface GridiumSnapshot {
   autoMarket: AutoMarketSnapshot
   telemetry: TelemetrySnapshot
   updater?: UpdateSnapshot
+  whatsapp?: WhatsAppSnapshot
 }
 
 export interface GridiumApi {
@@ -247,5 +280,8 @@ export interface GridiumApi {
   checkForUpdates: () => Promise<UpdateSnapshot>
   downloadUpdate: () => Promise<UpdateSnapshot>
   installUpdate: () => Promise<boolean>
+  saveWhatsAppSettings: (settings: WhatsAppSettingsInput) => Promise<WhatsAppSnapshot>
+  sendWhatsAppTest: () => Promise<WhatsAppSnapshot>
+  sendWhatsAppReportNow: () => Promise<WhatsAppSnapshot>
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => () => void
 }
