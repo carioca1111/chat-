@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 1.0 WhatsApp Daily
+name: Build Gridium 2 Alpha 1.1 Sentinel
 
 on:
   push:
     branches:
-      - gridium2-alpha1.0-whatsapp-daily
+      - gridium2-alpha1.1-sentinel-anomaly
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -20,10 +20,10 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 1.0 branch
+      - name: Checkout Alpha 1.1 branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha1.0-whatsapp-daily
+          ref: gridium2-alpha1.1-sentinel-anomaly
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,7 +48,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.0.0-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.1.0-Setup.exe" >> $env:GITHUB_OUTPUT
 
       - name: Verify installer and create update manifest
         shell: pwsh
@@ -68,9 +68,9 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.0-WhatsApp-Daily-Windows
+          name: Gridium-2-Alpha-1.1-Sentinel-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.0.0-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.1.0-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -80,20 +80,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
-          name: Gridium 2 Alpha 1.0 · WhatsApp Daily
+          name: Gridium 2 Alpha 1.1 · Sentinel
           body: |
-            Gridium 2 Alpha 1.0 — WhatsApp Daily Report.
+            Gridium 2 Alpha 1.1 — Sentinel + Detector de Anomalias + Hunt Learning.
 
-            - Daily Report automático das 4 contas em horário de Brasília
-            - Capturas, P1-P5, nota >= 3,5, shinies capturados e drops raros
-            - XP do Pokémon e Gold por conta e no total
-            - Alertas opcionais de Shiny e P5
-            - Meta WhatsApp Cloud API v26.0
-            - Token protegido pelo safeStorage do Electron
+            - Saúde 0–100 por conta
+            - Recuperação automática para crash, offline, carregamento travado ou servidor silencioso
+            - Detector de anomalias de XP/h, Capturas/h e Gold/h
+            - Auto-recovery nunca é disparado só por queda de desempenho
+            - Hunt Learning registra XP/h real por Hunt + Pokémon e aprende o padrão da conta
+            - Botão de recuperação manual por conta
+            - Configurações persistentes do Sentinel
             - Atualização distribuída pelo atualizador interno do Gridium
-
-            Para mensagens automáticas fora da janela de 24h, configure templates aprovados pela Meta.
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.0.0-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.1.0-Setup.exe
             gridium2/release/gridium2-update.json
