@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 1.2 Predictive Hunt
+name: Build Gridium 2 Alpha 1.2.1 Updater Bootstrap Fix
 
 on:
   push:
     branches:
-      - gridium2-alpha1.2-predictive-hunt-card
+      - gridium2-alpha1.2.1-updater-bootstrap
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -20,10 +20,10 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 1.2 branch
+      - name: Checkout Alpha 1.2.1 branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha1.2-predictive-hunt-card
+          ref: gridium2-alpha1.2.1-updater-bootstrap
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,7 +48,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.2.0-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.2.1-Setup.exe" >> $env:GITHUB_OUTPUT
 
       - name: Verify installer and create update manifest
         shell: pwsh
@@ -68,9 +68,9 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.2-Predictive-Hunt-Windows
+          name: Gridium-2-Alpha-1.2.1-Updater-Fix-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.2.0-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.2.1-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -81,21 +81,17 @@ jobs:
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Alpha 1.2 · Predictive Hunt
+          name: Gridium 2 Alpha 1.2.1 · Updater Bootstrap Fix
           body: |
-            Gridium 2 Alpha 1.2 — previsão compacta da próxima Hunt dentro da ficha atual do Pokémon.
+            Gridium 2 Alpha 1.2.1 — correção do fluxo Instalar e reiniciar.
 
-            - mantém o layout atual da Hunt Intelligence
-            - mostra nível estimado do Pokémon na próxima troca
-            - ETA com multiplicadores de XP atuais do servidor
-            - ETA base removendo os multiplicadores de XP
-            - XP/h projetado na próxima Hunt
-            - ganho percentual projetado
-            - índice de confiança do modelo
-            - próxima Hunt pode estar bloqueada hoje e aparece com cadeado
-            - tooltips explicam cada métrica sem poluir a tela
-            - mantém o updater confiável da Alpha 1.1.1, Sentinel, Detector, Hunt Learning e WhatsApp
+            - remove dependência do PowerShell oculto para aplicar atualizações
+            - helper CMD independente espera o Gridium realmente fechar antes de instalar
+            - NSIS recebe --updated e preserva o diretório atual
+            - se a instalação silenciosa falhar, o instalador normal aparece na tela
+            - relança o Gridium ao final e mantém verificação pós-reinício
+            - mantém Predictive Hunt, Sentinel, Detector, Hunt Learning e WhatsApp
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.2.0-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.2.1-Setup.exe
             gridium2/release/gridium2-update.json
