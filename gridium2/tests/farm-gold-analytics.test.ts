@@ -4,7 +4,7 @@ import { FarmGoldAnalyticsTracker } from '../src/main/farm-gold-analytics-runtim
 describe('farm-only Gold analytics', () => {
   it('counts farm Gold but excludes Pokemon and item Market sales', () => {
     const tracker = new FarmGoldAnalyticsTracker()
-    const now = 1_700_000_000_000
+    const now = Date.now()
 
     tracker.ingestState({ id: 1, gold: 1_000 }, true, now)
     tracker.ingestState({ gold: 1_025 }, false, now + 1_000)
@@ -29,7 +29,7 @@ describe('farm-only Gold analytics', () => {
 
   it('keeps simultaneous farm Gold after subtracting the Market credit', () => {
     const tracker = new FarmGoldAnalyticsTracker()
-    const now = 1_700_000_000_000
+    const now = Date.now()
 
     tracker.ingestState({ id: 1, gold: 10_000 }, true, now)
     tracker.ingestPacket({
@@ -43,7 +43,7 @@ describe('farm-only Gold analytics', () => {
 
   it('keeps RMT revenue separate from Gold gained', () => {
     const tracker = new FarmGoldAnalyticsTracker()
-    const now = 1_700_000_000_000
+    const now = Date.now()
 
     tracker.ingestState({ id: 1, gold: 5_000 }, true, now)
     tracker.registerRmtSale(42.5, 'Pokémon RMT', now + 1_000)
