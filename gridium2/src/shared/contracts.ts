@@ -11,11 +11,20 @@ export type AutoMarketMode = 'observe' | 'auto'
 export type AutoMarketCategory = 'balls' | 'potions' | 'revives'
 export type MarketCurrency = 'coins' | 'gems'
 export type PanelGranularity = 'minute' | 'hour' | 'day'
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date' | 'error'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
 
 export type PanelEventKind = 'capture' | 'shiny-caught' | 'rare-item' | 'market-sale' | 'rmt-sale'
+
+export interface UpdateSnapshot {
+  currentVersion: string
+  status: UpdateStatus
+  availableVersion?: string
+  progress: number
+  message: string
+}
 
 export interface PanelEventSnapshot {
   at: number
@@ -216,6 +225,7 @@ export interface GridiumSnapshot {
   accounts: AccountSnapshot[]
   autoMarket: AutoMarketSnapshot
   telemetry: TelemetrySnapshot
+  updater: UpdateSnapshot
 }
 
 export interface GridiumApi {
@@ -234,5 +244,8 @@ export interface GridiumApi {
   scanHuntProfile: (accountId: AccountId) => Promise<HuntProfileScan | null>
   selectAccount: (accountId: AccountId) => Promise<void>
   accountCommand: (accountId: AccountId, command: AccountCommand) => Promise<void>
+  checkForUpdates: () => Promise<UpdateSnapshot>
+  downloadUpdate: () => Promise<UpdateSnapshot>
+  installUpdate: () => Promise<boolean>
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => () => void
 }
