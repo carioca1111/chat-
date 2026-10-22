@@ -275,8 +275,6 @@ export interface AccountSnapshot {
   id: AccountId
   name: string
   status: AccountStatus
-  statusSince: number
-  lastServerAt: number | null
   url: string
   title: string
   canGoBack: boolean
