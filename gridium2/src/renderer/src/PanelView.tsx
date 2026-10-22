@@ -1,6 +1,24 @@
 import type { ComponentChildren } from 'preact'
-import { useMemo } from 'preact/hooks'
-import type { AccountSnapshot, GridiumSnapshot, PanelAnalyticsSnapshot, PanelEventSnapshot, PanelRareItemSnapshot } from '../../shared/contracts'
+import { useEffect, useMemo, useState } from 'preact/hooks'
+import type {
+  AccountId,
+  AccountSnapshot,
+  GridiumSnapshot,
+  PanelAnalyticsSnapshot,
+  PanelEventSnapshot,
+  PanelGranularity,
+  PanelHistoryBucket,
+  PanelRareItemSnapshot
+} from '../../shared/contracts'
+import { pokemonArtworkUrl, pokemonSpriteUrl, resolvePokemonSpeciesId } from './pokemon-sprites'
+import './panel-history.css'
+
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
+
+type HistoryMetric = 'pokemonXp' | 'captures' | 'marketCoins' | 'marketGems' | 'rmtBrl'
+type RevenueMetric = 'rmtBrl' | 'marketCoins' | 'marketGems'
 
 const EMPTY: PanelAnalyticsSnapshot = {
   revision: 0,
@@ -15,40 +33,118 @@ const EMPTY: PanelAnalyticsSnapshot = {
   rareItems: [],
   rareItemsTotal: 0,
   lastCaptureAt: null,
+  pokemonXpTotal: 0,
+  pokemonXpLastHour: 0,
+  marketCoinsRevenue: 0,
+  marketGemsRevenue: 0,
+  rmtBrlRevenue: 0,
+  historyMinute: [],
+  historyHour: [],
+  historyDay: [],
   events: []
 }
 
 export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const accounts = snapshot.accounts
   const analytics = accounts.map((account) => account.panelAnalytics ?? EMPTY)
-  const total = useMemo(() => combine(analytics), [analytics.map((row) => row.revision).join('|')])
+  const revisions = analytics.map((row) => row.revision).join('|')
+  const total = useMemo(() => combine(analytics), [revisions])
+  const [granularity, setGranularity] = useState<PanelGranularity>('hour')
+  const [revenueMetric, setRevenueMetric] = useState<RevenueMetric>('rmtBrl')
+  const [rmtAccount, setRmtAccount] = useState<AccountId>(1)
+  const [rmtValue, setRmtValue] = useState('')
+  const [rmtDescription, setRmtDescription] = useState('')
+  const [rmtStatus, setRmtStatus] = useState('')
   const online = accounts.filter((account) => account.status === 'ready').length
   const accountBars = accounts.map((account) => ({ account, value: account.panelAnalytics?.capturesLastHour ?? 0 }))
   const rare = combineRare(analytics)
   const events = combineEvents(accounts)
+  const xpSeries = useMemo(() => buildSeries(analytics, granularity, 'pokemonXp'), [revisions, granularity])
+  const captureSeries = useMemo(() => buildSeries(analytics, granularity, 'captures'), [revisions, granularity])
+  const revenueSeries = useMemo(() => buildSeries(analytics, granularity, revenueMetric, revenuePointCount(granularity)), [revisions, granularity, revenueMetric])
+  const visibleRevenueStart = revenueSeries[0]?.at ?? 0
+  const visibleRevenueEnd = revenueSeries.at(-1)?.at ?? Date.now()
+  const revenueByAccount = accounts.map((account) => ({
+    accountId: account.id,
+    value: sumMetric(account.panelAnalytics ?? EMPTY, granularity, revenueMetric, visibleRevenueStart, visibleRevenueEnd)
+  }))
+
+  const submitRmt = async (event: Event): Promise<void> => {
+    event.preventDefault()
+    const amount = Number(rmtValue.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setRmtStatus('Digite um valor válido.')
+      return
+    }
+    const ok = await window.gridium2.addPanelRmtSale(rmtAccount, { amountBrl: amount, description: rmtDescription.trim() })
+    setRmtStatus(ok ? 'Venda RMT registrada.' : 'Não foi possível registrar a venda.')
+    if (ok) {
+      setRmtValue('')
+      setRmtDescription('')
+    }
+  }
 
   return <main class="panel-page">
     <section class="panel-hero poke-card">
       <div>
-        <span class="panel-kicker">▥ PAINEL ANALYTICS</span>
+        <span class="panel-kicker">▥ PAINEL ANALYTICS · HISTÓRICO PERSISTENTE</span>
         <h1>VISÃO GERAL DAS 4 CONTAS</h1>
-        <p>Capturas, potência, nota oficial, shinies e itens confirmados pelo estado do servidor.</p>
+        <p>O histórico agora é salvo no disco e continua depois de fechar o Gridium ou reiniciar o PC.</p>
       </div>
       <span class="panel-live"><i class="status-ok" /> SERVIDOR · {online}/4 ONLINE</span>
     </section>
 
     <section class="panel-metrics">
       <PanelMetric icon="●" label="CONTAS ONLINE" value={`${online}/4`} sub="sessões ativas" tone="green" />
+      <PanelMetric icon="↗" label="XP/H POKÉMON" value={compact(total.pokemonXpLastHour)} sub="últimos 60 min" tone="cyan" />
       <PanelMetric icon="◉" label="CAPTURAS/H" value={fmt(total.capturesLastHour)} sub="últimos 60 min" tone="cyan" />
-      <PanelMetric icon="⌁" label="CAPTURAS" value={fmt(total.capturesTotal)} sub="sessão atual" tone="purple" />
+      <PanelMetric icon="⌁" label="CAPTURAS" value={fmt(total.capturesTotal)} sub="histórico salvo" tone="purple" />
       <PanelMetric icon="★" label="NOTA ≥ 3,5" value={fmt(total.note35Plus)} sub="nota oficial do servidor" tone="gold" />
       <PanelMetric icon="✦" label="SHINYS VISTOS" value={total.shiniesSeen === null ? '—' : fmt(total.shiniesSeen)} sub={total.shiniesSeen === null ? 'evento ainda não exposto' : 'contador do servidor'} tone="pink" />
       <PanelMetric icon="✧" label="SHINYS PEGOS" value={fmt(total.shiniesCaught)} sub="captura confirmada" tone="pink" />
-      <PanelMetric icon="◆" label="ITENS RAROS" value={fmt(total.rareItemsTotal)} sub="aumentos no inventário" tone="gold" />
+      <PanelMetric icon="◆" label="ITENS RAROS" value={fmt(total.rareItemsTotal)} sub="histórico salvo" tone="gold" />
+      <PanelMetric icon="R$" label="RMT" value={brl(total.rmtBrlRevenue)} sub="vendas registradas" tone="green" />
     </section>
 
     <section class="panel-account-grid">
       {accounts.map((account) => <AccountPanel account={account} key={account.id} />)}
+    </section>
+
+    <section class="panel-timeseries-grid">
+      <ChartCard title="XP DO POKÉMON" subtitle={`${granularityLabel(granularity)} · ganho real observado no estado do servidor`} wide>
+        <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
+        <LineChart points={xpSeries} valueFormatter={compact} tone="xp" />
+      </ChartCard>
+      <ChartCard title="POKÉMONS CAPTURADOS" subtitle={`${granularityLabel(granularity)} · cada ponto representa um período completo`} wide>
+        <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
+        <LineChart points={captureSeries} valueFormatter={fmt} tone="captures" />
+      </ChartCard>
+      <ChartCard title="DINHEIRO / RECEITA" subtitle="4 contas somadas · verde superou o período anterior; vermelho não superou" wide>
+        <div class="panel-money-toolbar">
+          <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
+          <div class="panel-segmented revenue-source">
+            <button class={revenueMetric === 'rmtBrl' ? 'active' : ''} onClick={() => setRevenueMetric('rmtBrl')}>RMT R$</button>
+            <button class={revenueMetric === 'marketCoins' ? 'active' : ''} onClick={() => setRevenueMetric('marketCoins')}>MARKET GOLD</button>
+            <button class={revenueMetric === 'marketGems' ? 'active' : ''} onClick={() => setRevenueMetric('marketGems')}>MARKET ORBS</button>
+          </div>
+        </div>
+        <TrendColumnChart points={revenueSeries} valueFormatter={revenueMetric === 'rmtBrl' ? brl : compact} />
+        <div class="panel-revenue-accounts">
+          {revenueByAccount.map((row) => <div key={row.accountId}><small>CONTA {row.accountId}</small><b>{revenueMetric === 'rmtBrl' ? brl(row.value) : compact(row.value)}</b></div>)}
+        </div>
+        <div class="panel-money-note">Market usa somente <b>marketVendido</b> de Pokémon confirmado pelo servidor. RMT fica separado em R$; Gold/Orbs não são convertidos para reais sem uma taxa definida por você.</div>
+      </ChartCard>
+      <ChartCard title="REGISTRAR VENDA RMT" subtitle="Venda fora do jogo: informe o valor real para entrar no histórico">
+        <form class="panel-rmt-form" onSubmit={submitRmt}>
+          <label>Conta<select value={rmtAccount} onChange={(event) => setRmtAccount(Number(event.currentTarget.value) as AccountId)}>
+            <option value={1}>Conta 1</option><option value={2}>Conta 2</option><option value={3}>Conta 3</option><option value={4}>Conta 4</option>
+          </select></label>
+          <label>Valor em R$<input value={rmtValue} inputMode="decimal" placeholder="Ex.: 35,00" onInput={(event) => setRmtValue(event.currentTarget.value)} /></label>
+          <label class="rmt-description">Descrição<input value={rmtDescription} placeholder="Ex.: Brave Charizard" maxLength={80} onInput={(event) => setRmtDescription(event.currentTarget.value)} /></label>
+          <button type="submit">+ REGISTRAR RMT</button>
+          <small>{rmtStatus || 'O Gridium não inventa RMT: só entra quando você registra a venda.'}</small>
+        </form>
+      </ChartCard>
     </section>
 
     <section class="panel-chart-grid">
@@ -62,21 +158,22 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
         <ColumnChart labels={['Vistos','Pegos']} values={[total.shiniesSeen ?? 0,total.shiniesCaught]} classes={['seen','caught']} unknown={[total.shiniesSeen === null,false]} />
       </ChartCard>
       <ChartCard title="ITENS RAROS RECEBIDOS" subtitle="Somente aumentos de inventário com nomes raros conhecidos">
-        {rare.length ? <ColumnChart labels={rare.map((item) => short(item.name))} values={rare.map((item) => item.quantity)} classes={rare.map((_,index) => `rare r${index}`)} /> : <EmptyChart text="Nenhum item raro confirmado nesta sessão" />}
+        {rare.length ? <ColumnChart labels={rare.map((item) => short(item.name))} values={rare.map((item) => item.quantity)} classes={rare.map((_,index) => `rare r${index}`)} /> : <EmptyChart text="Nenhum item raro confirmado" />}
       </ChartCard>
       <ChartCard title="CAPTURAS POR CONTA" subtitle="Últimos 60 minutos">
         <ColumnChart labels={accountBars.map((row) => `Conta ${row.account.id}`)} values={accountBars.map((row) => row.value)} classes={['account a1','account a2','account a3','account a4']} />
       </ChartCard>
-      <ChartCard title="ATIVIDADE RECENTE" subtitle="Eventos confirmados pelo servidor" wide>
-        <div class="panel-events">{events.length ? events.slice(0,8).map((event) => <div class="panel-event" key={`${event.accountId}-${event.at}-${event.label}`}>
+      <ChartCard title="ATIVIDADE RECENTE" subtitle="Capturas, drops, vendas Market e RMT persistidos" wide>
+        <div class="panel-events">{events.length ? events.slice(0,12).map((event) => <div class="panel-event" key={`${event.accountId}-${event.at}-${event.label}`}>
+          <PokemonSprite speciesId={event.speciesId} name={event.label} small />
           <time>{clock(event.at)}</time><b>Conta {event.accountId}</b><span>{event.label}</span><small>{event.detail}</small>
-        </div>) : <div class="panel-event-empty">Aguardando as primeiras capturas e drops da sessão.</div>}</div>
+        </div>) : <div class="panel-event-empty">Aguardando as primeiras atividades.</div>}</div>
       </ChartCard>
     </section>
 
     <section class="panel-note poke-card">
-      <b>LEITURA SEM NÚMEROS INVENTADOS</b>
-      <span>Captura = novo ID de Pokémon recebido depois do estado inicial. P1–P5 e a nota usam os campos oficiais do registro capturado; a nota é lida de “nota” e não de “quality”. A distribuição contabiliza desde 0. Itens raros usam aumentos confirmados no inventário; compras/transferências ainda podem aparecer como recebimentos. “Shiny visto” só será preenchido quando o servidor expuser um contador/evento explícito.</span>
+      <b>HISTÓRICO PERSISTENTE</b>
+      <span>Os acumulados e os buckets 1m/1h/1d são gravados em userData e restaurados na próxima abertura. Minutos ficam por 48 h, horas por 90 dias e dias por 2 anos. A captura continua usando novo ID confirmado pelo servidor; a nota usa “nota”, nunca “quality”.</span>
     </section>
   </main>
 }
@@ -88,10 +185,37 @@ function AccountPanel({ account }: { account: AccountSnapshot }) {
   const name = profile?.speciesName || (profile?.speciesId !== undefined ? `Espécie #${profile.speciesId}` : 'Pokémon ativo')
   return <article class={`panel-account poke-card ${ready ? 'online' : 'offline'}`}>
     <div class="panel-account-head"><span class="panel-account-number">{account.id}</span><b>CONTA {account.id}</b><small><i class={`status-dot ${account.status}`} /> {ready ? 'ONLINE' : 'OFFLINE'}</small></div>
-    <div class="panel-pokemon"><div class="panel-pokeball">◉</div><div><strong>{name}</strong><span>Nv {profile?.pokemonLevel ?? '—'} · P{profile?.potency ?? '—'}{profile?.shiny ? ' · ✦ SHINY' : ''}</span><small>{profile?.huntSlug ? `Hunt: ${profile.huntSlug}` : 'Hunt aguardando servidor'}</small></div></div>
-    <div class="panel-account-stats"><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="CAPTURAS" value={fmt(stats.capturesTotal)} /><Stat label="NOTA ≥3,5" value={fmt(stats.note35Plus)} /><Stat label="SHINY" value={fmt(stats.shiniesCaught)} /></div>
+    <div class="panel-pokemon"><PokemonSprite speciesId={profile?.speciesId} name={name} /><div><strong>{name}</strong><span>Nv {profile?.pokemonLevel ?? '—'} · P{profile?.potency ?? '—'}{profile?.shiny ? ' · ✦ SHINY' : ''}</span><small>{profile?.huntSlug ? `Hunt: ${profile.huntSlug}` : 'Hunt aguardando servidor'}</small></div></div>
+    <div class="panel-account-stats"><Stat label="XP/H" value={compact(stats.pokemonXpLastHour)} /><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="NOTA ≥3,5" value={fmt(stats.note35Plus)} /><Stat label="SHINY" value={fmt(stats.shiniesCaught)} /></div>
     <div class="panel-account-foot"><span>Última captura</span><b>{stats.lastCaptureAt ? relative(stats.lastCaptureAt) : '—'}</b></div>
   </article>
+}
+
+function PokemonSprite({ speciesId, name, small = false }: { speciesId?: number; name: string; small?: boolean }) {
+  const direct = Number.isFinite(speciesId) && Number(speciesId) > 0 ? Math.floor(Number(speciesId)) : null
+  const [resolvedId, setResolvedId] = useState<number | null>(direct)
+  const [fallbackArtwork, setFallbackArtwork] = useState(false)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let active = true
+    setFallbackArtwork(false)
+    setFailed(false)
+    if (direct) {
+      setResolvedId(direct)
+      return () => { active = false }
+    }
+    setResolvedId(null)
+    void resolvePokemonSpeciesId(undefined, name).then((id) => { if (active) setResolvedId(id) })
+    return () => { active = false }
+  }, [direct, name])
+  if (!resolvedId || failed) return <span class={`panel-sprite-fallback ${small ? 'small' : ''}`}>◉</span>
+  return <img
+    class={`panel-pokemon-sprite ${small ? 'small' : ''}`}
+    src={fallbackArtwork ? pokemonArtworkUrl(resolvedId) : pokemonSpriteUrl(resolvedId)}
+    alt={name}
+    loading="lazy"
+    onError={() => fallbackArtwork ? setFailed(true) : setFallbackArtwork(true)}
+  />
 }
 
 function PanelMetric({ icon,label,value,sub,tone }: { icon:string; label:string; value:string; sub:string; tone:string }) {
@@ -100,6 +224,58 @@ function PanelMetric({ icon,label,value,sub,tone }: { icon:string; label:string;
 
 function ChartCard({ title,subtitle,children,wide=false }: { title:string; subtitle:string; children:ComponentChildren; wide?:boolean }) {
   return <article class={`panel-chart poke-card ${wide ? 'wide' : ''}`}><header><div><b>{title}</b><small>{subtitle}</small></div></header>{children}</article>
+}
+
+function ChartToolbar({ granularity, onGranularity }: { granularity: PanelGranularity; onGranularity: (value: PanelGranularity) => void }) {
+  return <div class="panel-segmented timeframe">
+    <button class={granularity === 'minute' ? 'active' : ''} onClick={() => onGranularity('minute')}>1m</button>
+    <button class={granularity === 'hour' ? 'active' : ''} onClick={() => onGranularity('hour')}>1h</button>
+    <button class={granularity === 'day' ? 'active' : ''} onClick={() => onGranularity('day')}>1d</button>
+  </div>
+}
+
+function LineChart({ points, valueFormatter, tone }: { points: TimePoint[]; valueFormatter:(value:number)=>string; tone:'xp'|'captures' }) {
+  const values = points.map((point) => point.value)
+  const max = Math.max(1, ...values)
+  const width = 1000
+  const height = 230
+  const padX = 24
+  const padTop = 18
+  const padBottom = 38
+  const innerHeight = height - padTop - padBottom
+  const coords = points.map((point, index) => ({
+    x: points.length <= 1 ? width / 2 : padX + (index / (points.length - 1)) * (width - padX * 2),
+    y: padTop + (1 - point.value / max) * innerHeight,
+    ...point
+  }))
+  const path = coords.map((point,index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
+  const tickEvery = Math.max(1, Math.floor(points.length / 6))
+  return <div class={`panel-line-wrap ${tone}`}>
+    <div class="panel-line-current"><small>ÚLTIMO</small><b>{valueFormatter(points.at(-1)?.value ?? 0)}</b></div>
+    <svg class="panel-line-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img">
+      {[0,.25,.5,.75,1].map((ratio) => <line class="line-grid" key={ratio} x1={padX} x2={width-padX} y1={padTop + ratio * innerHeight} y2={padTop + ratio * innerHeight} />)}
+      <path class="line-area" d={`${path} L ${coords.at(-1)?.x ?? padX} ${padTop+innerHeight} L ${coords[0]?.x ?? padX} ${padTop+innerHeight} Z`} />
+      <path class="line-path" d={path} />
+      {coords.map((point,index) => <circle key={point.at} class="line-point" cx={point.x} cy={point.y} r={index === coords.length-1 ? 5 : 2.6}><title>{`${timeLabel(point.at, point.granularity)} · ${valueFormatter(point.value)}`}</title></circle>)}
+    </svg>
+    <div class="panel-line-labels">{points.map((point,index) => (index % tickEvery === 0 || index === points.length - 1) ? <span key={point.at}>{timeLabel(point.at, point.granularity)}</span> : null)}</div>
+  </div>
+}
+
+function TrendColumnChart({ points, valueFormatter }: { points: TimePoint[]; valueFormatter:(value:number)=>string }) {
+  const max = Math.max(1, ...points.map((point) => point.value))
+  return <div class="trend-columns-scroll"><div class="trend-columns">
+    {points.map((point,index) => {
+      const previous = points[index - 1]?.value
+      const trend = index === 0 ? 'neutral' : point.value > (previous ?? 0) ? 'up' : 'down'
+      const height = Math.max(point.value > 0 ? 7 : 2, Math.round((point.value / max) * 100))
+      return <div class="trend-column-slot" key={point.at}>
+        <span>{valueFormatter(point.value)}</span>
+        <div class="trend-column-track"><i class={`trend-column ${trend}`} style={{height:`${height}%`}}><title>{`${timeLabel(point.at, point.granularity)} · ${valueFormatter(point.value)}`}</title></i></div>
+        <b>{timeLabel(point.at, point.granularity)}</b>
+      </div>
+    })}
+  </div></div>
 }
 
 function ColumnChart({ labels,values,classes,unknown=[] }: { labels:string[]; values:number[]; classes:string[]; unknown?:boolean[] }) {
@@ -113,6 +289,38 @@ function ColumnChart({ labels,values,classes,unknown=[] }: { labels:string[]; va
 
 function EmptyChart({ text }: { text:string }) { return <div class="panel-empty-chart"><span>◇</span><b>{text}</b></div> }
 function Stat({ label,value }: { label:string; value:string }) { return <div><small>{label}</small><b>{value}</b></div> }
+
+interface TimePoint { at: number; value: number; granularity: PanelGranularity }
+
+export function buildSeries(rows: PanelAnalyticsSnapshot[], granularity: PanelGranularity, metric: HistoryMetric, count = pointCount(granularity), now = Date.now()): TimePoint[] {
+  const step = granularity === 'minute' ? MINUTE : granularity === 'hour' ? HOUR : DAY
+  const end = bucketStart(now, granularity)
+  const starts = Array.from({ length: count }, (_, index) => end - (count - 1 - index) * step)
+  const totals = new Map(starts.map((at) => [at, 0]))
+  for (const row of rows) {
+    const history = historyOf(row, granularity)
+    for (const bucket of history) {
+      if (!totals.has(bucket.at)) continue
+      totals.set(bucket.at, (totals.get(bucket.at) ?? 0) + Number(bucket[metric] || 0))
+    }
+  }
+  return starts.map((at) => ({ at, value: totals.get(at) ?? 0, granularity }))
+}
+
+function pointCount(granularity: PanelGranularity): number { return granularity === 'minute' ? 60 : granularity === 'hour' ? 48 : 30 }
+function revenuePointCount(granularity: PanelGranularity): number { return granularity === 'minute' ? 30 : granularity === 'hour' ? 24 : 30 }
+function historyOf(row: PanelAnalyticsSnapshot, granularity: PanelGranularity): PanelHistoryBucket[] {
+  return granularity === 'minute' ? row.historyMinute : granularity === 'hour' ? row.historyHour : row.historyDay
+}
+function bucketStart(at: number, granularity: PanelGranularity): number {
+  if (granularity === 'minute') return Math.floor(at / MINUTE) * MINUTE
+  if (granularity === 'hour') return Math.floor(at / HOUR) * HOUR
+  const date = new Date(at)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+function sumMetric(row: PanelAnalyticsSnapshot, granularity: PanelGranularity, metric: RevenueMetric, start: number, end: number): number {
+  return historyOf(row, granularity).filter((bucket) => bucket.at >= start && bucket.at <= end).reduce((sum,bucket) => sum + Number(bucket[metric] || 0), 0)
+}
 
 function combine(rows: PanelAnalyticsSnapshot[]): PanelAnalyticsSnapshot {
   const seenRows = rows.map((row) => row.shiniesSeen).filter((value): value is number => value !== null)
@@ -130,8 +338,30 @@ function combine(rows: PanelAnalyticsSnapshot[]): PanelAnalyticsSnapshot {
     rareItems: [],
     rareItemsTotal: rows.reduce((sum,row) => sum + row.rareItemsTotal,0),
     lastCaptureAt: Math.max(0,...rows.map((row) => row.lastCaptureAt ?? 0)) || null,
+    pokemonXpTotal: rows.reduce((sum,row) => sum + row.pokemonXpTotal,0),
+    pokemonXpLastHour: rows.reduce((sum,row) => sum + row.pokemonXpLastHour,0),
+    marketCoinsRevenue: rows.reduce((sum,row) => sum + row.marketCoinsRevenue,0),
+    marketGemsRevenue: rows.reduce((sum,row) => sum + row.marketGemsRevenue,0),
+    rmtBrlRevenue: rows.reduce((sum,row) => sum + row.rmtBrlRevenue,0),
+    historyMinute: combineHistory(rows.map((row) => row.historyMinute)),
+    historyHour: combineHistory(rows.map((row) => row.historyHour)),
+    historyDay: combineHistory(rows.map((row) => row.historyDay)),
     events: []
   }
+}
+
+function combineHistory(groups: PanelHistoryBucket[][]): PanelHistoryBucket[] {
+  const map = new Map<number, PanelHistoryBucket>()
+  for (const group of groups) for (const item of group) {
+    const current = map.get(item.at) ?? { at: item.at, pokemonXp: 0, captures: 0, marketCoins: 0, marketGems: 0, rmtBrl: 0 }
+    current.pokemonXp += item.pokemonXp
+    current.captures += item.captures
+    current.marketCoins += item.marketCoins
+    current.marketGems += item.marketGems
+    current.rmtBrl += item.rmtBrl
+    map.set(item.at, current)
+  }
+  return [...map.values()].sort((a,b) => a.at - b.at)
 }
 
 function combineRare(rows: PanelAnalyticsSnapshot[]): PanelRareItemSnapshot[] {
@@ -150,13 +380,30 @@ function combineEvents(accounts: AccountSnapshot[]): Array<PanelEventSnapshot & 
 }
 
 function fmt(value:number):string { return Math.round(value).toLocaleString('pt-BR') }
+function compact(value:number):string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000) return `${(value/1_000_000_000).toLocaleString('pt-BR',{maximumFractionDigits:1})} bi`
+  if (abs >= 1_000_000) return `${(value/1_000_000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mi`
+  if (abs >= 1_000) return `${(value/1_000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mil`
+  return value.toLocaleString('pt-BR',{maximumFractionDigits:1})
+}
+function brl(value:number):string { return `R$ ${value.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}` }
 function ratio(caught:number, seen:number):number { return seen > 0 ? Math.round((caught / seen) * 100) : 0 }
 function short(value:string):string { return value.length > 13 ? `${value.slice(0,12)}…` : value }
 function clock(at:number):string { return new Date(at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }
+function timeLabel(at:number, granularity:PanelGranularity):string {
+  const date = new Date(at)
+  if (granularity === 'minute') return date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+  if (granularity === 'hour') return `${date.getHours().toString().padStart(2,'0')}h`
+  return date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})
+}
+function granularityLabel(value:PanelGranularity):string { return value === 'minute' ? '1m por ponto' : value === 'hour' ? '1h por ponto' : '1d por ponto' }
 function relative(at:number):string {
   const seconds = Math.max(0, Math.floor((Date.now() - at) / 1000))
   if (seconds < 60) return `${seconds}s atrás`
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes} min atrás`
-  return `${Math.floor(minutes/60)} h atrás`
+  const hours = Math.floor(minutes/60)
+  if (hours < 24) return `${hours} h atrás`
+  return `${Math.floor(hours/24)} d atrás`
 }
