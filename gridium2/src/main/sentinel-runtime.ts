@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type {
   AccountId,
   AccountSnapshot,
+  AccountStatus,
   HuntLearningSnapshot,
   PanelHistoryBucket,
   SentinelAccountSnapshot,
@@ -56,6 +57,8 @@ interface RuntimeAccountState {
   recoveryTimes: number[]
   recoveringUntil: number
   failureAlerted: boolean
+  lastStatus: AccountStatus
+  statusSince: number
 }
 
 interface LastLearningSample {
@@ -80,6 +83,7 @@ const DEFAULT_SETTINGS: PersistedSettings = {
 
 export interface SentinelRuntimeOptions {
   accountsProvider: () => AccountSnapshot[]
+  lastServerAtProvider: (accountId: AccountId) => number
   recoverAccount: (accountId: AccountId) => Promise<boolean>
   onChanged: () => void
   sendAlert?: (text: string) => Promise<void>
@@ -99,12 +103,15 @@ export class SentinelRuntime {
 
   constructor(private readonly options: SentinelRuntimeOptions) {
     this.load()
+    const now = Date.now()
     for (const id of [1, 2, 3, 4] as AccountId[]) {
       this.states.set(id, {
         snapshot: emptyAccountSnapshot(id),
         recoveryTimes: [],
         recoveringUntil: 0,
-        failureAlerted: false
+        failureAlerted: false,
+        lastStatus: 'booting',
+        statusSince: now
       })
     }
   }
@@ -162,17 +169,17 @@ export class SentinelRuntime {
 
     for (const account of accounts) {
       this.collectHuntLearning(account, now)
-      const state = this.states.get(account.id) ?? {
-        snapshot: emptyAccountSnapshot(account.id),
-        recoveryTimes: [],
-        recoveringUntil: 0,
-        failureAlerted: false
-      }
+      const state = this.states.get(account.id) ?? newRuntimeAccountState(account.id, account.status, now)
       this.states.set(account.id, state)
+      if (state.lastStatus !== account.status) {
+        state.lastStatus = account.status
+        state.statusSince = now
+      }
       state.recoveryTimes = state.recoveryTimes.filter((at) => at >= now - RECOVERY_WINDOW_MS)
 
       const previous = state.snapshot
-      let next = this.evaluateAccount(account, state, now)
+      const lastServerAt = this.options.lastServerAtProvider(account.id) || 0
+      let next = this.evaluateAccount(account, state, now, lastServerAt)
 
       if (this.settings.enabled && next.recoveryNeeded && this.settings.autoRecover && !this.recoverInFlight.has(account.id)) {
         const lastRecovery = state.recoveryTimes.at(-1) ?? 0
@@ -184,7 +191,7 @@ export class SentinelRuntime {
           next = { ...next, state: 'offline', healthScore: Math.min(20, next.healthScore), issue: 'Falha persistente · limite de recuperação atingido' }
           if (!state.failureAlerted) {
             state.failureAlerted = true
-            void this.alert(`🚨 GRIDIIUM SENTINEL\nConta ${account.id} continua com falha após ${MAX_RECOVERIES_PER_WINDOW} tentativas automáticas.\nIntervenção manual recomendada.`)
+            void this.alert(`🚨 GRIDIUM SENTINEL\nConta ${account.id} continua com falha após ${MAX_RECOVERIES_PER_WINDOW} tentativas automáticas.\nIntervenção manual recomendada.`)
           }
         }
       }
@@ -195,7 +202,7 @@ export class SentinelRuntime {
 
       if (previous.state === 'recovering' && next.state === 'healthy') {
         state.failureAlerted = false
-        void this.alert(`✅ GRIDIIUM SENTINEL\nConta ${account.id} recuperada automaticamente e recebendo dados do servidor novamente.`)
+        void this.alert(`✅ GRIDIUM SENTINEL\nConta ${account.id} recuperada automaticamente e recebendo dados do servidor novamente.`)
       }
 
       if (!sameSentinelAccount(previous, next)) changed = true
@@ -206,83 +213,48 @@ export class SentinelRuntime {
     if (changed) this.options.onChanged()
   }
 
-  private evaluateAccount(account: AccountSnapshot, runtime: RuntimeAccountState, now: number): SentinelAccountSnapshot {
+  private evaluateAccount(account: AccountSnapshot, runtime: RuntimeAccountState, now: number, lastServerAtRaw: number): SentinelAccountSnapshot {
     const huntLearning = this.learningSnapshotFor(account)
+    const lastServerAt = lastServerAtRaw > 0 ? lastServerAtRaw : null
     if (!this.settings.enabled) {
-      return {
-        accountId: account.id,
-        state: 'paused',
-        healthScore: 100,
-        issue: 'Sentinel desligado',
-        lastServerAt: account.lastServerAt,
-        lastRecoveryAt: runtime.recoveryTimes.at(-1),
-        recoveryAttempts: runtime.recoveryTimes.length,
-        anomaly: null,
-        huntLearning,
-        recoveryNeeded: false
-      }
+      return baseSnapshot(account.id, 'paused', 100, 'Sentinel desligado', lastServerAt, runtime, null, huntLearning, false)
     }
-
     if (account.effectivePowerState === 'suspended') {
-      return {
-        accountId: account.id,
-        state: 'paused',
-        healthScore: 100,
-        issue: 'Conta suspensa manualmente',
-        lastServerAt: account.lastServerAt,
-        lastRecoveryAt: runtime.recoveryTimes.at(-1),
-        recoveryAttempts: runtime.recoveryTimes.length,
-        anomaly: null,
-        huntLearning,
-        recoveryNeeded: false
-      }
+      return baseSnapshot(account.id, 'paused', 100, 'Conta suspensa manualmente', lastServerAt, runtime, null, huntLearning, false)
     }
 
-    const technical = technicalFault(account, now)
+    const technical = technicalFault(account, lastServerAt, runtime.statusSince, now)
     if (technical) {
-      return {
-        accountId: account.id,
-        state: technical.state,
-        healthScore: technical.score,
-        issue: technical.issue,
-        lastServerAt: account.lastServerAt,
-        lastRecoveryAt: runtime.recoveryTimes.at(-1),
-        recoveryAttempts: runtime.recoveryTimes.length,
-        anomaly: null,
-        huntLearning,
-        recoveryNeeded: technical.recoveryNeeded
-      }
+      return baseSnapshot(account.id, technical.state, technical.score, technical.issue, lastServerAt, runtime, null, huntLearning, technical.recoveryNeeded)
     }
 
     const anomaly = this.settings.anomalyDetection ? analyzePerformance(account, now, huntLearning) : null
     const enoughHistory = hasEnoughBaseline(account.panelAnalytics.historyMinute, now) || Boolean(huntLearning && huntLearning.confidence >= 40)
     if (anomaly) {
-      return {
-        accountId: account.id,
-        state: 'anomaly',
-        healthScore: anomaly.severity === 'critical' ? 45 : 70,
-        issue: `${metricLabel(anomaly.metric)} ${Math.abs(anomaly.deltaPercent).toFixed(0)}% abaixo do padrão`,
-        lastServerAt: account.lastServerAt,
-        lastRecoveryAt: runtime.recoveryTimes.at(-1),
-        recoveryAttempts: runtime.recoveryTimes.length,
+      return baseSnapshot(
+        account.id,
+        'anomaly',
+        anomaly.severity === 'critical' ? 45 : 70,
+        `${metricLabel(anomaly.metric)} ${Math.abs(anomaly.deltaPercent).toFixed(0)}% abaixo do padrão`,
+        lastServerAt,
+        runtime,
         anomaly,
         huntLearning,
-        recoveryNeeded: false
-      }
+        false
+      )
     }
 
-    return {
-      accountId: account.id,
-      state: enoughHistory ? 'healthy' : 'learning',
-      healthScore: 100,
-      issue: enoughHistory ? 'Operação normal' : 'Aprendendo o padrão da conta…',
-      lastServerAt: account.lastServerAt,
-      lastRecoveryAt: runtime.recoveryTimes.at(-1),
-      recoveryAttempts: runtime.recoveryTimes.length,
-      anomaly: null,
+    return baseSnapshot(
+      account.id,
+      enoughHistory ? 'healthy' : 'learning',
+      100,
+      enoughHistory ? 'Operação normal' : 'Aprendendo o padrão da conta…',
+      lastServerAt,
+      runtime,
+      null,
       huntLearning,
-      recoveryNeeded: false
-    }
+      false
+    )
   }
 
   private async beginRecovery(accountId: AccountId, state: RuntimeAccountState, now: number, manual: boolean): Promise<boolean> {
@@ -300,7 +272,7 @@ export class SentinelRuntime {
     this.options.onChanged()
     try {
       const ok = await this.options.recoverAccount(accountId)
-      if (!ok && manual) void this.alert(`🚨 GRIDIIUM SENTINEL\nNão foi possível iniciar a recuperação manual da Conta ${accountId}.`)
+      if (!ok && manual) void this.alert(`🚨 GRIDIUM SENTINEL\nNão foi possível iniciar a recuperação manual da Conta ${accountId}.`)
       return ok
     } finally {
       this.recoverInFlight.delete(accountId)
@@ -398,9 +370,7 @@ export class SentinelRuntime {
 
   private persistLearning(force: boolean, now = Date.now()): void {
     if (!this.learningDirty || (!force && now - this.lastLearningPersistAt < LEARNING_PERSIST_MS)) return
-    const records = [...this.learning.values()]
-      .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
-      .slice(0, 200)
+    const records = [...this.learning.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt).slice(0, 200)
     try {
       writeFileSync(this.learningPath, JSON.stringify({ version: 1, records }, null, 2), 'utf8')
       this.learningDirty = false
@@ -409,20 +379,19 @@ export class SentinelRuntime {
   }
 }
 
-function technicalFault(account: AccountSnapshot, now: number): { state: SentinelAccountSnapshot['state']; score: number; issue: string; recoveryNeeded: boolean } | null {
+function technicalFault(account: AccountSnapshot, lastServerAt: number | null, statusSince: number, now: number): { state: SentinelAccountSnapshot['state']; score: number; issue: string; recoveryNeeded: boolean } | null {
   if (account.status === 'crashed') return { state: 'offline', score: 5, issue: 'Renderer da conta caiu', recoveryNeeded: true }
-  if (account.status === 'offline') return { state: 'offline', score: 10, issue: 'Conta offline', recoveryNeeded: now - account.statusSince > 10_000 }
-  if (account.status === 'loading' && now - account.statusSince > LOADING_STUCK_MS) return { state: 'offline', score: 20, issue: 'Carregamento travado há mais de 3 min', recoveryNeeded: true }
+  if (account.status === 'offline') return { state: 'offline', score: 10, issue: 'Conta offline', recoveryNeeded: now - statusSince > 10_000 }
+  if (account.status === 'loading' && now - statusSince > LOADING_STUCK_MS) return { state: 'offline', score: 20, issue: 'Carregamento travado há mais de 3 min', recoveryNeeded: true }
   if (account.status !== 'ready') return { state: 'learning', score: 85, issue: 'Aguardando a conta ficar pronta', recoveryNeeded: false }
-  if (!account.lastServerAt && now - account.statusSince > READY_GRACE_MS) return { state: 'offline', score: 25, issue: 'Sem dados do servidor após 5 min', recoveryNeeded: true }
-  if (account.lastServerAt && now - account.lastServerAt > STALE_SERVER_MS) return { state: 'offline', score: 20, issue: 'Servidor sem enviar pacotes há mais de 4 min', recoveryNeeded: true }
+  if (!lastServerAt && now - statusSince > READY_GRACE_MS) return { state: 'offline', score: 25, issue: 'Sem dados do servidor após 5 min', recoveryNeeded: true }
+  if (lastServerAt && now - lastServerAt > STALE_SERVER_MS) return { state: 'offline', score: 20, issue: 'Servidor sem enviar pacotes há mais de 4 min', recoveryNeeded: true }
   return null
 }
 
 export function analyzePerformance(account: AccountSnapshot, now: number, huntLearning?: HuntLearningSnapshot): SentinelMetricSnapshot | null {
   const current = rateForRange(account.panelAnalytics.historyMinute, now - CURRENT_WINDOW_MS, now, CURRENT_WINDOW_MS)
   const baseline = baselineRates(account.panelAnalytics.historyMinute, now)
-
   if (huntLearning && huntLearning.confidence >= 40 && huntLearning.observedXpPerHour > 0) baseline.xp = huntLearning.observedXpPerHour
 
   const candidates: SentinelMetricSnapshot[] = []
@@ -437,14 +406,13 @@ function addAnomaly(out: SentinelMetricSnapshot[], metric: SentinelMetricSnapsho
   if (!Number.isFinite(baseline) || baseline < minimumBaseline) return
   const ratio = baseline > 0 ? current / baseline : 1
   if (ratio >= 0.55) return
-  const deltaPercent = (ratio - 1) * 100
-  out.push({ metric, currentPerHour: current, baselinePerHour: baseline, deltaPercent, severity: ratio < 0.2 ? 'critical' : 'warning' })
+  out.push({ metric, currentPerHour: current, baselinePerHour: baseline, deltaPercent: (ratio - 1) * 100, severity: ratio < 0.2 ? 'critical' : 'warning' })
 }
 
 function baselineRates(history: PanelHistoryBucket[], now: number): PerformanceRates {
   const end = now - CURRENT_WINDOW_MS
   const start = now - BASELINE_WINDOW_MS
-  const windows = new Map<number, { xp: number; captures: number; gold: number }>()
+  const windows = new Map<number, PerformanceRates>()
   for (const bucket of history) {
     if (bucket.at < start || bucket.at >= end) continue
     const key = Math.floor((bucket.at - start) / CURRENT_WINDOW_MS)
@@ -483,8 +451,7 @@ function huntKey(account: AccountSnapshot): string {
   const profile = account.huntProfile
   if (!profile?.huntSlug) return ''
   const species = profile.speciesId ? `id:${profile.speciesId}` : profile.speciesName ? `name:${profile.speciesName.toLowerCase()}` : ''
-  if (!species) return ''
-  return `${account.id}|${species}|${profile.huntSlug}`
+  return species ? `${account.id}|${species}|${profile.huntSlug}` : ''
 }
 
 function median(values: number[]): number {
@@ -505,15 +472,35 @@ function metricLabel(metric: SentinelMetricSnapshot['metric']): string {
 }
 
 function emptyAccountSnapshot(accountId: AccountId): SentinelAccountSnapshot {
+  return { accountId, state: 'learning', healthScore: 100, issue: 'Aguardando dados…', lastServerAt: null, recoveryAttempts: 0, anomaly: null, recoveryNeeded: false }
+}
+
+function newRuntimeAccountState(accountId: AccountId, status: AccountStatus, now: number): RuntimeAccountState {
+  return { snapshot: emptyAccountSnapshot(accountId), recoveryTimes: [], recoveringUntil: 0, failureAlerted: false, lastStatus: status, statusSince: now }
+}
+
+function baseSnapshot(
+  accountId: AccountId,
+  state: SentinelAccountSnapshot['state'],
+  healthScore: number,
+  issue: string,
+  lastServerAt: number | null,
+  runtime: RuntimeAccountState,
+  anomaly: SentinelMetricSnapshot | null,
+  huntLearning: HuntLearningSnapshot | undefined,
+  recoveryNeeded: boolean
+): SentinelAccountSnapshot {
   return {
     accountId,
-    state: 'learning',
-    healthScore: 100,
-    issue: 'Aguardando dados…',
-    lastServerAt: null,
-    recoveryAttempts: 0,
-    anomaly: null,
-    recoveryNeeded: false
+    state,
+    healthScore,
+    issue,
+    lastServerAt,
+    lastRecoveryAt: runtime.recoveryTimes.at(-1),
+    recoveryAttempts: runtime.recoveryTimes.length,
+    anomaly,
+    huntLearning,
+    recoveryNeeded
   }
 }
 
