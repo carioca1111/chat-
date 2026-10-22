@@ -54,7 +54,7 @@ describe('farm-only Gold analytics', () => {
   })
 
   it('migrates old history by removing Market Gold that was mixed into Gold earned', () => {
-    const now = 1_700_000_000_000
+    const now = Date.now()
     const minuteAt = Math.floor(now / 60_000) * 60_000
     const tracker = new FarmGoldAnalyticsTracker({
       initial: {
@@ -70,5 +70,22 @@ describe('farm-only Gold analytics', () => {
     const snapshot = tracker.snapshot(now)
     expect(snapshot.goldEarnedTotal).toBe(125)
     expect(snapshot.historyMinute.reduce((sum, bucket) => sum + bucket.goldEarned, 0)).toBe(125)
+  })
+
+  it('persists the farm-only totals instead of the old gross Gold total', () => {
+    const now = Date.now()
+    let persisted: Record<string, unknown> | undefined
+    const tracker = new FarmGoldAnalyticsTracker({
+      onPersist: (state) => { persisted = state as unknown as Record<string, unknown> }
+    })
+
+    tracker.ingestState({ id: 1, gold: 2_000 }, true, now)
+    tracker.ingestState({ gold: 2_050 }, false, now + 1_000)
+    tracker.ingestPacket({ t: 'batalha', ev: [{ k: 'marketVendido', tipo: 'item', itemId: 7, valor: 400, moeda: 'gold' }] }, now + 2_000)
+    tracker.ingestState({ gold: 2_450 }, false, now + 3_000)
+
+    expect(persisted?.goldEarnedTotal).toBe(50)
+    expect(persisted?.farmGoldTotal).toBe(50)
+    expect(persisted?.farmGoldVersion).toBe(1)
   })
 })
