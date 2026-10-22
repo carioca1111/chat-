@@ -35,6 +35,7 @@ export interface PanelHistoryBucket {
   at: number
   pokemonXp: number
   captures: number
+  goldEarned: number
   marketCoins: number
   marketGems: number
   rmtBrl: number
@@ -55,6 +56,8 @@ export interface PanelAnalyticsSnapshot {
   lastCaptureAt: number | null
   pokemonXpTotal: number
   pokemonXpLastHour: number
+  goldEarnedTotal: number
+  goldEarnedLastHour: number
   marketCoinsRevenue: number
   marketGemsRevenue: number
   rmtBrlRevenue: number
