@@ -302,8 +302,8 @@ export class PanelAnalyticsTracker {
   snapshot(at = Date.now()): PanelAnalyticsSnapshot {
     this.pruneHistory(at)
     const minute = this.sortedHistory(this.historyMinute)
-    const capturesLastHour = minute.filter((bucket) => bucket.at >= at - HOUR).reduce((sum, bucket) => sum + bucket.captures, 0)
-    const pokemonXpLastHour = minute.filter((bucket) => bucket.at >= at - HOUR).reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
+    const capturesLastHour = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at).reduce((sum, bucket) => sum + bucket.captures, 0)
+    const pokemonXpLastHour = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at).reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
     return {
       revision: this.revision,
       sessionStartedAt: this.sessionStartedAt,
