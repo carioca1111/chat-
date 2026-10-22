@@ -100,13 +100,13 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
         <ChartToolbar granularity={granularity} onGranularity={setGranularity} />
         <LineChart points={captureSeries} valueFormatter={fmt} tone="captures" />
       </ChartCard>
-      <ChartCard title="GOLD GANHO" subtitle="4 contas somadas · batalha, Hunt, Market e qualquer aumento confirmado do saldo" wide>
+      <ChartCard title="GOLD GANHO" subtitle="4 contas somadas · apenas Gold de farm/jogo · Market e RMT excluídos" wide>
         <div class="panel-money-toolbar single-source"><ChartToolbar granularity={granularity} onGranularity={setGranularity} /></div>
         <TrendColumnChart points={goldSeries} valueFormatter={compact} />
         <div class="panel-revenue-accounts">
           {goldByAccount.map((row) => <div key={row.accountId}><small>CONTA {row.accountId}</small><b>{compact(row.value)} Gold</b></div>)}
         </div>
-        <div class="panel-money-note">Cada coluna mede <b>Gold ganho bruto</b> pelo aumento real de <b>estado.gold</b>. 1m mostra 60 minutos, 1h mostra 24 horas e 1d mostra 30 dias, sempre no horário de Brasília.</div>
+        <div class="panel-money-note">Cada coluna mede <b>Gold de farm/jogo</b>. Créditos de <b>Market</b> e registros de <b>RMT</b> são excluídos da métrica.</div>
       </ChartCard>
       <ChartCard title="CAPTURAS POR CONTA" subtitle="Últimos 60 minutos">
         <ColumnChart labels={accountBars.map((row) => `Conta ${row.account.id}`)} values={accountBars.map((row) => row.value)} classes={['account a1','account a2','account a3','account a4']} />
@@ -135,7 +135,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
     <section class="panel-note poke-card">
       <b>HISTÓRICO PERSISTENTE</b>
-      <span>O painel restaura os dados após reiniciar o PC. As janelas exibem exatamente 60 minutos, 24 horas ou 30 dias e os rótulos seguem America/Sao_Paulo. O Gold é calculado por aumento positivo do saldo real; notas usam o campo oficial “nota”.</span>
+      <span>O painel restaura os dados após reiniciar o PC. As janelas exibem exatamente 60 minutos, 24 horas ou 30 dias e os rótulos seguem America/Sao_Paulo. O Gold considera apenas ganhos de farm/jogo; vendas no Market e RMT ficam separadas; notas usam o campo oficial “nota”.</span>
     </section>
   </main>
 }
