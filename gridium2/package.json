@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.7.1",
+  "version": "2.0.0-alpha.8.0",
   "private": true,
-  "description": "Gridium 2 Alpha 0.7.1 - fixes official Pokemon note analytics from zero",
+  "description": "Gridium 2 Alpha 0.8 - persistent panel analytics, XP/capture/revenue charts and Pokemon sprites",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
