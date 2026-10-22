@@ -1,8 +1,8 @@
 import { app } from 'electron'
 import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
+import { appendFileSync, createReadStream, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { Transform, Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -11,6 +11,8 @@ import type { UpdateSnapshot } from '../shared/contracts'
 const RELEASES_API = 'https://api.github.com/repos/carioca1111/chat-/releases?per_page=20'
 const RELEASE_TAG_PREFIX = 'gridium2-v'
 const MANIFEST_ASSET = 'gridium2-update.json'
+const FETCH_TIMEOUT_MS = 20_000
+const DOWNLOAD_TIMEOUT_MS = 5 * 60_000
 
 interface GitHubAsset {
   name: string
@@ -38,10 +40,20 @@ interface ResolvedUpdate {
   releaseUrl?: string
 }
 
+interface PendingUpdateAttempt {
+  expectedVersion: string
+  executable: string
+  installDir: string
+  startedAt: number
+}
+
 export class GridiumAppUpdater {
   private snapshotState: UpdateSnapshot
   private resolved: ResolvedUpdate | null = null
   private downloadedPath: string | null = null
+  private readonly updatesDir = join(app.getPath('userData'), 'updates')
+  private readonly pendingPath = join(this.updatesDir, 'pending-update.json')
+  private readonly logPath = join(this.updatesDir, 'updater.log')
 
   constructor(private readonly publish: () => void) {
     this.snapshotState = {
@@ -50,6 +62,7 @@ export class GridiumAppUpdater {
       progress: 0,
       message: 'Pronto para verificar atualizações.'
     }
+    this.reconcilePreviousAttempt()
   }
 
   snapshot(): UpdateSnapshot {
@@ -58,7 +71,8 @@ export class GridiumAppUpdater {
 
   async check(silent = false): Promise<UpdateSnapshot> {
     if (this.snapshotState.status === 'downloading') return this.snapshot()
-    this.setState({ status: 'checking', progress: 0, message: 'Verificando nova versão…' })
+    this.setState({ status: 'checking', progress: 0, message: 'Verificando nova versão no canal oficial…' })
+    this.log(`check:start current=${app.getVersion()}`)
     try {
       const releases = await fetchJson<GitHubRelease[]>(RELEASES_API)
       const candidates = releases
@@ -69,35 +83,48 @@ export class GridiumAppUpdater {
         const version = tagVersion(release.tag_name)
         if (compareVersions(version, app.getVersion()) <= 0) continue
         const manifestAsset = release.assets.find((asset) => asset.name === MANIFEST_ASSET)
-        if (!manifestAsset) continue
+        if (!manifestAsset) {
+          this.log(`check:skip ${version} manifest-missing`)
+          continue
+        }
         const manifest = await fetchJson<UpdateManifest>(manifestAsset.browser_download_url)
-        if (manifest.version !== version || !/^[a-f0-9]{64}$/i.test(manifest.sha256)) continue
+        if (manifest.version !== version || !/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
+          this.log(`check:skip ${version} manifest-invalid`)
+          continue
+        }
         const installer = release.assets.find((asset) => asset.name === manifest.installer)
-        if (!installer || !installer.name.toLowerCase().endsWith('.exe')) continue
+        if (!installer || !installer.name.toLowerCase().endsWith('.exe')) {
+          this.log(`check:skip ${version} installer-missing`)
+          continue
+        }
         this.resolved = { version, installer, sha256: manifest.sha256.toLowerCase(), releaseUrl: release.html_url }
         this.downloadedPath = null
+        this.log(`check:available ${version} installer=${installer.name}`)
         this.setState({
           status: 'available',
           availableVersion: version,
           progress: 0,
-          message: `Gridium ${version} disponível.`
+          message: `Gridium ${version} disponível. Canal verificado.`
         })
         return this.snapshot()
       }
 
       this.resolved = null
       this.downloadedPath = null
+      this.log('check:up-to-date')
       this.setState({
         status: 'up-to-date',
         availableVersion: undefined,
         progress: 0,
-        message: silent ? 'Atualizado.' : 'Você já está na versão mais recente.'
+        message: silent ? 'Atualizado.' : `Você já está na versão mais recente (${app.getVersion()}).`
       })
     } catch (error) {
+      const detail = errorMessage(error)
+      this.log(`check:error ${detail}`)
       this.setState({
         status: 'error',
         progress: 0,
-        message: `Não foi possível verificar atualizações: ${errorMessage(error)}`
+        message: `Falha ao verificar atualizações: ${detail}`
       })
     }
     return this.snapshot()
@@ -111,16 +138,21 @@ export class GridiumAppUpdater {
     if (this.snapshotState.status === 'downloading') return this.snapshot()
 
     const update = this.resolved
-    const dir = join(app.getPath('userData'), 'updates')
-    await mkdir(dir, { recursive: true })
-    const filePath = join(dir, safeFileName(update.installer.name))
+    await mkdir(this.updatesDir, { recursive: true })
+    const filePath = join(this.updatesDir, safeFileName(update.installer.name))
     await rm(filePath, { force: true }).catch(() => undefined)
     this.setState({ status: 'downloading', progress: 0, message: `Baixando Gridium ${update.version}…` })
+    this.log(`download:start ${update.version} -> ${filePath}`)
 
     try {
       const response = await fetch(update.installer.browser_download_url, {
-        headers: { 'User-Agent': `Gridium-2/${app.getVersion()}` },
-        redirect: 'follow'
+        headers: {
+          Accept: 'application/octet-stream',
+          'Cache-Control': 'no-cache',
+          'User-Agent': `Gridium-2/${app.getVersion()}`
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
       })
       if (!response.ok || !response.body) throw new Error(`download HTTP ${response.status}`)
       const total = Number(response.headers.get('content-length') || update.installer.size || 0)
@@ -140,39 +172,101 @@ export class GridiumAppUpdater {
         throw new Error('SHA-256 do instalador não confere')
       }
       this.downloadedPath = filePath
-      this.setState({ status: 'ready', progress: 100, message: `Gridium ${update.version} pronto para instalar.` })
+      this.log(`download:verified ${update.version} sha256=${actual}`)
+      this.setState({ status: 'ready', progress: 100, message: `Gridium ${update.version} validado e pronto para instalar.` })
     } catch (error) {
+      const detail = errorMessage(error)
       this.downloadedPath = null
-      this.setState({ status: 'error', progress: 0, message: `Falha no download: ${errorMessage(error)}` })
+      this.log(`download:error ${detail}`)
+      this.setState({ status: 'error', progress: 0, message: `Falha no download/validação: ${detail}` })
     }
     return this.snapshot()
   }
 
   async installAndRestart(): Promise<boolean> {
-    if (!this.downloadedPath || this.snapshotState.status !== 'ready') return false
+    if (!this.downloadedPath || this.snapshotState.status !== 'ready' || !this.resolved) return false
     if (process.platform !== 'win32') return false
+
+    await mkdir(this.updatesDir, { recursive: true })
     const installer = this.downloadedPath
     const executable = process.execPath
-    const pid = process.pid
-    const ps = [
-      `$p=${pid}`,
-      `while(Get-Process -Id $p -ErrorAction SilentlyContinue){Start-Sleep -Milliseconds 250}`,
-      `Start-Process -FilePath '${psEscape(installer)}' -ArgumentList '/S' -Wait`,
-      `Start-Process -FilePath '${psEscape(executable)}'`
-    ].join(';')
-    const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    })
-    child.unref()
-    app.quit()
-    return true
+    const installDir = dirname(executable)
+    const helperPath = join(this.updatesDir, 'apply-update.ps1')
+    const expectedVersion = this.resolved.version
+    const attempt: PendingUpdateAttempt = { expectedVersion, executable, installDir, startedAt: Date.now() }
+    writeFileSync(this.pendingPath, JSON.stringify(attempt, null, 2), 'utf8')
+    writeFileSync(helperPath, buildInstallerPowerShell({
+      pid: process.pid,
+      installer,
+      executable,
+      installDir,
+      logPath: this.logPath
+    }), 'utf8')
+
+    this.log(`install:start expected=${expectedVersion} installDir=${installDir}`)
+    this.setState({ status: 'ready', progress: 100, message: `Instalando ${expectedVersion} no mesmo diretório do Gridium…` })
+    try {
+      const child = spawn('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-WindowStyle', 'Hidden',
+        '-File', helperPath
+      ], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      })
+      child.unref()
+      app.quit()
+      return true
+    } catch (error) {
+      const detail = errorMessage(error)
+      this.log(`install:spawn-error ${detail}`)
+      this.setState({ status: 'error', progress: 100, message: `Não foi possível iniciar a instalação: ${detail}` })
+      return false
+    }
+  }
+
+  private reconcilePreviousAttempt(): void {
+    if (!existsSync(this.pendingPath)) return
+    try {
+      const attempt = JSON.parse(readFileSync(this.pendingPath, 'utf8')) as Partial<PendingUpdateAttempt>
+      const expected = String(attempt.expectedVersion || '')
+      if (!expected) throw new Error('marcador sem versão esperada')
+      if (compareVersions(app.getVersion(), expected) >= 0) {
+        this.snapshotState = {
+          currentVersion: app.getVersion(),
+          status: 'up-to-date',
+          progress: 100,
+          message: `Atualização concluída com sucesso: ${app.getVersion()}.`
+        }
+        this.log(`install:confirmed expected=${expected} current=${app.getVersion()}`)
+      } else {
+        this.snapshotState = {
+          currentVersion: app.getVersion(),
+          status: 'error',
+          progress: 0,
+          message: `A atualização para ${expected} não foi aplicada. O Gridium continua em ${app.getVersion()}.`
+        }
+        this.log(`install:not-applied expected=${expected} current=${app.getVersion()}`)
+      }
+      void rm(this.pendingPath, { force: true }).catch(() => undefined)
+    } catch (error) {
+      this.log(`install:marker-error ${errorMessage(error)}`)
+      void rm(this.pendingPath, { force: true }).catch(() => undefined)
+    }
   }
 
   private setState(patch: Partial<UpdateSnapshot>): void {
     this.snapshotState = { ...this.snapshotState, ...patch, currentVersion: app.getVersion() }
     this.publish()
+  }
+
+  private log(message: string): void {
+    try {
+      if (!existsSync(this.updatesDir)) return
+      appendFileSync(this.logPath, `${new Date().toISOString()} ${message}\n`, 'utf8')
+    } catch { /* updater logging must never break the app */ }
   }
 }
 
@@ -180,9 +274,11 @@ async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
       Accept: 'application/vnd.github+json',
+      'Cache-Control': 'no-cache',
       'User-Agent': `Gridium-2/${app.getVersion()}`
     },
-    redirect: 'follow'
+    redirect: 'follow',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   })
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`)
   return await response.json() as T
@@ -201,6 +297,40 @@ export function compareVersions(a: string, b: string): number {
     if (diff !== 0) return diff
   }
   return 0
+}
+
+export function buildInstallerPowerShell(input: {
+  pid: number
+  installer: string
+  executable: string
+  installDir: string
+  logPath: string
+}): string {
+  const installer = psEscape(input.installer)
+  const executable = psEscape(input.executable)
+  const installDir = psEscape(input.installDir)
+  const logPath = psEscape(input.logPath)
+  return [
+    `$ErrorActionPreference='Stop'`,
+    `$targetPid=${Math.max(1, Math.floor(input.pid))}`,
+    `$installer='${installer}'`,
+    `$executable='${executable}'`,
+    `$installDir='${installDir}'`,
+    `$logPath='${logPath}'`,
+    `while(Get-Process -Id $targetPid -ErrorAction SilentlyContinue){Start-Sleep -Milliseconds 250}`,
+    `try {`,
+    `  Add-Content -Path $logPath -Value "$(Get-Date -Format o) helper:install-start dir=$installDir"`,
+    `  $proc=Start-Process -FilePath $installer -ArgumentList "/S /D=$installDir" -PassThru -Wait`,
+    `  Add-Content -Path $logPath -Value "$(Get-Date -Format o) helper:installer-exit=$($proc.ExitCode)"`,
+    `  if($proc.ExitCode -ne 0){throw "installer exit $($proc.ExitCode)"}`,
+    `  if(-not (Test-Path $executable)){throw "updated executable not found"}`,
+    `  Start-Sleep -Milliseconds 500`,
+    `  Start-Process -FilePath $executable`,
+    `} catch {`,
+    `  Add-Content -Path $logPath -Value "$(Get-Date -Format o) helper:error=$($_.Exception.Message)"`,
+    `  if(Test-Path $executable){Start-Process -FilePath $executable}`,
+    `}`
+  ].join('\r\n')
 }
 
 async function sha256File(path: string): Promise<string> {
