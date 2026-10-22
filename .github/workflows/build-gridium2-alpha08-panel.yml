@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 1.2.2 Farm Gold Only
+name: Build Gridium 2 Alpha 1.2.3 Hunt Worker
 
 on:
   push:
     branches:
-      - gridium2-alpha1.2.2-farm-gold-only
+      - gridium2-alpha1.2.3-hunt-worker
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -20,10 +20,10 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 1.2.2 branch
+      - name: Checkout Alpha 1.2.3 branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha1.2.2-farm-gold-only
+          ref: gridium2-alpha1.2.3-hunt-worker
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,7 +48,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.2.2-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.2.3-Setup.exe" >> $env:GITHUB_OUTPUT
 
       - name: Verify installer and create update manifest
         shell: pwsh
@@ -68,9 +68,9 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.2.2-Farm-Gold-Only-Windows
+          name: Gridium-2-Alpha-1.2.3-Hunt-Worker-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.2.2-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.2.3-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -81,17 +81,17 @@ jobs:
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Alpha 1.2.2 · Farm Gold Only
+          name: Gridium 2 Alpha 1.2.3 · Hunt Performance
           body: |
-            Gridium 2 Alpha 1.2.2 — Gold ganho passa a representar apenas Gold de farm/jogo.
+            Gridium 2 Alpha 1.2.3 — correção do travamento ao abrir Hunt Intelligence.
 
-            - vendas de Pokémon no Market não entram mais em Gold ganho
-            - vendas de itens no Market também são excluídas do Gold ganho
-            - RMT continua separado em R$ e nunca contamina Gold ganho
-            - quando venda e farm chegam no mesmo saldo, apenas a parte de farm é contabilizada
-            - histórico antigo é migrado removendo receita Market já registrada
-            - mantém o updater 1.2.1, Predictive Hunt, Sentinel, Detector, Hunt Learning e WhatsApp
+            - rota futura deixa de rodar na thread da interface
+            - buildRoute passa a executar em Web Worker dedicado
+            - ranking atual aparece imediatamente enquanto a rota futura calcula em paralelo
+            - evita recalcular a rota em todo pacote do servidor; ETA é atualizado em janela de 15 s
+            - ao sair da Hunt, o Worker é encerrado e não continua consumindo CPU em segundo plano
+            - mantém Predictive Hunt, Gold farm-only, updater, Sentinel, Detector, Hunt Learning e WhatsApp
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.2.2-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.2.3-Setup.exe
             gridium2/release/gridium2-update.json
