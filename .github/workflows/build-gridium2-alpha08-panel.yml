@@ -1,9 +1,9 @@
-name: Build Gridium 2 Alpha 0.8.1 Compact Panel
+name: Build Gridium 2 Alpha 0.8.2 Panel Cleanup
 
 on:
   push:
     branches:
-      - gridium2-alpha0.8.1-compact-panel
+      - gridium2-alpha0.8.2-panel-cleanup
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -20,10 +20,10 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 0.8.1 branch
+      - name: Checkout Alpha 0.8.2 branch
         uses: actions/checkout@v4
         with:
-          ref: gridium2-alpha0.8.1-compact-panel
+          ref: gridium2-alpha0.8.2-panel-cleanup
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -39,14 +39,14 @@ jobs:
       - name: Verify installer
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.8.1-Setup.exe" -Recurse | Select-Object -First 1
+          $installer = Get-ChildItem -Path release -Filter "Gridium-2-Alpha-0.8.2-Setup.exe" -Recurse | Select-Object -First 1
           if (-not $installer) { throw "Installer not found" }
           Write-Host "Installer: $($installer.FullName)"
           Get-FileHash $installer.FullName -Algorithm SHA256
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-0.8.1-Compact-Panel-Windows
-          path: gridium2/release/Gridium-2-Alpha-0.8.1-Setup.exe
+          name: Gridium-2-Alpha-0.8.2-Panel-Cleanup-Windows
+          path: gridium2/release/Gridium-2-Alpha-0.8.2-Setup.exe
           if-no-files-found: error
           retention-days: 90
