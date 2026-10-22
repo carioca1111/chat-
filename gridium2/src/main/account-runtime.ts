@@ -1,6 +1,6 @@
 import { app, BrowserWindow, session, WebContentsView } from 'electron'
 import type { Session } from 'electron'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
@@ -15,6 +15,7 @@ import type {
   EffectivePowerState,
   HuntProfileScan,
   HuntProtocolStatus,
+  PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey,
   PowerAutomationSettings,
@@ -24,6 +25,7 @@ import { AutoMarketRuntime } from './auto-market-runtime'
 import type { AutoMarketPersistedSettings } from './auto-market-runtime'
 import type { Rect } from './layout'
 import { MARKET_BRIDGE_SOURCE } from './market-bridge'
+import type { PanelAnalyticsPersistedState } from './panel-analytics-runtime'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
 import { DEFAULT_POWER_AUTOMATION, resolveAccountPowerState } from './power-policy'
 import { PokeIdleServerState } from './pokeidle-server-state'
@@ -34,6 +36,7 @@ const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.i
 const POWER_MODES = new Set<AccountPowerMode>(['auto', 'on', 'black', 'suspended'])
 
 type JsonRecord = Record<string, unknown>
+type StoredPanelAnalytics = Partial<Record<AccountId, PanelAnalyticsPersistedState>>
 
 interface StoredPowerSettings {
   modes: Partial<Record<AccountId, AccountPowerMode>>
@@ -75,10 +78,13 @@ export class AccountRuntime {
   private readonly zoomFilePath = join(app.getPath('userData'), 'gridium2-account-zoom.json')
   private readonly powerFilePath = join(app.getPath('userData'), 'gridium2-power-settings.json')
   private readonly autoMarketFilePath = join(app.getPath('userData'), 'gridium2-automarket.json')
+  private readonly panelAnalyticsFilePath = join(app.getPath('userData'), 'gridium2-panel-analytics-v2.json')
   private readonly autoMarket: AutoMarketRuntime
   private zoomWrite: Promise<void> = Promise.resolve()
   private powerWrite: Promise<void> = Promise.resolve()
   private autoMarketWrite: Promise<void> = Promise.resolve()
+  private panelAnalyticsWrite: Promise<void> = Promise.resolve()
+  private panelPersistTimer: ReturnType<typeof setTimeout> | null = null
   private powerAutomation: PowerAutomationSettings = { ...DEFAULT_POWER_AUTOMATION }
   private disposed = false
 
@@ -88,6 +94,7 @@ export class AccountRuntime {
   ) {
     const storedZoom = this.loadZoomSettings()
     const storedPower = this.loadPowerSettings()
+    const storedPanelAnalytics = this.loadPanelAnalyticsSettings()
     this.powerAutomation = storedPower.automation
     this.autoMarket = new AutoMarketRuntime({
       initial: this.loadAutoMarketSettings(),
@@ -99,7 +106,8 @@ export class AccountRuntime {
       this.createAccount(
         id,
         normalizeAccountZoom(storedZoom[id] ?? DEFAULT_ACCOUNT_ZOOM),
-        storedPower.modes[id] ?? 'auto'
+        storedPower.modes[id] ?? 'auto',
+        storedPanelAnalytics[id] ?? null
       )
     }
   }
@@ -143,6 +151,17 @@ export class AccountRuntime {
 
   setAutoMarketRule(accountId: AccountId, rule: AutoMarketRule): void {
     this.autoMarket.updateRule(accountId, rule)
+  }
+
+  addPanelRmtSale(accountId: AccountId, sale: PanelRmtSaleInput): boolean {
+    const account = this.accounts.get(accountId)
+    if (!account) return false
+    const changed = account.serverState.registerRmtSale(sale)
+    if (changed) {
+      this.schedulePersistPanelAnalytics()
+      this.onChanged()
+    }
+    return changed
   }
 
   getPowerAutomation(): PowerAutomationSettings {
@@ -261,6 +280,11 @@ export class AccountRuntime {
 
   destroy(): void {
     if (this.disposed) return
+    this.flushPanelAnalyticsSync()
+    if (this.panelPersistTimer) {
+      clearTimeout(this.panelPersistTimer)
+      this.panelPersistTimer = null
+    }
     this.disposed = true
     this.autoMarket.destroy()
     for (const auth of this.authWindows) if (!auth.isDestroyed()) auth.close()
@@ -275,7 +299,7 @@ export class AccountRuntime {
     this.accounts.clear()
   }
 
-  private createAccount(id: AccountId, zoomPercent: number, powerMode: AccountPowerMode): void {
+  private createAccount(id: AccountId, zoomPercent: number, powerMode: AccountPowerMode, analyticsInitial: PanelAnalyticsPersistedState | null): void {
     const partition = `persist:gridium2-account-${id}`
     const accountSession = session.fromPartition(partition)
     const view = new WebContentsView({
@@ -297,7 +321,11 @@ export class AccountRuntime {
       attached: false, visible: false, status: 'booting', title: 'PokeIdle.io',
       desiredVisualMode: 'eco', appliedVisualMode: 'full', ecoCssKey: null, visualUpdateRunning: false,
       zoomPercent, powerMode, desiredPowerState: 'on', appliedPowerState: 'on', powerUpdateRunning: false,
-      suspendSupported: true, huntProfile: null, huntProtocolStatus: 'waiting', serverState: new PokeIdleServerState(),
+      suspendSupported: true, huntProfile: null, huntProtocolStatus: 'waiting',
+      serverState: new PokeIdleServerState({
+        analyticsInitial,
+        onAnalyticsPersist: () => this.schedulePersistPanelAnalytics()
+      }),
       socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null
     }
 
@@ -418,14 +446,21 @@ export class AccountRuntime {
     try {
       const packet = JSON.parse(raw) as unknown
       this.autoMarket.ingest(account.id, packet)
-      if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) return
+      const auxiliaryChanged = account.serverState.ingestAuxiliary(packet)
+      if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) {
+        if (auxiliaryChanged) this.onChanged()
+        return
+      }
       const result = account.serverState.ingest(packet)
-      if (!result.accepted) return
+      if (!result.accepted) {
+        if (auxiliaryChanged) this.onChanged()
+        return
+      }
       const statusChanged = account.huntProtocolStatus !== 'live'
       account.huntProtocolStatus = 'live'
       if (result.changed) account.huntProfile = result.profile
       else if (account.huntProfile === null && result.profile) account.huntProfile = result.profile
-      if (result.changed || statusChanged) this.onChanged()
+      if (result.changed || statusChanged || auxiliaryChanged) this.onChanged()
     } catch {
       // Raw payloads are deliberately never logged or persisted.
     }
@@ -634,6 +669,43 @@ export class AccountRuntime {
   private persistAutoMarketSettings(settings: AutoMarketPersistedSettings): void {
     const payload = JSON.stringify(settings, null, 2)
     this.autoMarketWrite = this.autoMarketWrite.catch(() => undefined).then(() => writeFile(this.autoMarketFilePath, payload, 'utf8')).catch(() => undefined)
+  }
+
+  private loadPanelAnalyticsSettings(): StoredPanelAnalytics {
+    try {
+      const parsed = JSON.parse(readFileSync(this.panelAnalyticsFilePath, 'utf8')) as { accounts?: Record<string, PanelAnalyticsPersistedState> } | Record<string, PanelAnalyticsPersistedState>
+      const source = 'accounts' in parsed && parsed.accounts && typeof parsed.accounts === 'object' ? parsed.accounts : parsed as Record<string, PanelAnalyticsPersistedState>
+      const out: StoredPanelAnalytics = {}
+      for (const id of [1,2,3,4] as AccountId[]) {
+        const value = source[String(id)]
+        if (value && typeof value === 'object') out[id] = value
+      }
+      return out
+    } catch { return {} }
+  }
+
+  private schedulePersistPanelAnalytics(): void {
+    if (this.disposed || this.panelPersistTimer) return
+    this.panelPersistTimer = setTimeout(() => {
+      this.panelPersistTimer = null
+      this.persistPanelAnalytics()
+    }, 600)
+  }
+
+  private panelAnalyticsPayload(): string {
+    const accounts = Object.fromEntries([...this.accounts.values()].map((account) => [String(account.id), account.serverState.analyticsPersisted()]))
+    return JSON.stringify({ version: 2, savedAt: Date.now(), accounts })
+  }
+
+  private persistPanelAnalytics(): void {
+    if (!this.accounts.size) return
+    const payload = this.panelAnalyticsPayload()
+    this.panelAnalyticsWrite = this.panelAnalyticsWrite.catch(() => undefined).then(() => writeFile(this.panelAnalyticsFilePath, payload, 'utf8')).catch(() => undefined)
+  }
+
+  private flushPanelAnalyticsSync(): void {
+    if (!this.accounts.size) return
+    try { writeFileSync(this.panelAnalyticsFilePath, this.panelAnalyticsPayload(), 'utf8') } catch { /* best-effort shutdown flush */ }
   }
 
   private authWindowOptions(account: AccountSlot): Electron.BrowserWindowConstructorOptions {
