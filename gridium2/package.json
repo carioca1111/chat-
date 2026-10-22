@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.12.0",
+  "version": "2.0.0-alpha.12.1",
   "private": true,
-  "description": "Gridium 2 Alpha 1.2 - compact predictive Hunt route metrics",
+  "description": "Gridium 2 Alpha 1.2.1 - updater bootstrap reliability fix",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
