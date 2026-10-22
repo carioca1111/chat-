@@ -12,6 +12,7 @@ import type {
   PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey,
+  SentinelSettingsInput,
   WhatsAppSettingsInput
 } from '../shared/contracts'
 import { AccountRuntime } from './account-runtime'
@@ -19,6 +20,7 @@ import { GridiumAppUpdater } from './app-updater'
 import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
+import { SentinelRuntime } from './sentinel-runtime'
 import { TelemetryService } from './telemetry'
 import { WhatsAppReporter } from './whatsapp-reporter'
 
@@ -28,6 +30,7 @@ let telemetry: TelemetryService | null = null
 let displayPower: DisplayPowerController | null = null
 let updater: GridiumAppUpdater | null = null
 let whatsapp: WhatsAppReporter | null = null
+let sentinel: SentinelRuntime | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
@@ -57,7 +60,8 @@ function currentSnapshot(): GridiumSnapshot {
       progress: 0,
       message: 'Atualizador iniciando…'
     },
-    whatsapp: whatsapp?.snapshot()
+    whatsapp: whatsapp?.snapshot(),
+    sentinel: sentinel?.snapshot()
   }
 }
 
@@ -85,6 +89,21 @@ function applyLayout(): void {
   const [width, height] = mainWindow.getContentSize()
   const result = computeLayout({ width, height }, layout, selectedAccount)
   accounts.applyLayout(result.bounds, result.visible, selectedAccount, performanceMode, hostIsActive(), hostIsMinimized())
+}
+
+function lastServerAt(accountId: AccountId): number {
+  return accounts?.autoMarketSnapshot().accounts.find((account) => account.accountId === accountId)?.lastServerAt ?? 0
+}
+
+async function recoverAccount(accountId: AccountId): Promise<boolean> {
+  const runtime = accounts
+  if (!runtime || !runtime.snapshots().some((account) => account.id === accountId)) return false
+  try {
+    await runtime.command(accountId, 'reload')
+    return true
+  } catch {
+    return false
+  }
 }
 
 function registerIpc(): void {
@@ -158,6 +177,11 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:whatsapp-save-settings', (_event, settings: WhatsAppSettingsInput) => whatsapp?.updateSettings(settings) ?? currentSnapshot().whatsapp)
   ipcMain.handle('gridium2:whatsapp-test', async () => await whatsapp?.sendTest() ?? currentSnapshot().whatsapp)
   ipcMain.handle('gridium2:whatsapp-report-now', async () => await whatsapp?.sendReportNow() ?? currentSnapshot().whatsapp)
+  ipcMain.handle('gridium2:sentinel-save-settings', (_event, settings: SentinelSettingsInput) => sentinel?.updateSettings(settings) ?? currentSnapshot().sentinel)
+  ipcMain.handle('gridium2:sentinel-recover-now', async (_event, id: AccountId) => {
+    if (![1,2,3,4].includes(id)) return false
+    return await sentinel?.recoverNow(id) ?? false
+  })
 }
 
 async function createWindow(): Promise<void> {
@@ -169,7 +193,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.0 WhatsApp Daily',
+    title: 'Gridium 2 — Alpha 1.1 Sentinel',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -210,15 +234,23 @@ app.whenReady().then(async () => {
   displayPower.start()
   updater = new GridiumAppUpdater(publish)
   whatsapp = new WhatsAppReporter(() => accounts?.snapshots() ?? [], publish)
+  sentinel = new SentinelRuntime({
+    accountsProvider: () => accounts?.snapshots() ?? [],
+    lastServerAtProvider: lastServerAt,
+    recoverAccount,
+    onChanged: publish
+  })
   registerIpc()
   await createWindow()
   whatsapp.start()
+  sentinel.start()
   if (app.isPackaged) setTimeout(() => void updater?.check(true), 6_000)
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
 app.on('before-quit', () => {
   telemetry?.stop()
   whatsapp?.stop()
+  sentinel?.stop()
   accounts?.destroy()
   displayPower?.destroy()
   displayPower = null
