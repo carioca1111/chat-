@@ -30,6 +30,9 @@ const api: GridiumApi = {
   scanHuntProfile: (accountId: AccountId) => ipcRenderer.invoke('gridium2:scan-hunt-profile', accountId),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
   accountCommand: (accountId: AccountId, command: AccountCommand) => ipcRenderer.invoke('gridium2:account-command', accountId, command),
+  checkForUpdates: () => ipcRenderer.invoke('gridium2:check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('gridium2:download-update'),
+  installUpdate: () => ipcRenderer.invoke('gridium2:install-update'),
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: GridiumSnapshot): void => callback(snapshot)
     ipcRenderer.on('gridium2:snapshot', listener)
