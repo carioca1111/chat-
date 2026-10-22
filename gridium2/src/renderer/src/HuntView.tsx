@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { AccountId, HuntProfileScan, HuntProtocolStatus } from '../../shared/contracts'
 import { loadHuntSpecies, type HuntSpecies } from './hunt-data'
 import { buildRoute, rankHunts, type HuntProfile } from './hunt-engine'
+import { PokemonSprite } from './PokemonSprite'
 
 export function HuntView({
   accountId,
@@ -22,7 +23,12 @@ export function HuntView({
       if (byId) return byId
     }
     const serverName = serverProfile.speciesName?.trim().toLowerCase()
-    return serverName ? data.find((row) => row[1].toLowerCase() === serverName) : undefined
+    if (!serverName) return undefined
+    const exact = data.find((row) => row[1].toLowerCase() === serverName)
+    if (exact) return exact
+    return data
+      .filter((row) => serverName.endsWith(` ${row[1].toLowerCase()}`))
+      .sort((a, b) => b[1].length - a[1].length)[0]
   }, [data, serverProfile?.speciesId, serverProfile?.speciesName])
 
   const missing = useMemo(() => {
@@ -92,11 +98,17 @@ export function HuntView({
           {protocolStatus === 'live' ? `● SERVIDOR AO VIVO${lastRead ? ` · ${lastRead}` : ''}` : protocolStatus === 'unavailable' ? 'MONITOR DO SERVIDOR INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}
         </span>
       </div>
-      <div class="hunt-route-identity">
-        <b>{displayName}</b>
-        <span>Pokémon Nv {serverProfile?.pokemonLevel ?? '—'}</span>
-        <span>Treinador Nv {serverProfile?.trainerLevel ?? '—'}</span>
-        <span>P{serverProfile?.potency ?? '—'}</span>
+      <div class="hunt-route-identity hunt-route-identity-with-sprite">
+        <PokemonSprite speciesId={species?.[0] ?? serverProfile?.speciesId} name={serverProfile?.speciesName ?? displayName} className="hunt-active-sprite" />
+        <div class="hunt-route-identity-copy">
+          <b>{displayName}</b>
+          <div class="hunt-route-identity-tags">
+            <span>Pokémon Nv {serverProfile?.pokemonLevel ?? '—'}</span>
+            <span>Treinador Nv {serverProfile?.trainerLevel ?? '—'}</span>
+            <span>P{serverProfile?.potency ?? '—'}</span>
+            {serverProfile?.shiny && <span>✦ SHINY</span>}
+          </div>
+        </div>
       </div>
       <small class="hunt-auto-note">activeId → registro exato do Pokémon. O Gridium usa IVs/stats/bônus por baixo do cálculo e mantém a tela focada apenas na decisão de rota.</small>
       {protocolStatus === 'live' && !serverProfile && <small class="hunt-error">O servidor está conectado, mas ainda não enviou o registro do Pokémon ativo.</small>}
@@ -117,10 +129,13 @@ export function HuntView({
         <div class="hunt-section-title"><strong>ROTA DE PROGRESSÃO</strong><span>troca somente quando outra Hunt supera a atual por margem relevante</span></div>
         <div class="route-track">{route.map((stage,index) =>
           <div class={`route-stage ${index === 0 ? 'current' : ''}`} key={`${stage.fromLevel}-${stage.fromPokemonLevel}-${stage.hunt.key}`}>
-            <small>{index === 0 ? 'AGORA' : `TROCAR · POKÉMON NV ${stage.fromPokemonLevel} · TREINADOR NV ${stage.fromLevel}`}</small>
-            <b>{stage.hunt.area}</b>
-            <span>{stage.hunt.name} · {compact(stage.hunt.pokemonXpPerHour)} XP/h do Pokémon</span>
-            {index > 0 && <em>estimativa: {formatEta(stage.etaHours)}</em>}
+            <PokemonSprite speciesId={stage.hunt.id} name={stage.hunt.name} className="hunt-route-sprite" />
+            <div class="route-stage-copy">
+              <small>{index === 0 ? 'AGORA' : `TROCAR · POKÉMON NV ${stage.fromPokemonLevel} · TREINADOR NV ${stage.fromLevel}`}</small>
+              <b>{stage.hunt.area}</b>
+              <span>{stage.hunt.name} · {compact(stage.hunt.pokemonXpPerHour)} XP/h do Pokémon</span>
+              {index > 0 && <em>estimativa: {formatEta(stage.etaHours)}</em>}
+            </div>
           </div>
         )}</div>
       </section>
@@ -129,7 +144,7 @@ export function HuntView({
         <div class="hunt-section-title"><strong>OUTRAS OPÇÕES AGORA</strong><span>XP/h do Pokémon com risco de desmaio penalizado</span></div>
         <div class="hunt-table-wrap"><table class="hunt-table route-v2-table"><thead><tr><th>#</th><th>HUNT / ALVO</th><th>REGIÃO</th><th>NÍVEL</th><th>XP/H DO POKÉMON</th></tr></thead><tbody>
           {ranking.map((row,index) => <tr class={index === 0 ? 'best' : ''} key={row.key}>
-            <td>{index+1}</td><td><b>{row.area}</b><small>{row.name}</small></td><td><span class="region-chip">{row.region}</span></td>
+            <td>{index+1}</td><td><div class="hunt-target-cell"><PokemonSprite speciesId={row.id} name={row.name} className="hunt-table-sprite" /><div><b>{row.area}</b><small>{row.name}</small></div></div></td><td><span class="region-chip">{row.region}</span></td>
             <td>{row.level.toLocaleString('pt-BR')}</td><td><strong>{compact(row.pokemonXpPerHour)}</strong></td>
           </tr>)}
         </tbody></table></div>
