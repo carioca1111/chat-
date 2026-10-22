@@ -28,11 +28,16 @@ const EMPTY: PanelAnalyticsSnapshot = {
   events: []
 }
 
+const METRICS = ['goldEarned', 'pokemonXp', 'captures'] as const
+
 describe('panel fixed time windows', () => {
-  it('renders exactly 60 minute points, 24 hour points and 30 day points', () => {
-    const now = new Date(2026, 9, 22, 3, 50, 30).getTime()
-    expect(buildSeries([EMPTY], 'minute', 'goldEarned', undefined, now)).toHaveLength(60)
-    expect(buildSeries([EMPTY], 'hour', 'goldEarned', undefined, now)).toHaveLength(24)
-    expect(buildSeries([EMPTY], 'day', 'goldEarned', undefined, now)).toHaveLength(30)
+  it('renders exactly 60 minute points, 24 hour points and 30 day points for Gold, XP and captures', () => {
+    const now = Date.UTC(2026, 9, 22, 6, 50, 30) // 03:50:30 em Brasília
+
+    for (const metric of METRICS) {
+      expect(buildSeries([EMPTY], 'minute', metric, undefined, now)).toHaveLength(60)
+      expect(buildSeries([EMPTY], 'hour', metric, undefined, now)).toHaveLength(24)
+      expect(buildSeries([EMPTY], 'day', metric, undefined, now)).toHaveLength(30)
+    }
   })
 })
