@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.8.2",
+  "version": "2.0.0-alpha.8.3",
   "private": true,
-  "description": "Gridium 2 Alpha 0.8.2 - compact persistent analytics with fixed 60m/24h/30d windows",
+  "description": "Gridium 2 Alpha 0.8.3 - clean hover charts with Brasilia 60m/24h/30d windows",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
