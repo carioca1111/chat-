@@ -1,7 +1,6 @@
 import type { ComponentChildren } from 'preact'
 import { useMemo, useState } from 'preact/hooks'
 import type {
-  AccountId,
   AccountSnapshot,
   GridiumSnapshot,
   PanelAnalyticsSnapshot,
@@ -50,38 +49,19 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const revisions = analytics.map((row) => row.revision).join('|')
   const total = useMemo(() => combine(analytics), [revisions])
   const [granularity, setGranularity] = useState<PanelGranularity>('hour')
-  const [rmtAccount, setRmtAccount] = useState<AccountId>(1)
-  const [rmtValue, setRmtValue] = useState('')
-  const [rmtDescription, setRmtDescription] = useState('')
-  const [rmtStatus, setRmtStatus] = useState('')
   const online = accounts.filter((account) => account.status === 'ready').length
   const accountBars = accounts.map((account) => ({ account, value: account.panelAnalytics?.capturesLastHour ?? 0 }))
   const rare = combineRare(analytics)
   const events = combineEvents(accounts)
   const xpSeries = useMemo(() => buildSeries(analytics, granularity, 'pokemonXp'), [revisions, granularity])
   const captureSeries = useMemo(() => buildSeries(analytics, granularity, 'captures'), [revisions, granularity])
-  const goldSeries = useMemo(() => buildSeries(analytics, granularity, 'goldEarned', revenuePointCount(granularity)), [revisions, granularity])
+  const goldSeries = useMemo(() => buildSeries(analytics, granularity, 'goldEarned'), [revisions, granularity])
   const visibleGoldStart = goldSeries[0]?.at ?? 0
   const visibleGoldEnd = goldSeries.at(-1)?.at ?? Date.now()
   const goldByAccount = accounts.map((account) => ({
     accountId: account.id,
     value: sumMetric(account.panelAnalytics ?? EMPTY, granularity, 'goldEarned', visibleGoldStart, visibleGoldEnd)
   }))
-
-  const submitRmt = async (event: Event): Promise<void> => {
-    event.preventDefault()
-    const amount = Number(rmtValue.replace(',', '.'))
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setRmtStatus('Digite um valor válido.')
-      return
-    }
-    const ok = await window.gridium2.addPanelRmtSale(rmtAccount, { amountBrl: amount, description: rmtDescription.trim() })
-    setRmtStatus(ok ? 'Venda RMT registrada.' : 'Não foi possível registrar a venda.')
-    if (ok) {
-      setRmtValue('')
-      setRmtDescription('')
-    }
-  }
 
   return <main class="panel-page">
     <section class="panel-hero poke-card">
@@ -126,16 +106,8 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
         </div>
         <div class="panel-money-note">Cada coluna mede <b>Gold ganho bruto</b> pelo aumento real de <b>estado.gold</b>. Gastos não apagam o que já foi ganho. Vendas no Market entram pelo aumento do saldo e não são duplicadas.</div>
       </ChartCard>
-      <ChartCard title="REGISTRAR VENDA RMT" subtitle={`RMT continua separado do Gold · total registrado: ${brl(total.rmtBrlRevenue)}`}>
-        <form class="panel-rmt-form" onSubmit={submitRmt}>
-          <label>Conta<select value={rmtAccount} onChange={(event) => setRmtAccount(Number(event.currentTarget.value) as AccountId)}>
-            <option value={1}>Conta 1</option><option value={2}>Conta 2</option><option value={3}>Conta 3</option><option value={4}>Conta 4</option>
-          </select></label>
-          <label>Valor em R$<input value={rmtValue} inputMode="decimal" placeholder="Ex.: 35,00" onInput={(event) => setRmtValue(event.currentTarget.value)} /></label>
-          <label class="rmt-description">Descrição<input value={rmtDescription} placeholder="Ex.: venda de Pokémon" maxLength={80} onInput={(event) => setRmtDescription(event.currentTarget.value)} /></label>
-          <button type="submit">+ REGISTRAR RMT</button>
-          <small>{rmtStatus || 'RMT é R$ externo e não é somado ao Gold do jogo.'}</small>
-        </form>
+      <ChartCard title="CAPTURAS POR CONTA" subtitle="Últimos 60 minutos">
+        <ColumnChart labels={accountBars.map((row) => `Conta ${row.account.id}`)} values={accountBars.map((row) => row.value)} classes={['account a1','account a2','account a3','account a4']} />
       </ChartCard>
     </section>
 
@@ -152,10 +124,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <ChartCard title="ITENS RAROS RECEBIDOS" subtitle="Aumentos confirmados no inventário">
         {rare.length ? <ColumnChart labels={rare.map((item) => short(item.name))} values={rare.map((item) => item.quantity)} classes={rare.map((_,index) => `rare r${index}`)} /> : <EmptyChart text="Nenhum item raro confirmado" />}
       </ChartCard>
-      <ChartCard title="CAPTURAS POR CONTA" subtitle="Últimos 60 minutos">
-        <ColumnChart labels={accountBars.map((row) => `Conta ${row.account.id}`)} values={accountBars.map((row) => row.value)} classes={['account a1','account a2','account a3','account a4']} />
-      </ChartCard>
-      <ChartCard title="ATIVIDADE RECENTE" subtitle="Capturas, drops, Market e RMT persistidos" wide>
+      <ChartCard title="ATIVIDADE RECENTE" subtitle="Capturas, drops e Market persistidos" wide>
         <div class="panel-events">{events.length ? events.slice(0,12).map((event) => <div class="panel-event" key={`${event.accountId}-${event.at}-${event.label}`}>
           <time>{clock(event.at)}</time><b>Conta {event.accountId}</b><span>{event.label}</span><small>{event.detail}</small>
         </div>) : <div class="panel-event-empty">Aguardando as primeiras atividades.</div>}</div>
@@ -164,7 +133,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
     <section class="panel-note poke-card">
       <b>HISTÓRICO PERSISTENTE</b>
-      <span>O painel restaura os dados após reiniciar o PC. O Gold é calculado por aumento positivo do saldo real; notas usam o campo oficial “nota”.</span>
+      <span>O painel restaura os dados após reiniciar o PC. As janelas exibem 60 minutos, 24 horas ou 30 dias. O Gold é calculado por aumento positivo do saldo real; notas usam o campo oficial “nota”.</span>
     </section>
   </main>
 }
@@ -228,15 +197,17 @@ function LineChart({ points, valueFormatter, tone }: { points: TimePoint[]; valu
 
 function TrendColumnChart({ points, valueFormatter }: { points: TimePoint[]; valueFormatter:(value:number)=>string }) {
   const max = Math.max(1, ...points.map((point) => point.value))
+  const labelEvery = points[0]?.granularity === 'minute' ? 10 : points[0]?.granularity === 'hour' ? 4 : 5
   return <div class="trend-columns-scroll"><div class="trend-columns">
     {points.map((point,index) => {
       const previous = points[index - 1]?.value
       const trend = index === 0 ? 'neutral' : point.value > (previous ?? 0) ? 'up' : 'down'
       const height = Math.max(point.value > 0 ? 7 : 2, Math.round((point.value / max) * 100))
+      const showTime = index % labelEvery === 0 || index === points.length - 1
       return <div class="trend-column-slot" key={point.at}>
-        <span>{valueFormatter(point.value)}</span>
+        <span>{point.value > 0 ? valueFormatter(point.value) : ''}</span>
         <div class="trend-column-track"><i class={`trend-column ${trend}`} style={{height:`${height}%`}}><title>{`${timeLabel(point.at, point.granularity)} · ${valueFormatter(point.value)} Gold`}</title></i></div>
-        <b>{timeLabel(point.at, point.granularity)}</b>
+        <b>{showTime ? timeLabel(point.at, point.granularity) : ''}</b>
       </div>
     })}
   </div></div>
@@ -271,8 +242,7 @@ export function buildSeries(rows: PanelAnalyticsSnapshot[], granularity: PanelGr
   return starts.map((at) => ({ at, value: totals.get(at) ?? 0, granularity }))
 }
 
-function pointCount(granularity: PanelGranularity): number { return granularity === 'minute' ? 60 : granularity === 'hour' ? 48 : 30 }
-function revenuePointCount(granularity: PanelGranularity): number { return granularity === 'minute' ? 30 : granularity === 'hour' ? 24 : 30 }
+function pointCount(granularity: PanelGranularity): number { return granularity === 'minute' ? 60 : granularity === 'hour' ? 24 : 30 }
 function historyOf(row: PanelAnalyticsSnapshot, granularity: PanelGranularity): PanelHistoryBucket[] {
   return granularity === 'minute' ? row.historyMinute : granularity === 'hour' ? row.historyHour : row.historyDay
 }
@@ -342,7 +312,10 @@ function combineRare(rows: PanelAnalyticsSnapshot[]): PanelRareItemSnapshot[] {
 
 function combineEvents(accounts: AccountSnapshot[]): Array<PanelEventSnapshot & { accountId:number }> {
   const out: Array<PanelEventSnapshot & { accountId:number }> = []
-  for (const account of accounts) for (const event of account.panelAnalytics?.events ?? []) out.push({ ...event, accountId: account.id })
+  for (const account of accounts) for (const event of account.panelAnalytics?.events ?? []) {
+    if (event.accountEvent === 'rmt-sale') continue
+    out.push({ ...event, accountId: account.id })
+  }
   return out.sort((a,b) => b.at - a.at)
 }
 
@@ -354,7 +327,6 @@ function compact(value:number):string {
   if (abs >= 1_000) return `${(value/1_000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mil`
   return value.toLocaleString('pt-BR',{maximumFractionDigits:1})
 }
-function brl(value:number):string { return `R$ ${value.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}` }
 function ratio(caught:number, seen:number):number { return seen > 0 ? Math.round((caught / seen) * 100) : 0 }
 function short(value:string):string { return value.length > 13 ? `${value.slice(0,12)}…` : value }
 function clock(at:number):string { return new Date(at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }
@@ -364,7 +336,7 @@ function timeLabel(at:number, granularity:PanelGranularity):string {
   if (granularity === 'hour') return `${date.getHours().toString().padStart(2,'0')}h`
   return date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})
 }
-function granularityLabel(value:PanelGranularity):string { return value === 'minute' ? '1m por ponto' : value === 'hour' ? '1h por ponto' : '1d por ponto' }
+function granularityLabel(value:PanelGranularity):string { return value === 'minute' ? '1m por ponto · 60 minutos' : value === 'hour' ? '1h por ponto · 24 horas' : '1d por ponto · 30 dias' }
 function relative(at:number):string {
   const seconds = Math.max(0, Math.floor((Date.now() - at) / 1000))
   if (seconds < 60) return `${seconds}s atrás`
