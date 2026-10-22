@@ -1,5 +1,5 @@
 import type { HuntProfileScan, HuntStatBlock, PanelRmtSaleInput } from '../shared/contracts'
-import { PanelAnalyticsTracker } from './panel-analytics-runtime'
+import { FarmGoldAnalyticsTracker as PanelAnalyticsTracker } from './farm-gold-analytics-runtime'
 import type { PanelAnalyticsPersistedState } from './panel-analytics-runtime'
 
 type JsonRecord = Record<string, unknown>
