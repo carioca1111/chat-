@@ -20,6 +20,7 @@ import { AccountRuntime } from './account-runtime'
 import { GridiumAppUpdater } from './app-updater'
 import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
+import { setMobileHuntSummary } from './mobile-hunt-cache'
 import { MobileSyncRuntime } from './mobile-sync'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
 import { SentinelRuntime } from './sentinel-runtime'
@@ -188,6 +189,10 @@ function registerIpc(): void {
   })
   ipcMain.handle('gridium2:mobile-save-settings', (_event, settings: MobileSyncSettingsInput) => mobileSync?.updateSettings(settings) ?? currentSnapshot().mobileSync)
   ipcMain.handle('gridium2:mobile-create-pair-code', async () => await mobileSync?.createPairCode() ?? currentSnapshot().mobileSync)
+  ipcMain.handle('gridium2:mobile-hunt-summary', (_event, id: AccountId, summary: unknown) => {
+    if (![1,2,3,4].includes(id)) return
+    setMobileHuntSummary(id, summary)
+  })
 }
 
 async function createWindow(): Promise<void> {
