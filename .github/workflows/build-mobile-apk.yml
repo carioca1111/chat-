@@ -33,7 +33,7 @@ jobs:
           node --check /tmp/gridium-mobile.js
           grep -q 'HUNT INTELLIGENCE' mobile-android/app/src/main/assets/index.html
           grep -q 'SOMENTE LEITURA' mobile-android/app/src/main/assets/index.html
-          grep -q 'appassets.androidplatform.net' mobile-android/app/src/main/java/com/pokegrid/mobile/MainActivity.java
+          grep -q 'setAllowUniversalAccessFromFileURLs(true)' mobile-android/app/src/main/java/com/pokegrid/mobile/MainActivity.java
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -55,7 +55,7 @@ jobs:
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           "$BUILD_TOOLS/apksigner" verify --verbose "$OUT"
           "$BUILD_TOOLS/aapt" dump badging "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-validation.txt
-          grep -q "versionName='3.0.0-alpha.2'" mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-validation.txt
+          grep -q "versionName='3.0.0-alpha.1.1'" mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-validation.txt
           sha256sum "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -69,15 +69,15 @@ jobs:
         if: ${{ startsWith(github.event.head_commit.message, 'release-mobile:') }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: gridium2-mobile-v3.0.0-alpha.2
+          tag_name: gridium2-mobile-v3.0.0-alpha.1.1
           target_commitish: ${{ github.sha }}
           name: Gridium 2 Mobile Alpha 1.1 · Relay Fix
           body: |
             Gridium 2 Mobile Alpha 1.1 — correção do falso “Relay offline”.
 
-            - interface local deixa de usar origem file://
-            - assets passam pelo WebViewAssetLoader em origem HTTPS segura
-            - chamadas ao relay HTTPS passam a sair normalmente do Android
+            - mantém o dashboard local do APK
+            - libera a comunicação HTTPS necessária com o relay dentro do WebView
+            - remove a dependência AndroidX adicionada na tentativa anterior
             - mantém dashboard completo, Hunt, Sentinel, Market e notificações
             - mantém pareamento e token já salvo quando válido
 
