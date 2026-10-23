@@ -7,13 +7,9 @@ android {
         applicationId 'com.pokegrid.mobile24'
         minSdk 24
         targetSdk 35
-        versionCode 3001
-        versionName '3.0.0-alpha.2'
+        versionCode 3002
+        versionName '3.0.0-alpha.1.1'
     }
 }
 
-dependencies {
-    implementation 'androidx.webkit:webkit:1.12.1'
-}
-
-// Gridium 2 Mobile Alpha 2: secure appassets origin fixes relay access from WebView.
+// Gridium 2 Mobile Alpha 1.1: relay access fix without extra AndroidX dependency.
