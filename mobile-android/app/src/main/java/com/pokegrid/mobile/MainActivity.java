@@ -11,9 +11,11 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.webkit.*;
+import androidx.webkit.WebViewAssetLoader;
 
 public class MainActivity extends Activity {
     static final String RELAY = "https://pokegrid-relay-209e4eb1d9.onrender.com";
+    static final String APP_HOST = "appassets.androidplatform.net";
     WebView web;
 
     @Override public void onCreate(Bundle b){
@@ -24,22 +26,31 @@ public class MainActivity extends Activity {
         WebSettings s=web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        s.setAllowFileAccess(true);
+        s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         web.addJavascriptInterface(new Bridge(),"Android");
+
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+            .build();
+
         web.setWebViewClient(new WebViewClient(){
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request){
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){
                 Uri u=r.getUrl();
-                if("file".equals(u.getScheme())) return false;
+                if("https".equals(u.getScheme()) && APP_HOST.equals(u.getHost())) return false;
                 if("https".equals(u.getScheme()) && "pokegrid-relay-209e4eb1d9.onrender.com".equals(u.getHost())) return false;
                 try { startActivity(new Intent(Intent.ACTION_VIEW,u)); } catch(Exception ignored){}
                 return true;
             }
         });
         setContentView(web);
-        web.loadUrl("file:///android_asset/index.html");
+        web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},501);
     }
