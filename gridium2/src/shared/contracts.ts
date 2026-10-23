@@ -16,6 +16,7 @@ export type WhatsAppStatus = 'unconfigured' | 'idle' | 'sending' | 'sent' | 'err
 export type SentinelState = 'learning' | 'healthy' | 'anomaly' | 'recovering' | 'offline' | 'paused'
 export type SentinelMetric = 'xp' | 'captures' | 'gold'
 export type SentinelSeverity = 'warning' | 'critical'
+export type MobileSyncStatus = 'unconfigured' | 'idle' | 'syncing' | 'online' | 'error'
 
 export type AccountStatus = 'booting' | 'loading' | 'ready' | 'offline' | 'crashed'
 export type HuntProtocolStatus = 'waiting' | 'live' | 'unavailable'
@@ -59,6 +60,24 @@ export interface WhatsAppSettingsInput {
   alertShiny: boolean
   alertP5: boolean
   accessToken?: string
+}
+
+export interface MobileSyncSnapshot {
+  enabled: boolean
+  relayUrl: string
+  tokenConfigured: boolean
+  status: MobileSyncStatus
+  message: string
+  lastPushAt?: number
+  lastError?: string
+  pairCode?: string
+  pairExpiresAt?: number
+}
+
+export interface MobileSyncSettingsInput {
+  enabled: boolean
+  relayUrl: string
+  privateToken?: string
 }
 
 export interface SentinelMetricSnapshot {
@@ -312,6 +331,7 @@ export interface GridiumSnapshot {
   updater?: UpdateSnapshot
   whatsapp?: WhatsAppSnapshot
   sentinel?: SentinelSnapshot
+  mobileSync?: MobileSyncSnapshot
 }
 
 export interface GridiumApi {
@@ -338,5 +358,7 @@ export interface GridiumApi {
   sendWhatsAppReportNow: () => Promise<WhatsAppSnapshot>
   saveSentinelSettings: (settings: SentinelSettingsInput) => Promise<SentinelSnapshot>
   recoverAccountNow: (accountId: AccountId) => Promise<boolean>
+  saveMobileSyncSettings: (settings: MobileSyncSettingsInput) => Promise<MobileSyncSnapshot>
+  createMobilePairCode: () => Promise<MobileSyncSnapshot>
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => () => void
 }
