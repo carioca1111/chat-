@@ -17,7 +17,11 @@ import type {
   WhatsAppSettingsInput
 } from '../shared/contracts'
 
-const api: GridiumApi = {
+type MobileGridiumApi = GridiumApi & {
+  updateMobileHuntSummary: (accountId: AccountId, summary: unknown) => Promise<void>
+}
+
+const api: MobileGridiumApi = {
   getSnapshot: () => ipcRenderer.invoke('gridium2:get-snapshot'),
   setLayout: (layout: LayoutMode) => ipcRenderer.invoke('gridium2:set-layout', layout),
   setPerformanceMode: (mode: PerformanceMode) => ipcRenderer.invoke('gridium2:set-performance-mode', mode),
@@ -43,6 +47,7 @@ const api: GridiumApi = {
   recoverAccountNow: (accountId: AccountId) => ipcRenderer.invoke('gridium2:sentinel-recover-now', accountId),
   saveMobileSyncSettings: (settings: MobileSyncSettingsInput) => ipcRenderer.invoke('gridium2:mobile-save-settings', settings),
   createMobilePairCode: () => ipcRenderer.invoke('gridium2:mobile-create-pair-code'),
+  updateMobileHuntSummary: (accountId: AccountId, summary: unknown) => ipcRenderer.invoke('gridium2:mobile-hunt-summary', accountId, summary),
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: GridiumSnapshot): void => callback(snapshot)
     ipcRenderer.on('gridium2:snapshot', listener)
