@@ -1,5 +1,6 @@
 import { render } from 'preact'
 import { App } from './App'
+import './mobile-hunt-autostart'
 import './styles.css'
 import './zoom.css'
 import './hunt.css'
