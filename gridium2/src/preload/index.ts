@@ -9,6 +9,7 @@ import type {
   GridiumApi,
   GridiumSnapshot,
   LayoutMode,
+  MobileSyncSettingsInput,
   PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey,
@@ -40,6 +41,8 @@ const api: GridiumApi = {
   sendWhatsAppReportNow: () => ipcRenderer.invoke('gridium2:whatsapp-report-now'),
   saveSentinelSettings: (settings: SentinelSettingsInput) => ipcRenderer.invoke('gridium2:sentinel-save-settings', settings),
   recoverAccountNow: (accountId: AccountId) => ipcRenderer.invoke('gridium2:sentinel-recover-now', accountId),
+  saveMobileSyncSettings: (settings: MobileSyncSettingsInput) => ipcRenderer.invoke('gridium2:mobile-save-settings', settings),
+  createMobilePairCode: () => ipcRenderer.invoke('gridium2:mobile-create-pair-code'),
   onSnapshot: (callback: (snapshot: GridiumSnapshot) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: GridiumSnapshot): void => callback(snapshot)
     ipcRenderer.on('gridium2:snapshot', listener)
