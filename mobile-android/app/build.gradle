@@ -7,8 +7,9 @@ android {
         applicationId 'com.pokegrid.mobile24'
         minSdk 24
         targetSdk 35
-        versionCode 3002
-        versionName '3.0.0-alpha.1.1'
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+        versionCode 3003
+        versionName '3.0.0-alpha.1.2'
     }
 }
 

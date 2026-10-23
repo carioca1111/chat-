@@ -1,4 +1,4 @@
-name: Build Gridium 2 Mobile Alpha 1.1
+name: Build Gridium 2 Mobile Alpha 1.2
 
 on:
   workflow_dispatch:
@@ -33,7 +33,8 @@ jobs:
           node --check /tmp/gridium-mobile.js
           grep -q 'HUNT INTELLIGENCE' mobile-android/app/src/main/assets/index.html
           grep -q 'SOMENTE LEITURA' mobile-android/app/src/main/assets/index.html
-          grep -q 'setAllowUniversalAccessFromFileURLs(true)' mobile-android/app/src/main/java/com/pokegrid/mobile/MainActivity.java
+          node --check mobile-android/app/src/main/assets/mobile-sync.js
+          node --test mobile-android/test/mobile-sync.test.cjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,44 +44,71 @@ jobs:
           gradle-version: '8.9'
       - name: Build Android APK
         working-directory: mobile-android
-        run: gradle assembleDebug
+        run: gradle assembleDebug assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native Android HTTPS and token tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          disable-animations: true
+          script: cd mobile-android && gradle connectedDebugAndroidTest
+      - name: Android test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-android-test-results
+          path: mobile-android/app/build/reports/androidTests/
       - name: Verify and name APK
         run: |
           SRC=mobile-android/app/build/outputs/apk/debug/app-debug.apk
-          OUT=mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1.apk
+          OUT=mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2.apk
           test -s "$SRC"
           cp "$SRC" "$OUT"
           unzip -t "$OUT"
           unzip -p "$OUT" assets/index.html | grep -q 'Gridium 2 Mobile'
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           "$BUILD_TOOLS/apksigner" verify --verbose "$OUT"
-          "$BUILD_TOOLS/aapt" dump badging "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-validation.txt
-          grep -q "versionName='3.0.0-alpha.1.1'" mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-validation.txt
-          sha256sum "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-SHA256.txt
+          "$BUILD_TOOLS/aapt" dump badging "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-validation.txt
+          grep -q "versionName='3.0.0-alpha.1.2'" mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-validation.txt
+          sha256sum "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Mobile-Alpha-1.1
+          name: Gridium-2-Mobile-Alpha-1.2
           path: |
-            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1.apk
-            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-SHA256.txt
-            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1-validation.txt
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2.apk
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-SHA256.txt
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-validation.txt
           retention-days: 90
       - name: Publish APK release
         if: ${{ startsWith(github.event.head_commit.message, 'release-mobile:') }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: gridium2-mobile-v3.0.0-alpha.1.1
+          tag_name: gridium2-mobile-v3.0.0-alpha.1.2
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Mobile Alpha 1.1 · Relay Fix
+          name: Gridium 2 Mobile Alpha 1.2 · Relay Fix
           body: |
-            Gridium 2 Mobile Alpha 1.1 — correção do falso “Relay offline”.
+            Gridium 2 Mobile Alpha 1.2 — HTTPS nativo e diagnóstico por etapa.
 
-            - mantém o dashboard local do APK
-            - libera a comunicação HTTPS necessária com o relay dentro do WebView
-            - remove a dependência AndroidX adicionada na tentativa anterior
-            - mantém dashboard completo, Hunt, Sentinel, Market e notificações
-            - mantém pareamento e token já salvo quando válido
+            - corrige 404 no-data classificado como relay offline
+            - health antes de auth; distingue token inválido, PC offline, JSON e snapshot antigo
+            - HttpsURLConnection sem CORS, fetch ou permissões universais do WebView
+            - reconexão automática, token persistente e migração única
+            - Mais → Diagnóstico Mobile Sync → TESTAR CONEXÃO
+            - mantém dados completos das quatro contas e notificações
 
-            Requer Gridium 2 Alpha 1.3 ou superior no PC com Mobile Sync configurado.
+            Validação: testes de fluxo, relay local real, HTTPS e persistência em emulador Android,
+            apksigner verify, aapt dump badging e SHA-256 nos anexos.
+            Troca física Wi-Fi/4G e dados do PC do usuário ainda exigem validação no aparelho.
+            O relay online sem uploads do Desktop permanece corretamente como PC offline.
+            APK de teste assinado com chave debug; se a assinatura da instalação anterior diferir,
+            Android não permite atualização direta. Não desinstale sem considerar o novo pareamento.
           prerelease: false
-          files: mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.1.apk
+          files: |
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2.apk
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-SHA256.txt
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.2-validation.txt
