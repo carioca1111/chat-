@@ -25,6 +25,11 @@ http.createServer=function(options,listener){
   if(typeof options==='function'){listener=options;options=undefined;}
   const wrapped=async(req,res)=>{
     let u;try{u=new URL(req.url,'http://relay.local');}catch{return listener(req,res);}
+    // Operational metadata only: never log headers, body, pairing code or token.
+    if(['/health','/api/v1/latest','/api/v1/push','/api/v1/pair/start','/api/v1/pair/claim','/api/v2/health','/api/v2/state'].includes(u.pathname)) {
+      const started=Date.now();
+      res.once('finish',()=>console.log(JSON.stringify({event:'mobile-sync-request',method:req.method,path:u.pathname,status:res.statusCode,durationMs:Date.now()-started,client:String(req.headers['user-agent']||'').startsWith('Gridium2Mobile/')?'gridium2-mobile':'other'})));
+    }
     if(req.method==='OPTIONS'&&(u.pathname.startsWith('/api/v2/')||u.pathname.startsWith('/api/v1/mirror/')))return json(res,204,{});
     if(u.pathname.startsWith('/api/v1/mirror/')){if(await mirrorRelay.handle(req,res,u))return;}
     const who=identity(req);
