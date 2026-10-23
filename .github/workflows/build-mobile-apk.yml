@@ -1,13 +1,16 @@
-name: Build Gridium Mobile 2.5 Mirroring
+name: Build Gridium 2 Mobile Alpha 1
+
 on:
   workflow_dispatch:
   push:
-    branches: [gridium-alpha11.8.6-mobile-mirroring]
+    branches: [gridium2-mobile-full-dashboard]
     paths:
       - 'mobile-android/**'
-      - 'mirror-relay.js'
-      - 'test/mirror-relay.test.js'
       - '.github/workflows/build-mobile-apk.yml'
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,10 +20,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Mirror JavaScript syntax
-        run: node --check mobile-android/app/src/main/assets/mirror-mobile.js
-      - name: Relay signaling tests
-        run: node --test test/mirror-relay.test.js
+      - name: Validate dashboard JavaScript
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html=Path('mobile-android/app/src/main/assets/index.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script>([\s\S]*?)</script>',html)
+          assert scripts, 'inline script not found'
+          Path('/tmp/gridium-mobile.js').write_text('\n'.join(scripts),encoding='utf-8')
+          PY
+          node --check /tmp/gridium-mobile.js
+          grep -q 'GRIDIIUM 2' mobile-android/app/src/main/assets/index.html
+          grep -q 'HUNT INTELLIGENCE' mobile-android/app/src/main/assets/index.html
+          grep -q 'SOMENTE LEITURA' mobile-android/app/src/main/assets/index.html
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,22 +44,46 @@ jobs:
       - name: Build Android APK
         working-directory: mobile-android
         run: gradle assembleDebug
-      - name: Verify APK
+      - name: Verify and name APK
         run: |
-          APK=mobile-android/app/build/outputs/apk/debug/app-debug.apk
-          test -s "$APK"
-          unzip -t "$APK"
-          unzip -p "$APK" assets/mirror-mobile.js | grep -q 'Espelhamento'
-          unzip -p "$APK" assets/mirror-mobile.css | grep -q 'mirror-grid'
+          SRC=mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          OUT=mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.apk
+          test -s "$SRC"
+          cp "$SRC" "$OUT"
+          unzip -t "$OUT"
+          unzip -p "$OUT" assets/index.html | grep -q 'Gridium 2 Mobile'
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
-          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-validation.txt
-          grep -q "versionName='2.5.0'" mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-validation.txt
-          sha256sum mobile-android/app/build/outputs/apk/debug/app-debug.apk | tee mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-SHA256.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose "$OUT"
+          "$BUILD_TOOLS/aapt" dump badging "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1-validation.txt
+          grep -q "versionName='3.0.0-alpha.1'" mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1-validation.txt
+          sha256sum "$OUT" | tee mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1-SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-Mobile-2.5-Mirroring
+          name: Gridium-2-Mobile-Alpha-1
           path: |
-            mobile-android/app/build/outputs/apk/debug/app-debug.apk
-            mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-SHA256.txt
-            mobile-android/app/build/outputs/apk/debug/Gridium-Mobile-2.5-validation.txt
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.apk
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1-SHA256.txt
+            mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1-validation.txt
+          retention-days: 90
+      - name: Publish APK release
+        if: ${{ startsWith(github.event.head_commit.message, 'release-mobile:') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gridium2-mobile-v3.0.0-alpha.1
+          target_commitish: ${{ github.sha }}
+          name: Gridium 2 Mobile Alpha 1 · Full Dashboard
+          body: |
+            Gridium 2 Mobile Alpha 1 — painel remoto somente leitura.
+
+            - 4 contas em tempo quase real
+            - XP do Pokémon, Gold de farm, capturas, P1-P5, shinies e drops
+            - Hunt Intelligence: melhor agora, próxima troca, ETA, rota e confiança
+            - Sentinel, anomalias e Hunt Learning
+            - Market/RMT e AutoMarket
+            - telemetria do PC, atualizador e status do WhatsApp
+            - pareamento por código de 6 dígitos
+            - sem espelhamento de vídeo e sem credenciais do jogo no celular
+
+            Requer Gridium 2 Alpha 1.3 ou superior no PC com Mobile Sync configurado.
+          prerelease: false
+          files: mobile-android/app/build/outputs/apk/debug/Gridium-2-Mobile-Alpha-1.apk
