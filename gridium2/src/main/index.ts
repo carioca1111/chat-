@@ -9,6 +9,7 @@ import type {
   AutoMarketRule,
   GridiumSnapshot,
   LayoutMode,
+  MobileSyncSettingsInput,
   PanelRmtSaleInput,
   PerformanceMode,
   PowerAutomationKey,
@@ -19,6 +20,7 @@ import { AccountRuntime } from './account-runtime'
 import { GridiumAppUpdater } from './app-updater'
 import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
+import { MobileSyncRuntime } from './mobile-sync'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
 import { SentinelRuntime } from './sentinel-runtime'
 import { TelemetryService } from './telemetry'
@@ -31,6 +33,7 @@ let displayPower: DisplayPowerController | null = null
 let updater: GridiumAppUpdater | null = null
 let whatsapp: WhatsAppReporter | null = null
 let sentinel: SentinelRuntime | null = null
+let mobileSync: MobileSyncRuntime | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
@@ -61,7 +64,8 @@ function currentSnapshot(): GridiumSnapshot {
       message: 'Atualizador iniciando…'
     },
     whatsapp: whatsapp?.snapshot(),
-    sentinel: sentinel?.snapshot()
+    sentinel: sentinel?.snapshot(),
+    mobileSync: mobileSync?.snapshot()
   }
 }
 
@@ -182,6 +186,8 @@ function registerIpc(): void {
     if (![1,2,3,4].includes(id)) return false
     return await sentinel?.recoverNow(id) ?? false
   })
+  ipcMain.handle('gridium2:mobile-save-settings', (_event, settings: MobileSyncSettingsInput) => mobileSync?.updateSettings(settings) ?? currentSnapshot().mobileSync)
+  ipcMain.handle('gridium2:mobile-create-pair-code', async () => await mobileSync?.createPairCode() ?? currentSnapshot().mobileSync)
 }
 
 async function createWindow(): Promise<void> {
@@ -193,7 +199,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.1 Sentinel',
+    title: 'Gridium 2 — Alpha 1.3 Mobile Sync',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -240,10 +246,12 @@ app.whenReady().then(async () => {
     recoverAccount,
     onChanged: publish
   })
+  mobileSync = new MobileSyncRuntime(currentSnapshot, publish)
   registerIpc()
   await createWindow()
   whatsapp.start()
   sentinel.start()
+  mobileSync.start()
   if (app.isPackaged) setTimeout(() => void updater?.check(true), 6_000)
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
@@ -251,6 +259,7 @@ app.on('before-quit', () => {
   telemetry?.stop()
   whatsapp?.stop()
   sentinel?.stop()
+  mobileSync?.stop()
   accounts?.destroy()
   displayPower?.destroy()
   displayPower = null
