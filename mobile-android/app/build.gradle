@@ -1,6 +1,8 @@
 plugins { id 'com.android.application' }
 
 android {
+    useLibrary 'android.test.runner', false
+    useLibrary 'android.test.base', false
     namespace 'com.pokegrid.mobile'
     compileSdk 35
     defaultConfig {
