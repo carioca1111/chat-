@@ -1,40 +1,103 @@
-/** Exact capture deduplication is a ledger, not an evictable cache.
- * Server instance IDs are positive integers. Store contiguous IDs as ranges so
- * long sequential capture runs cost two numbers without recounting old Pokémon.
- * Preserve arbitrary IDs exactly as well; never guess that an expired ID is new.
+import { mkdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync, type StatementSync } from 'node:sqlite'
+
+const DEFAULT_CACHE_ENTRIES = 4_096
+const LEDGER_DIRECTORY = join(process.env.LOCALAPPDATA || process.env.APPDATA || tmpdir(), 'Gridium2')
+const LEDGER_DATABASE_PATH = join(LEDGER_DIRECTORY, `pokemon-id-ledger-${process.pid}.sqlite`)
+
+mkdirSync(LEDGER_DIRECTORY, { recursive: true })
+try { rmSync(LEDGER_DATABASE_PATH, { force: true }) } catch { /* best-effort cleanup from a reused pid */ }
+
+const openDatabases = new Set<DatabaseSync>()
+let ledgerSequence = 0
+let cleanupRegistered = false
+
+function registerDatabase(database: DatabaseSync): void {
+  openDatabases.add(database)
+  if (cleanupRegistered) return
+  cleanupRegistered = true
+  process.once('exit', () => {
+    for (const db of openDatabases) {
+      try { db.close() } catch { /* process teardown */ }
+    }
+    openDatabases.clear()
+    try { rmSync(LEDGER_DATABASE_PATH, { force: true }) } catch { /* process teardown */ }
+  })
+}
+
+/**
+ * Exact capture deduplication ledger backed by SQLite.
+ *
+ * The previous range compression was extremely compact for sequential IDs but
+ * could still grow in JavaScript heap when server instance IDs were sparse.
+ * This implementation keeps the complete identity set in a small file-backed
+ * SQLite database and only the most recently touched IDs in a bounded JS cache.
  */
 export class PokemonIdLedger {
-  private ranges: [number, number][] = []
-  private other = new Set<string>()
+  private readonly database = new DatabaseSync(LEDGER_DATABASE_PATH)
+  private readonly namespace = `ledger-${++ledgerSequence}`
+  private readonly hasStatement: StatementSync
+  private readonly insertStatement: StatementSync
+  private readonly clearStatement: StatementSync
+  private readonly cache = new Map<string, true>()
+  private readonly maxCacheEntries: number
   private count = 0
-  get size() { return this.count }
-  get storageEntries() { return this.ranges.length + this.other.size }
-  clear(): void { this.ranges = []; this.other.clear(); this.count = 0 }
-  private numeric(id: string): number | null {
-    const n = Number(id)
-    return Number.isSafeInteger(n) && n > 0 && String(n) === id ? n : null
+
+  constructor(maxCacheEntries = DEFAULT_CACHE_ENTRIES) {
+    this.maxCacheEntries = Math.max(32, Math.floor(maxCacheEntries) || DEFAULT_CACHE_ENTRIES)
+    this.database.exec(`
+      PRAGMA journal_mode = MEMORY;
+      PRAGMA synchronous = OFF;
+      PRAGMA temp_store = FILE;
+      PRAGMA cache_size = -2048;
+      CREATE TABLE IF NOT EXISTS seen_pokemon_ids (
+        ledger TEXT NOT NULL,
+        id TEXT NOT NULL,
+        PRIMARY KEY (ledger, id)
+      ) WITHOUT ROWID;
+    `)
+    this.hasStatement = this.database.prepare('SELECT 1 AS seen FROM seen_pokemon_ids WHERE ledger = ? AND id = ? LIMIT 1')
+    this.insertStatement = this.database.prepare('INSERT OR IGNORE INTO seen_pokemon_ids (ledger, id) VALUES (?, ?)')
+    this.clearStatement = this.database.prepare('DELETE FROM seen_pokemon_ids WHERE ledger = ?')
+    registerDatabase(this.database)
   }
-  private locate(n: number): number {
-    let lo = 0, hi = this.ranges.length
-    while (lo < hi) { const mid = (lo + hi) >>> 1; if (this.ranges[mid][1] < n) lo = mid + 1; else hi = mid }
-    return lo
+
+  get size(): number { return this.count }
+  get storageEntries(): number { return this.count }
+  get cacheEntries(): number { return this.cache.size }
+  get cacheLimit(): number { return this.maxCacheEntries }
+
+  clear(): void {
+    this.clearStatement.run(this.namespace)
+    this.cache.clear()
+    this.count = 0
   }
+
   has(id: string): boolean {
-    const n = this.numeric(id)
-    if (n === null) return this.other.has(id)
-    const range = this.ranges[this.locate(n)]
-    return Boolean(range && range[0] <= n)
+    if (this.cache.has(id)) {
+      this.remember(id)
+      return true
+    }
+    const seen = this.hasStatement.get(this.namespace, id) !== undefined
+    if (seen) this.remember(id)
+    return seen
   }
+
   add(id: string): void {
-    const n = this.numeric(id)
-    if (n === null) { if (!this.other.has(id)) { this.other.add(id); this.count++ }; return }
-    const i = this.locate(n), next = this.ranges[i], previous = this.ranges[i - 1]
-    if (next && next[0] <= n) return
-    this.count++
-    if (previous && previous[1] + 1 === n) {
-      previous[1] = n
-      if (next && next[0] === n + 1) { previous[1] = next[1]; this.ranges.splice(i, 1) }
-    } else if (next && next[0] === n + 1) next[0] = n
-    else this.ranges.splice(i, 0, [n, n])
+    const result = this.insertStatement.run(this.namespace, id)
+    if (Number(result.changes) > 0) this.count++
+    this.remember(id)
+  }
+
+  private remember(id: string): void {
+    if (this.cache.has(id)) this.cache.delete(id)
+    this.cache.set(id, true)
+    while (this.cache.size > this.maxCacheEntries) {
+      const oldest = this.cache.keys().next().value as string | undefined
+      if (oldest === undefined) break
+      this.cache.delete(oldest)
+    }
   }
 }

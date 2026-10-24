@@ -45,13 +45,22 @@ describe('long-running regression', () => {
     retryWriter.stop(); vi.useRealTimers()
   })
 
-  it('compresses identity ranges exactly, including gaps and nonnumeric IDs', () => {
-    const ledger = new PokemonIdLedger(), reference = new Set<string>()
-    for (let i = 10000; i >= 1; i--) { const id = String(i); ledger.add(id); reference.add(id) }
-    for (const id of ['abc', '0001', '10002', '10001']) { ledger.add(id); reference.add(id) }
+  it('stores widely spaced identities exactly in SQLite with bounded JS cache', () => {
+    const ledger = new PokemonIdLedger(128), reference = new Set<string>()
+    for (let i = 1; i <= 20000; i++) {
+      const id = String(i * 1_000_003)
+      ledger.add(id)
+      reference.add(id)
+    }
+    for (const id of ['abc', '0001', '999999999999999999999999', 'pokemon-instance-x']) {
+      ledger.add(id)
+      reference.add(id)
+    }
     for (const id of reference) expect(ledger.has(id)).toBe(true)
     expect(ledger.size).toBe(reference.size)
-    expect(ledger.storageEntries).toBe(3)
+    expect(ledger.storageEntries).toBe(reference.size)
+    expect(ledger.cacheEntries).toBeLessThanOrEqual(128)
+    expect(ledger.cacheLimit).toBe(128)
     expect(ledger.has('10003')).toBe(false)
   })
 
@@ -84,15 +93,15 @@ describe('long-running regression', () => {
       times.sort((a,b)=>a-b)
       const d=tracker.diagnostics()
       expect(d.pokemonXpState).toBeLessThanOrEqual(MAX_POKEMON_CACHE)
-      expect(d.identityRanges).toBe(1)
+      expect(d.identityRanges).toBe(d.knownPokemonIds)
       expect(d.captureTimes).toBeLessThanOrEqual(3721)
       expect(d.historyMinute).toBeLessThanOrEqual(2882)
       expect(d.events).toBeLessThanOrEqual(60)
       expect(tracker.snapshot(now+(phase+1)*100000*1000).capturesTotal).toBe((phase+1)*100000)
       samples.push({phase,elapsedMs:performance.now()-start,memory,cpu:process.cpuUsage(cpu),diagnostics:d,snapshotBytes,snapshotMeanMs:times.reduce((a,b)=>a+b,0)/times.length,snapshotP95Ms:times[Math.floor(times.length*.95)],manualGc:typeof global.gc==='function'})
     }
-    // Observed post-GC growth was < 0.5 MB across the last two phases.
-    // 12 MB allows runtime/CI variance but catches retention of another 100k records.
+    // The exact identity registry now lives in file-backed SQLite; only the
+    // bounded LRU and active runtime structures should remain in JS heap.
     if (global.gc) expect(heaps[2] - heaps[1]).toBeLessThan(12 * 1024 * 1024)
     console.log('SOAK_METRICS',JSON.stringify(samples))
     if(process.env.GRIDIUM_SOAK_REPORT) writeFileSync('docs/performance/soak.json',JSON.stringify(samples,null,2))
