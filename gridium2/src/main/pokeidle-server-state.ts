@@ -12,7 +12,7 @@ export interface ServerIngestResult {
 
 export interface PokeIdleServerStateOptions {
   analyticsInitial?: Partial<PanelAnalyticsPersistedState> | null
-  onAnalyticsPersist?: (state: PanelAnalyticsPersistedState) => void
+  onAnalyticsPersist?: () => void
 }
 
 const isRecord = (value: unknown): value is JsonRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -166,6 +166,8 @@ export class PokeIdleServerState {
     return hadData
   }
 
+  diagnostics() { return { pokemons: this.pokemons.size, ...this.analyticsTracker.diagnostics() } }
+
   analytics() {
     return this.analyticsTracker.snapshot()
   }
@@ -236,6 +238,8 @@ export class PokeIdleServerState {
     const huntSlug = safeString(firstDefined(estado.huntSlug, estado.hunt))
     if (huntSlug) this.huntSlug = huntSlug
 
+    if (Object.prototype.hasOwnProperty.call(estado, 'activeId')) this.activeId = toPositiveId(estado.activeId)
+
     const applyPokemonRows = (rows: unknown): void => {
       if (!Array.isArray(rows)) return
       for (const row of rows) {
@@ -243,7 +247,14 @@ export class PokeIdleServerState {
         const id = toPositiveId(row.id)
         if (!id) continue
         const previous = this.pokemons.get(id) || {}
+        this.pokemons.delete(id)
         this.pokemons.set(id, { ...previous, ...row })
+        while (this.pokemons.size > 20_000) {
+          const oldest = this.pokemons.keys().next().value!
+          const value = this.pokemons.get(oldest)!
+          this.pokemons.delete(oldest)
+          if (oldest === this.activeId) this.pokemons.set(oldest, value)
+        }
       }
     }
     applyPokemonRows(estado.pokemons)

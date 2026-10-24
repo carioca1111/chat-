@@ -1,6 +1,7 @@
+import { CoalescedWriter } from './coalesced-writer'
 import { app, BrowserWindow, session, WebContentsView } from 'electron'
 import type { Session } from 'electron'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
@@ -83,8 +84,8 @@ export class AccountRuntime {
   private zoomWrite: Promise<void> = Promise.resolve()
   private powerWrite: Promise<void> = Promise.resolve()
   private autoMarketWrite: Promise<void> = Promise.resolve()
-  private panelAnalyticsWrite: Promise<void> = Promise.resolve()
-  private panelPersistTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly panelWriter = new CoalescedWriter(() => this.persistPanelAnalytics())
+  private persistenceMetrics = { bytes: 0, durationMs: 0 }
   private powerAutomation: PowerAutomationSettings = { ...DEFAULT_POWER_AUTOMATION }
   private disposed = false
 
@@ -280,12 +281,9 @@ export class AccountRuntime {
 
   destroy(): void {
     if (this.disposed) return
-    this.flushPanelAnalyticsSync()
-    if (this.panelPersistTimer) {
-      clearTimeout(this.panelPersistTimer)
-      this.panelPersistTimer = null
-    }
     this.disposed = true
+    this.panelWriter.stop()
+    this.flushPanelAnalyticsSync()
     this.autoMarket.destroy()
     for (const auth of this.authWindows) if (!auth.isDestroyed()) auth.close()
     this.authWindows.clear()
@@ -362,7 +360,7 @@ export class AccountRuntime {
 
   private async attachServerMonitor(account: AccountSlot): Promise<void> {
     const wc = account.view.webContents
-    if (this.disposed || wc.isDestroyed()) return
+    if (this.disposed || wc.isDestroyed() || account.debuggerMessageHandler) return
     const debuggerApi = wc.debugger
     try {
       if (!debuggerApi.isAttached()) {
@@ -674,7 +672,7 @@ export class AccountRuntime {
   private loadPanelAnalyticsSettings(): StoredPanelAnalytics {
     try {
       const parsed = JSON.parse(readFileSync(this.panelAnalyticsFilePath, 'utf8')) as { accounts?: Record<string, PanelAnalyticsPersistedState> } | Record<string, PanelAnalyticsPersistedState>
-      const source = 'accounts' in parsed && parsed.accounts && typeof parsed.accounts === 'object' ? parsed.accounts : parsed as Record<string, PanelAnalyticsPersistedState>
+      const source = ('accounts' in parsed && parsed.accounts && typeof parsed.accounts === 'object' ? parsed.accounts : parsed) as Record<string, PanelAnalyticsPersistedState>
       const out: StoredPanelAnalytics = {}
       for (const id of [1,2,3,4] as AccountId[]) {
         const value = source[String(id)]
@@ -685,11 +683,7 @@ export class AccountRuntime {
   }
 
   private schedulePersistPanelAnalytics(): void {
-    if (this.disposed || this.panelPersistTimer) return
-    this.panelPersistTimer = setTimeout(() => {
-      this.panelPersistTimer = null
-      this.persistPanelAnalytics()
-    }, 600)
+    if (!this.disposed) this.panelWriter.mark()
   }
 
   private panelAnalyticsPayload(): string {
@@ -697,10 +691,22 @@ export class AccountRuntime {
     return JSON.stringify({ version: 2, savedAt: Date.now(), accounts })
   }
 
-  private persistPanelAnalytics(): void {
-    if (!this.accounts.size) return
+  private async persistPanelAnalytics(): Promise<void> {
+    if (!this.accounts.size || this.disposed) return
+    const started = performance.now()
     const payload = this.panelAnalyticsPayload()
-    this.panelAnalyticsWrite = this.panelAnalyticsWrite.catch(() => undefined).then(() => writeFile(this.panelAnalyticsFilePath, payload, 'utf8')).catch(() => undefined)
+    const temporary = `${this.panelAnalyticsFilePath}.pending`
+    await writeFile(temporary, payload, 'utf8')
+    // Shutdown writes the newest state synchronously. Never replace it with an older in-flight write.
+    if (!this.disposed) renameSync(temporary, this.panelAnalyticsFilePath)
+    this.persistenceMetrics = { bytes: Buffer.byteLength(payload), durationMs: performance.now() - started }
+  }
+
+  diagnostics() {
+    return { persistence: { ...this.panelWriter.diagnostics(), ...this.persistenceMetrics },
+      accounts: [...this.accounts.values()].map((a) => ({ id: a.id, sockets: a.socketUrls.size,
+        listeners: a.view.webContents.eventNames().reduce((n, e) => n + a.view.webContents.listenerCount(e), 0),
+        ...a.serverState.diagnostics() })) }
   }
 
   private flushPanelAnalyticsSync(): void {
@@ -720,11 +726,14 @@ export class AccountRuntime {
     if (this.disposed || auth.isDestroyed()) { if (!auth.isDestroyed()) auth.close(); return }
     this.authWindows.add(auth)
     let visitedExternalProvider = false
+    let closeTimer: ReturnType<typeof setTimeout> | null = null
     const observeNavigation = (_event: Electron.Event, nextUrl: string): void => {
       if (!nextUrl || nextUrl === 'about:blank') return
       if (this.isPokeIdleUrl(nextUrl)) {
         if (!visitedExternalProvider) return
-        setTimeout(() => {
+        if (closeTimer) return
+        closeTimer = setTimeout(() => {
+          closeTimer = null
           if (!auth.isDestroyed()) auth.close()
           if (!account.view.webContents.isDestroyed()) account.view.webContents.reload()
         }, 450)
@@ -740,6 +749,7 @@ export class AccountRuntime {
     })
     auth.webContents.on('did-create-window', (nestedWindow) => this.trackAuthWindow(account, nestedWindow))
     auth.on('closed', () => {
+      if (closeTimer) clearTimeout(closeTimer)
       this.authWindows.delete(auth)
       if (!this.disposed && !account.view.webContents.isDestroyed()) account.view.webContents.focus()
     })

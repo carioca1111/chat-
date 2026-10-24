@@ -47,10 +47,14 @@ export class FarmGoldAnalyticsTracker {
   private readonly farmHour = new Map<number, number>()
   private readonly farmDay = new Map<number, number>()
 
+  private lastPruneAt = -Infinity
+  private readonly onPersist?: () => void
+
   constructor(options: PanelAnalyticsTrackerOptions = {}) {
+    this.onPersist = options.onPersist
     this.inner = new PanelAnalyticsTracker({
       initial: options.initial,
-      onPersist: () => options.onPersist?.(this.persisted())
+      onPersist: options.onPersist
     })
     this.restoreFarmGold(options.initial)
   }
@@ -69,7 +73,10 @@ export class FarmGoldAnalyticsTracker {
 
   ingestState(estado: JsonRecord, fullState: boolean, at = Date.now()): boolean {
     const farmChanged = this.ingestFarmGoldState(estado, fullState, at) > 0
-    return this.inner.ingestState(estado, fullState, at) || farmChanged
+    this.prune(at)
+    const innerChanged = this.inner.ingestState(estado, fullState, at)
+    if (farmChanged && !innerChanged) this.onPersist?.()
+    return innerChanged || farmChanged
   }
 
   ingestPacket(packet: unknown, at = Date.now()): boolean {
@@ -220,7 +227,11 @@ export class FarmGoldAnalyticsTracker {
     migrateHistory(this.farmDay, initial.historyDay)
   }
 
+  diagnostics() { return this.inner.diagnostics() }
+
   private prune(at: number): void {
+    if (at >= this.lastPruneAt && at - this.lastPruneAt < MINUTE) return
+    this.lastPruneAt = at
     pruneMap(this.farmMinute, at - MINUTE_RETENTION)
     pruneMap(this.farmHour, at - HOUR_RETENTION)
     pruneMap(this.farmDay, at - DAY_RETENTION)

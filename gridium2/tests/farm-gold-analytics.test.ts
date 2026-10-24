@@ -74,9 +74,9 @@ describe('farm-only Gold analytics', () => {
 
   it('persists the farm-only totals instead of the old gross Gold total', () => {
     const now = Date.now()
-    let persisted: Record<string, unknown> | undefined
+    let dirty = false
     const tracker = new FarmGoldAnalyticsTracker({
-      onPersist: (state) => { persisted = state as unknown as Record<string, unknown> }
+      onPersist: () => { dirty = true }
     })
 
     tracker.ingestState({ id: 1, gold: 2_000 }, true, now)
@@ -84,6 +84,8 @@ describe('farm-only Gold analytics', () => {
     tracker.ingestPacket({ t: 'batalha', ev: [{ k: 'marketVendido', tipo: 'item', itemId: 7, valor: 400, moeda: 'gold' }] }, now + 2_000)
     tracker.ingestState({ gold: 2_450 }, false, now + 3_000)
 
+    expect(dirty).toBe(true)
+    const persisted = tracker.persisted(now + 3_000) as unknown as Record<string, unknown>
     expect(persisted?.goldEarnedTotal).toBe(50)
     expect(persisted?.farmGoldTotal).toBe(50)
     expect(persisted?.farmGoldVersion).toBe(1)

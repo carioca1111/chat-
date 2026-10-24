@@ -1,3 +1,4 @@
+import { PokemonIdLedger } from './pokemon-id-ledger'
 import type { PanelAnalyticsSnapshot, PanelEventSnapshot, PanelHistoryBucket, PanelRareItemSnapshot } from '../shared/contracts'
 
 type JsonRecord = Record<string, unknown>
@@ -7,6 +8,10 @@ const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 const MAX_EVENTS = 60
+export const MAX_POKEMON_CACHE = 20_000
+// Six hours supports Sentinel baseline; 31 days includes complete Brasília days.
+const SNAPSHOT_MINUTES = 6 * HOUR
+const SNAPSHOT_HOURS = 31 * DAY
 const MINUTE_RETENTION = 48 * HOUR
 const HOUR_RETENTION = 90 * DAY
 const DAY_RETENTION = 730 * DAY
@@ -60,7 +65,7 @@ export interface PanelAnalyticsPersistedState {
 
 export interface PanelAnalyticsTrackerOptions {
   initial?: Partial<PanelAnalyticsPersistedState> | null
-  onPersist?: (state: PanelAnalyticsPersistedState) => void
+  onPersist?: () => void
 }
 
 function pokemonId(row: JsonRecord): string {
@@ -148,7 +153,7 @@ export function isRareItemName(name: string): boolean {
 
 export class PanelAnalyticsTracker {
   private sessionStartedAt = Date.now()
-  private readonly knownPokemonIds = new Set<string>()
+  private readonly knownPokemonIds = new PokemonIdLedger()
   private readonly pokemonXpState = new Map<string, PokemonXpState>()
   private readonly inventory = new Map<string, InventoryRow>()
   private readonly rareItems = new Map<string, PanelRareItemSnapshot>()
@@ -171,7 +176,9 @@ export class PanelAnalyticsTracker {
   private rmtBrlRevenue = 0
   private events: PanelEventSnapshot[] = []
   private revision = 0
-  private readonly onPersist?: (state: PanelAnalyticsPersistedState) => void
+  private lastPruneAt = -Infinity
+  private activePokemonId = ''
+  private readonly onPersist?: () => void
 
   constructor(options: PanelAnalyticsTrackerOptions = {}) {
     this.onPersist = options.onPersist
@@ -206,6 +213,8 @@ export class PanelAnalyticsTracker {
   }
 
   ingestState(estado: JsonRecord, fullState: boolean, at = Date.now()): boolean {
+    this.pruneHistory(at)
+    if (estado.activeId !== undefined) this.activePokemonId = String(estado.activeId)
     let changed = false
     if (this.ingestGoldState(estado, fullState, at) > 0) changed = true
 
@@ -225,6 +234,7 @@ export class PanelAnalyticsTracker {
       this.knownPokemonIds.clear()
       this.pokemonXpState.clear()
       for (const row of rows) this.baselinePokemon(row)
+      this.prunePokemonCaches()
       this.inventory.clear()
       for (const row of inventoryRows(estado)) this.inventory.set(row.id, row)
       if (changed) this.touch(true)
@@ -246,6 +256,7 @@ export class PanelAnalyticsTracker {
       if (xpGained > 0) changed = true
     }
 
+    this.prunePokemonCaches()
     for (const row of inventoryRows(estado)) {
       const previous = this.inventory.get(row.id)
       this.inventory.set(row.id, row)
@@ -324,7 +335,7 @@ export class PanelAnalyticsTracker {
 
   snapshot(at = Date.now()): PanelAnalyticsSnapshot {
     this.pruneHistory(at)
-    const minute = this.sortedHistory(this.historyMinute)
+    const minute = this.sortedHistory(this.historyMinute, at - SNAPSHOT_MINUTES)
     const capturesLastHour = this.captureTimes.filter((captureAt) => captureAt >= at - HOUR && captureAt <= at).length
     const rollingMinute = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at)
     const pokemonXpLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
@@ -350,8 +361,8 @@ export class PanelAnalyticsTracker {
       marketGemsRevenue: this.marketGemsRevenue,
       rmtBrlRevenue: this.rmtBrlRevenue,
       historyMinute: minute,
-      historyHour: this.sortedHistory(this.historyHour),
-      historyDay: this.sortedHistory(this.historyDay),
+      historyHour: this.sortedHistory(this.historyHour, at - SNAPSHOT_HOURS),
+      historyDay: this.sortedHistory(this.historyDay, at - 31 * DAY),
       events: this.events.slice(0, 24)
     }
   }
@@ -438,6 +449,7 @@ export class PanelAnalyticsTracker {
     const id = pokemonId(row)
     const xp = finite(row.xp)
     if (!id || xp === undefined) return
+    this.pokemonXpState.delete(id)
     this.pokemonXpState.set(id, {
       xp,
       level: finite(first(row.level, row.nivel, row.lvl)),
@@ -482,6 +494,7 @@ export class PanelAnalyticsTracker {
       xpNext: finite(first(row.xpProximo, row.xpNext))
     }
     const previous = this.pokemonXpState.get(id)
+    this.pokemonXpState.delete(id)
     this.pokemonXpState.set(id, { ...previous, ...next })
     if (!previous) return 0
 
@@ -535,7 +548,9 @@ export class PanelAnalyticsTracker {
   }
 
   private pruneHistory(at: number): void {
-    const captureCutoff = at - MINUTE_RETENTION
+    if (at >= this.lastPruneAt && at - this.lastPruneAt < MINUTE) return
+    this.lastPruneAt = at
+    const captureCutoff = at - HOUR - MINUTE
     if (this.captureTimes.length) this.captureTimes = this.captureTimes.filter((captureAt) => captureAt >= captureCutoff)
     this.pruneMap(this.historyMinute, at - MINUTE_RETENTION)
     this.pruneMap(this.historyHour, at - HOUR_RETENTION)
@@ -546,8 +561,23 @@ export class PanelAnalyticsTracker {
     for (const key of target.keys()) if (key < cutoff) target.delete(key)
   }
 
-  private sortedHistory(target: Map<number, PanelHistoryBucket>): PanelHistoryBucket[] {
-    return [...target.values()].sort((a,b) => a.at - b.at).map((bucket) => ({ ...bucket }))
+  private sortedHistory(target: Map<number, PanelHistoryBucket>, cutoff = -Infinity): PanelHistoryBucket[] {
+    return [...target.values()].filter((bucket) => bucket.at >= cutoff).sort((a,b) => a.at - b.at).map((bucket) => ({ ...bucket }))
+  }
+
+  diagnostics() {
+    return { knownPokemonIds: this.knownPokemonIds.size, identityRanges: this.knownPokemonIds.storageEntries, pokemonXpState: this.pokemonXpState.size,
+      captureTimes: this.captureTimes.length, historyMinute: this.historyMinute.size,
+      historyHour: this.historyHour.size, historyDay: this.historyDay.size, events: this.events.length }
+  }
+
+  private prunePokemonCaches(): void {
+    while (this.pokemonXpState.size > MAX_POKEMON_CACHE) {
+      const id = this.pokemonXpState.keys().next().value!
+      const value = this.pokemonXpState.get(id)!
+      this.pokemonXpState.delete(id)
+      if (id === this.activePokemonId) this.pokemonXpState.set(id, value)
+    }
   }
 
   private pushEvent(event: PanelEventSnapshot): void {
@@ -557,7 +587,7 @@ export class PanelAnalyticsTracker {
 
   private touch(persist: boolean): void {
     this.revision++
-    if (persist) this.onPersist?.(this.persisted())
+    if (persist) this.onPersist?.()
   }
 }
 
