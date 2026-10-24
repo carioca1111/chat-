@@ -9,5 +9,6 @@ import './hunt-scan.css'
 import './account-control.css'
 import './panel.css'
 import './hunt-assist.css'
+import './hunt-control-separation.css'
 
 render(<App />, document.getElementById('app')!)
