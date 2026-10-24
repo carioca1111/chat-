@@ -7,6 +7,26 @@ interface XpState { xp: number }
 interface PotionState { itemId: string; name: string; quantity: number; used: number }
 interface TimedAmount { at: number; amount: number }
 
+export interface HuntSessionPersistedState {
+  version: 1
+  huntSlug: string
+  accountId: string
+  sessionStartedAt: number
+  capturesTotal: number
+  capturesByPotency: [number, number, number, number, number]
+  shiniesSeen: number
+  shiniesSeenBaseline: number | null
+  shiniesCaught: number
+  killsEstimatedTotal: number
+  potionsUsedTotal: number
+  lastCaptureAt: number | null
+  updatedAt: number
+  captureTimes: number[]
+  killTimes: number[]
+  potionUseEvents: TimedAmount[]
+  potionItems: HuntPotionSnapshot[]
+}
+
 const HOUR = 60 * 60 * 1000
 const MAX_XP_CACHE = 20_000
 const COMPACT_HEAD_THRESHOLD = 1_024
@@ -21,6 +41,11 @@ const finite = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 const text = (value: unknown): string => typeof value === 'string' ? value.trim().slice(0, 100) : ''
+const nonNegativeInt = (value: unknown): number => Math.max(0, Math.floor(finite(value) ?? 0))
+const timestampOr = (value: unknown, fallback: number): number => {
+  const parsed = finite(value)
+  return parsed !== undefined && parsed > 0 ? parsed : fallback
+}
 const truthy = (value: unknown): boolean => value === true || value === 1 || value === '1' || value === 'true'
 const pokemonId = (row: JsonRecord): string => {
   const id = first(row.id, row.pokemonInstanceId, row.uid)
@@ -99,6 +124,10 @@ export class HuntSessionRuntime {
   private cachedPotionStock = 0
   private cachedPotionItems: HuntPotionSnapshot[] = []
 
+  constructor(initial?: Partial<HuntSessionPersistedState> | null) {
+    if (initial) this.restore(initial)
+  }
+
   ingest(packet: unknown, at = Date.now()): boolean {
     if (!isRecord(packet)) return false
     const type = String(packet.t || '')
@@ -148,9 +177,10 @@ export class HuntSessionRuntime {
     let changed = sessionTransition
     if (fullState) {
       // A reconnect is not a new Hunt. Keep the exact identity ledger and counters,
-      // only rebuild volatile XP baselines from the fresh full state.
+      // only rebuild volatile XP baselines from the fresh full state. Outside a Hunt,
+      // skip ledger work entirely so idle/reload packets remain cheap.
       this.xpState.clear()
-      for (const row of rows) this.baselinePokemon(row)
+      if (this.huntSlug) for (const row of rows) this.baselinePokemon(row)
     } else if (this.huntSlug) {
       for (const row of rows) {
         const id = pokemonId(row)
@@ -247,6 +277,30 @@ export class HuntSessionRuntime {
     }
   }
 
+  persisted(at = Date.now()): HuntSessionPersistedState {
+    this.prune(at)
+    const potionSnapshot = this.getPotionSnapshot()
+    return {
+      version: 1,
+      huntSlug: this.huntSlug,
+      accountId: this.accountId,
+      sessionStartedAt: this.sessionStartedAt,
+      capturesTotal: this.capturesTotal,
+      capturesByPotency: [...this.capturesByPotency] as [number, number, number, number, number],
+      shiniesSeen: this.shiniesSeen,
+      shiniesSeenBaseline: this.shiniesSeenBaseline,
+      shiniesCaught: this.shiniesCaught,
+      killsEstimatedTotal: this.killsEstimatedTotal,
+      potionsUsedTotal: this.potionsUsedTotal,
+      lastCaptureAt: this.lastCaptureAt,
+      updatedAt: this.updatedAt,
+      captureTimes: this.captureTimes.slice(this.captureHead),
+      killTimes: this.killTimes.slice(this.killHead),
+      potionUseEvents: this.potionUseEvents.slice(this.potionHead).map((event) => ({ ...event })),
+      potionItems: potionSnapshot.items.map((item) => ({ ...item }))
+    }
+  }
+
   /**
    * Transport/page resets are intentionally non-destructive. The Hunt session is
    * ended only by an explicit server Hunt exit, a direct Hunt switch, or account switch.
@@ -266,6 +320,41 @@ export class HuntSessionRuntime {
       killEvents: this.killTimes.length - this.killHead,
       potionEvents: this.potionUseEvents.length - this.potionHead
     }
+  }
+
+  private restore(initial: Partial<HuntSessionPersistedState>): void {
+    const now = Date.now()
+    this.huntSlug = text(initial.huntSlug)
+    this.accountId = text(initial.accountId)
+    this.sessionStartedAt = timestampOr(initial.sessionStartedAt, now)
+    this.capturesTotal = nonNegativeInt(initial.capturesTotal)
+    const potencyValues = Array.isArray(initial.capturesByPotency) ? initial.capturesByPotency : []
+    this.capturesByPotency = [0,1,2,3,4].map((index) => nonNegativeInt(potencyValues[index])) as [number, number, number, number, number]
+    this.shiniesSeen = nonNegativeInt(initial.shiniesSeen)
+    const shinyBaseline = finite(initial.shiniesSeenBaseline)
+    this.shiniesSeenBaseline = shinyBaseline !== undefined && shinyBaseline >= 0 ? shinyBaseline : null
+    this.shiniesCaught = nonNegativeInt(initial.shiniesCaught)
+    this.killsEstimatedTotal = nonNegativeInt(initial.killsEstimatedTotal)
+    this.potionsUsedTotal = nonNegativeInt(initial.potionsUsedTotal)
+    const lastCaptureAt = finite(initial.lastCaptureAt)
+    this.lastCaptureAt = lastCaptureAt !== undefined && lastCaptureAt > 0 ? lastCaptureAt : null
+    this.updatedAt = timestampOr(initial.updatedAt, this.sessionStartedAt)
+    this.captureTimes = safeTimes(initial.captureTimes)
+    this.killTimes = safeTimes(initial.killTimes)
+    this.potionUseEvents = safeTimedAmounts(initial.potionUseEvents)
+    this.potionLastHourTotal = this.potionUseEvents.reduce((sum, event) => sum + event.amount, 0)
+    if (Array.isArray(initial.potionItems)) {
+      for (const item of initial.potionItems) {
+        if (!item || typeof item !== 'object') continue
+        const row = item as Partial<HuntPotionSnapshot>
+        const itemId = text(row.itemId)
+        const name = text(row.name)
+        if (!itemId || !name) continue
+        this.potions.set(itemId, { itemId, name, quantity: nonNegativeInt(row.quantity), used: nonNegativeInt(row.used) })
+      }
+    }
+    this.touchPotions()
+    this.prune(now)
   }
 
   private startHunt(huntSlug: string, at: number): void {
@@ -364,6 +453,23 @@ function samePotionState(current: Map<string, PotionState>, next: Map<string, Po
     if (!previous || previous.name !== item.name || previous.quantity !== item.quantity || previous.used !== item.used) return false
   }
   return true
+}
+
+function safeTimes(value: unknown): number[] {
+  if (!Array.isArray(value)) return []
+  return value.map(finite).filter((entry): entry is number => entry !== undefined && entry > 0).sort((a,b) => a - b)
+}
+
+function safeTimedAmounts(value: unknown): TimedAmount[] {
+  if (!Array.isArray(value)) return []
+  const rows: TimedAmount[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+    const at = finite(entry.at)
+    const amount = finite(entry.amount)
+    if (at !== undefined && at > 0 && amount !== undefined && amount > 0) rows.push({ at, amount })
+  }
+  return rows.sort((a,b) => a.at - b.at)
 }
 
 function compactNumberQueue(queue: number[], head: number): number {
