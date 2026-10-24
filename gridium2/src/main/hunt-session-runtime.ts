@@ -49,7 +49,7 @@ function inventoryRows(estado: JsonRecord): Array<{ itemId: string; name: string
       return
     }
     if (!isRecord(value)) return
-    const quantity = finite(first(value.qtd, value.quantidade, value.qty, value.count, value.amount, value.total, value.estoque))
+    const quantity = finite(first(value.qtd, value.quantidade, value.quantity, value.qty, value.count, value.amount, value.total, value.estoque))
     if (quantity === undefined || quantity < 0) return
     const name = text(first(value.nome, value.name, value.itemNome, value.label)) || fallbackName || `Item #${itemId}`
     rows.set(itemId, { itemId, name, quantity: Math.floor(quantity) })

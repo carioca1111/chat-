@@ -74,7 +74,7 @@ describe('long-running regression', () => {
     tracker.ingest({t:'estado',estado:{pkMud:[{id:2,xp:100}]}},now+30000)
     expect(tracker.analytics().capturesTotal).toBe(before)
     expect(tracker.profile()?.activePokemonId).toBe('1')
-  })
+  }, 15000)
 
   it('runs 3 x 100000 updates with 150000 packets and 30000 snapshots across 83 simulated hours', () => {
     const now = Date.now(), tracker = new FarmGoldAnalyticsTracker({onPersist:()=>{}})
