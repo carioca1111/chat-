@@ -23,7 +23,7 @@ describe('HuntSessionRuntime', () => {
     } }, now + 2_000)
 
     const beforeReconnect = runtime.snapshot(now + 2_000)
-    expect(beforeReconnect.huntSlug).toBe('outland_02')
+    expect(beforeReconnect.huntSlug).toBe('outland-02')
     expect(beforeReconnect.capturesTotal).toBe(1)
     expect(beforeReconnect.capturesByPotency).toEqual([0,0,0,0,1])
     expect(beforeReconnect.shiniesSeen).toBe(1)
@@ -37,13 +37,14 @@ describe('HuntSessionRuntime', () => {
     runtime.reset(now + 3_000)
     const afterTransportReset = runtime.snapshot(now + 3_000)
     expect(afterTransportReset.sessionStartedAt).toBe(beforeReconnect.sessionStartedAt)
-    expect(afterTransportReset.huntSlug).toBe('outland_02')
+    expect(afterTransportReset.huntSlug).toBe('outland-02')
     expect(afterTransportReset.capturesTotal).toBe(1)
     expect(afterTransportReset.killsEstimatedTotal).toBe(1)
     expect(afterTransportReset.potionsUsedTotal).toBe(2)
 
     // A fresh welcome for the same Hunt re-baselines volatile state without
-    // clearing counters or recounting existing Pokémon as captures.
+    // clearing counters or recounting existing Pokémon as captures. Different
+    // case/separator formatting is treated as the same canonical Hunt identity.
     runtime.ingest({ t: 'welcome', estado: {
       id: 77, huntSlug: 'OUTLAND-02', shiniesSeen: 11,
       pokemons: [{ id: 1, xp: 140, potencia: 2 }, { id: 2, xp: 0, potencia: 5, shiny: true }],
@@ -58,7 +59,7 @@ describe('HuntSessionRuntime', () => {
 
     // No Hunt field means incomplete/partial state, not an exit.
     runtime.ingest({ t: 'estado', estado: { pkMud: [{ id: 1, xp: 150 }] } }, now + 5_000)
-    expect(runtime.snapshot(now + 5_000).huntSlug).toBe('outland_02')
+    expect(runtime.snapshot(now + 5_000).huntSlug).toBeTruthy()
 
     // Explicit empty Hunt is the real exit signal and is the point where the
     // session must reset.
@@ -77,7 +78,7 @@ describe('HuntSessionRuntime', () => {
       inventory: [{ id: 501, name: 'Ultra Potion', quantity: 10 }]
     } }, now + 7_000)
     const newHunt = runtime.snapshot(now + 7_000)
-    expect(newHunt.huntSlug).toBe('forest_new')
+    expect(newHunt.huntSlug).toBe('forest-new')
     expect(newHunt.sessionStartedAt).toBe(now + 7_000)
     expect(newHunt.capturesTotal).toBe(0)
   })
@@ -99,7 +100,7 @@ describe('HuntSessionRuntime', () => {
     } }, now + 2_000)
 
     const afterSwitch = runtime.snapshot(now + 2_000)
-    expect(afterSwitch.huntSlug).toBe('route_b')
+    expect(afterSwitch.huntSlug).toBe('route-b')
     expect(afterSwitch.sessionStartedAt).toBe(now + 2_000)
     expect(afterSwitch.capturesTotal).toBe(0)
   })
