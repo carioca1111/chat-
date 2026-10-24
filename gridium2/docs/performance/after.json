@@ -1,0 +1,34 @@
+{
+  "updates": 100000,
+  "updatesMs": 142.89445800000001,
+  "materializations": 100,
+  "dirty": 100000,
+  "before": {
+    "rss": 48947200,
+    "heapTotal": 18403328,
+    "heapUsed": 8352904,
+    "external": 3939321,
+    "arrayBuffers": 146579
+  },
+  "after": {
+    "rss": 107327488,
+    "heapTotal": 77647872,
+    "heapUsed": 8551680,
+    "external": 3939341,
+    "arrayBuffers": 146595
+  },
+  "cpu": {
+    "user": 724606,
+    "system": 89779
+  },
+  "snapshot": {
+    "meanMs": 0.18429545000000008,
+    "p95Ms": 0.3491560000000504,
+    "bytes": 119812
+  },
+  "persist": {
+    "meanMs": 3.8384735200000035,
+    "p95Ms": 5.2084370000000035,
+    "bytes": 918349
+  }
+}

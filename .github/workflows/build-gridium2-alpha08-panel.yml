@@ -1,9 +1,10 @@
-name: Build Gridium 2 Alpha 1.3 Mobile Sync
+name: Build Gridium 2 Long-running Performance
 
 on:
   push:
     branches:
       - gridium2-mobile-full-dashboard
+      - fix/long-running-performance
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -20,17 +21,27 @@ jobs:
       run:
         working-directory: gridium2
     steps:
-      - name: Checkout Alpha 1.3 branch
+      - name: Checkout exact revision
         uses: actions/checkout@v4
-        with:
-          ref: gridium2-mobile-full-dashboard
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Long-running soak with GC
+        run: npm run test:soak
+      - name: Electron lifecycle regression
+        run: npm run test:electron
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-performance-evidence
+          path: gridium2/docs/performance/*.json
       - name: Build Electron app
         run: npm run build
       - name: Build Windows installer

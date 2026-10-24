@@ -11,7 +11,7 @@ const statePacket = (quantity = 100, gold = 1_000_000) => ({
   t: 'estado', estado: { id: 77, nick: 'Conta Teste', gold, orbs: 500, inventory: [{ itemId: 10, nome: 'Ultra Ball', qtd: quantity }] }
 })
 
-function runtime(send = vi.fn(async () => ({ ok: true }))) {
+function runtime(send = vi.fn(async (_id: AccountId, _command: Record<string, unknown>) => ({ ok: true }))) {
   return { rt: new AutoMarketRuntime({ sendCommand: send, onChanged: () => undefined, scheduler: false }), send }
 }
 
@@ -116,7 +116,7 @@ describe('Gridium 2 AutoMarket macro runtime', () => {
 
   it('disables legacy saved generic items instead of carrying them into the macro', () => {
     const rt = new AutoMarketRuntime({
-      sendCommand: vi.fn(async () => ({ ok: true })),
+      sendCommand: vi.fn(async (_id: AccountId, _command: Record<string, unknown>) => ({ ok: true })),
       onChanged: () => undefined,
       scheduler: false,
       initial: { rules: { 1: [{ ...baseRule(), itemName: 'Master Ball', enabled: true }] } }

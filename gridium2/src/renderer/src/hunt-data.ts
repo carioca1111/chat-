@@ -21,7 +21,7 @@ function decodeBase64(value: string): Uint8Array {
 export function loadHuntSpecies(): Promise<HuntSpecies[]> {
   if (cache) return cache
   cache = (async () => {
-    const stream = new Blob([decodeBase64(HUNT_DATA_BASE64)]).stream().pipeThrough(new DecompressionStream('gzip'))
+    const stream = new Blob([decodeBase64(HUNT_DATA_BASE64).buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream('gzip'))
     const text = await new Response(stream).text()
     return JSON.parse(text) as HuntSpecies[]
   })()

@@ -1,0 +1,89 @@
+[
+  {
+    "phase": 0,
+    "elapsedMs": 3716.8433449999998,
+    "memory": {
+      "rss": 147853312,
+      "heapTotal": 96997376,
+      "heapUsed": 17239776,
+      "external": 4394520,
+      "arrayBuffers": 278234
+    },
+    "cpu": {
+      "user": 3808822,
+      "system": 45164
+    },
+    "diagnostics": {
+      "knownPokemonIds": 100000,
+      "identityRanges": 1,
+      "pokemonXpState": 20000,
+      "captureTimes": 3701,
+      "historyMinute": 1668,
+      "historyHour": 29,
+      "historyDay": 2,
+      "events": 60
+    },
+    "snapshotBytes": 45434,
+    "snapshotMeanMs": 0.1183605167000008,
+    "snapshotP95Ms": 0.18275500000027023,
+    "manualGc": true
+  },
+  {
+    "phase": 1,
+    "elapsedMs": 4785.993559,
+    "memory": {
+      "rss": 148103168,
+      "heapTotal": 95162368,
+      "heapUsed": 17426272,
+      "external": 4394560,
+      "arrayBuffers": 278234
+    },
+    "cpu": {
+      "user": 4882740,
+      "system": 13046
+    },
+    "diagnostics": {
+      "knownPokemonIds": 200000,
+      "identityRanges": 1,
+      "pokemonXpState": 20000,
+      "captureTimes": 3681,
+      "historyMinute": 2881,
+      "historyHour": 57,
+      "historyDay": 4,
+      "events": 60
+    },
+    "snapshotBytes": 48870,
+    "snapshotMeanMs": 0.150538620799993,
+    "snapshotP95Ms": 0.2369300000000294,
+    "manualGc": true
+  },
+  {
+    "phase": 2,
+    "elapsedMs": 4337.136133,
+    "memory": {
+      "rss": 216580096,
+      "heapTotal": 162738176,
+      "heapUsed": 17733232,
+      "external": 4394560,
+      "arrayBuffers": 278234
+    },
+    "cpu": {
+      "user": 4402995,
+      "system": 41047
+    },
+    "diagnostics": {
+      "knownPokemonIds": 300000,
+      "identityRanges": 1,
+      "pokemonXpState": 20000,
+      "captureTimes": 3661,
+      "historyMinute": 2880,
+      "historyHour": 84,
+      "historyDay": 5,
+      "events": 60
+    },
+    "snapshotBytes": 52072,
+    "snapshotMeanMs": 0.10140600620000095,
+    "snapshotP95Ms": 0.1738439999990078,
+    "manualGc": true
+  }
+]
