@@ -1,4 +1,4 @@
-import type { HuntSessionSnapshot } from '../shared/contracts'
+import type { HuntPotionSnapshot, HuntSessionSnapshot } from '../shared/contracts'
 import { canonicalPokeIdleItem, normalizePokeIdleItemName } from '../shared/pokeidle-item-catalog'
 import { PokemonIdLedger } from './pokemon-id-ledger'
 
@@ -9,6 +9,7 @@ interface TimedAmount { at: number; amount: number }
 
 const HOUR = 60 * 60 * 1000
 const MAX_XP_CACHE = 20_000
+const COMPACT_HEAD_THRESHOLD = 1_024
 const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bag', 'consumables', 'consumiveis']
 
 const isRecord = (value: unknown): value is JsonRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -29,7 +30,9 @@ const potency = (value: unknown): 1|2|3|4|5|undefined => {
   const parsed = finite(typeof value === 'string' ? value.replace(/^P/i, '') : value)
   return parsed && [1,2,3,4,5].includes(parsed) ? parsed as 1|2|3|4|5 : undefined
 }
-const huntSlugOf = (estado: JsonRecord): string => text(first(estado.huntSlug, estado.hunt))
+const normalizeHuntSlug = (value: unknown): string => text(value).toLowerCase().replace(/[\s-]+/g, '_')
+const huntSlugOf = (estado: JsonRecord): string => normalizeHuntSlug(first(estado.huntSlug, estado.hunt))
+const hasHuntSignal = (estado: JsonRecord): boolean => Object.prototype.hasOwnProperty.call(estado, 'huntSlug') || Object.prototype.hasOwnProperty.call(estado, 'hunt')
 
 function isPotionName(name: string): boolean {
   const canonical = canonicalPokeIdleItem(name)
@@ -85,8 +88,16 @@ export class HuntSessionRuntime {
   private readonly xpState = new Map<string, XpState>()
   private readonly potions = new Map<string, PotionState>()
   private captureTimes: number[] = []
+  private captureHead = 0
   private killTimes: number[] = []
+  private killHead = 0
   private potionUseEvents: TimedAmount[] = []
+  private potionHead = 0
+  private potionLastHourTotal = 0
+  private potionRevision = 0
+  private cachedPotionRevision = -1
+  private cachedPotionStock = 0
+  private cachedPotionItems: HuntPotionSnapshot[] = []
 
   ingest(packet: unknown, at = Date.now()): boolean {
     if (!isRecord(packet)) return false
@@ -97,26 +108,47 @@ export class HuntSessionRuntime {
 
     const nextAccountRaw = first(estado.id, estado.accountId, estado.userId)
     const nextAccountId = nextAccountRaw === undefined || nextAccountRaw === null ? '' : String(nextAccountRaw)
-    const nextHunt = huntSlugOf(estado)
+    const huntSignal = hasHuntSignal(estado)
+    const nextHunt = huntSignal ? huntSlugOf(estado) : this.huntSlug
     const accountChanged = Boolean(nextAccountId && this.accountId && nextAccountId !== this.accountId)
-    const huntChanged = Boolean(nextHunt && this.huntSlug && nextHunt !== this.huntSlug)
-    if (accountChanged || huntChanged) this.reset(at)
-    if (nextAccountId) this.accountId = nextAccountId
-    if (nextHunt) this.huntSlug = nextHunt
+    let sessionTransition = false
 
-    const fullState = type === 'welcome' || estado.cheio === true || accountChanged || huntChanged
+    if (accountChanged) {
+      this.clearSession(at, false)
+      sessionTransition = true
+    }
+    if (nextAccountId) this.accountId = nextAccountId
+
+    if (huntSignal) {
+      if (!nextHunt) {
+        if (this.huntSlug) {
+          this.clearSession(at, true)
+          sessionTransition = true
+        }
+      } else if (!this.huntSlug) {
+        this.startHunt(nextHunt, at)
+        sessionTransition = true
+      } else if (nextHunt !== this.huntSlug) {
+        this.clearSession(at, true)
+        this.startHunt(nextHunt, at)
+        sessionTransition = true
+      }
+    }
+
+    const fullState = type === 'welcome' || estado.cheio === true || accountChanged || sessionTransition
     const rows: JsonRecord[] = []
     for (const key of ['pokemons','pkMud']) {
       const value = estado[key]
       if (Array.isArray(value)) for (const row of value) if (isRecord(row)) rows.push(row)
     }
 
-    let changed = false
+    let changed = sessionTransition
     if (fullState) {
-      this.knownPokemonIds.clear()
+      // A reconnect is not a new Hunt. Keep the exact identity ledger and counters,
+      // only rebuild volatile XP baselines from the fresh full state.
       this.xpState.clear()
       for (const row of rows) this.baselinePokemon(row)
-    } else {
+    } else if (this.huntSlug) {
       for (const row of rows) {
         const id = pokemonId(row)
         if (!id) continue
@@ -141,57 +173,109 @@ export class HuntSessionRuntime {
       }
     }
 
-    const seen = finite(first(estado.shiniesSeen, estado.shinySeen, estado.shinysVistos, estado.shiniesVistos))
-    if (seen !== undefined && seen >= 0) {
-      if (this.shiniesSeenBaseline === null) this.shiniesSeenBaseline = seen
-      const nextSeen = Math.max(0, Math.floor(seen - this.shiniesSeenBaseline))
-      if (nextSeen !== this.shiniesSeen) { this.shiniesSeen = nextSeen; changed = true }
-    }
+    if (this.huntSlug) {
+      const seen = finite(first(estado.shiniesSeen, estado.shinySeen, estado.shinysVistos, estado.shiniesVistos))
+      if (seen !== undefined && seen >= 0) {
+        if (this.shiniesSeenBaseline === null) this.shiniesSeenBaseline = seen
+        const nextSeen = Math.max(0, Math.floor(seen - this.shiniesSeenBaseline))
+        if (nextSeen !== this.shiniesSeen) { this.shiniesSeen = nextSeen; changed = true }
+      }
 
-    const inventory = inventoryRows(estado).filter((row) => isPotionName(row.name))
-    if (fullState && inventory.length) this.potions.clear()
-    for (const row of inventory) {
-      const previous = this.potions.get(row.itemId)
-      const usedBefore = previous?.used ?? 0
-      if (!fullState && previous && row.quantity < previous.quantity) {
-        const used = previous.quantity - row.quantity
-        this.potionsUsedTotal += used
-        this.potionUseEvents.push({ at, amount: used })
-        changed = true
-        this.potions.set(row.itemId, { ...row, used: usedBefore + used })
-      } else this.potions.set(row.itemId, { ...row, used: usedBefore })
+      const inventory = inventoryRows(estado).filter((row) => isPotionName(row.name))
+      if (inventory.length) {
+        if (fullState) {
+          const replacement = new Map<string, PotionState>()
+          for (const row of inventory) {
+            const previous = this.potions.get(row.itemId)
+            replacement.set(row.itemId, { ...row, used: previous?.used ?? 0 })
+          }
+          if (!samePotionState(this.potions, replacement)) {
+            this.potions.clear()
+            for (const [id, item] of replacement) this.potions.set(id, item)
+            this.touchPotions()
+            changed = true
+          }
+        } else {
+          for (const row of inventory) {
+            const previous = this.potions.get(row.itemId)
+            const usedBefore = previous?.used ?? 0
+            if (previous && row.quantity < previous.quantity) {
+              const used = previous.quantity - row.quantity
+              this.potionsUsedTotal += used
+              this.potionUseEvents.push({ at, amount: used })
+              this.potionLastHourTotal += used
+              this.potions.set(row.itemId, { ...row, used: usedBefore + used })
+              this.touchPotions()
+              changed = true
+            } else if (!previous || previous.quantity !== row.quantity || previous.name !== row.name) {
+              this.potions.set(row.itemId, { ...row, used: usedBefore })
+              this.touchPotions()
+              changed = true
+            }
+          }
+        }
+      }
     }
 
     this.prune(at)
-    if (changed || fullState) this.updatedAt = at
+    if (changed) this.updatedAt = at
     return changed
   }
 
   snapshot(at = Date.now()): HuntSessionSnapshot {
     this.prune(at)
+    const potionSnapshot = this.getPotionSnapshot()
     return {
       huntSlug: this.huntSlug,
       sessionStartedAt: this.sessionStartedAt,
       capturesTotal: this.capturesTotal,
-      capturesLastHour: this.captureTimes.length,
+      capturesLastHour: this.captureTimes.length - this.captureHead,
       capturesByPotency: [...this.capturesByPotency] as [number, number, number, number, number],
       shiniesSeen: this.shiniesSeen,
       shiniesCaught: this.shiniesCaught,
       killsEstimatedTotal: this.killsEstimatedTotal,
-      killsEstimatedLastHour: this.killTimes.length,
-      potionStock: [...this.potions.values()].reduce((sum, item) => sum + item.quantity, 0),
+      killsEstimatedLastHour: this.killTimes.length - this.killHead,
+      potionStock: potionSnapshot.stock,
       potionsUsedTotal: this.potionsUsedTotal,
-      potionsUsedLastHour: this.potionUseEvents.reduce((sum, event) => sum + event.amount, 0),
-      potionItems: [...this.potions.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)).map((item) => ({ ...item })),
+      potionsUsedLastHour: this.potionLastHourTotal,
+      potionItems: potionSnapshot.items,
       lastCaptureAt: this.lastCaptureAt,
       updatedAt: this.updatedAt
     }
   }
 
+  /**
+   * Transport/page resets are intentionally non-destructive. The Hunt session is
+   * ended only by an explicit server Hunt exit, a direct Hunt switch, or account switch.
+   */
   reset(at = Date.now()): void {
+    this.prune(at)
+  }
+
+  diagnostics() {
+    return {
+      huntSlug: this.huntSlug,
+      captures: this.capturesTotal,
+      killsEstimated: this.killsEstimatedTotal,
+      potionItems: this.potions.size,
+      xpState: this.xpState.size,
+      captureEvents: this.captureTimes.length - this.captureHead,
+      killEvents: this.killTimes.length - this.killHead,
+      potionEvents: this.potionUseEvents.length - this.potionHead
+    }
+  }
+
+  private startHunt(huntSlug: string, at: number): void {
+    this.huntSlug = huntSlug
+    this.sessionStartedAt = at
+    this.updatedAt = at
+  }
+
+  private clearSession(at: number, preserveAccount: boolean): void {
+    const accountId = preserveAccount ? this.accountId : ''
     this.sessionStartedAt = at
     this.huntSlug = ''
-    this.accountId = ''
+    this.accountId = accountId
     this.capturesTotal = 0
     this.capturesByPotency = [0,0,0,0,0]
     this.shiniesSeen = 0
@@ -205,18 +289,19 @@ export class HuntSessionRuntime {
     this.xpState.clear()
     this.potions.clear()
     this.captureTimes = []
+    this.captureHead = 0
     this.killTimes = []
+    this.killHead = 0
     this.potionUseEvents = []
-  }
-
-  diagnostics() {
-    return { huntSlug: this.huntSlug, captures: this.capturesTotal, killsEstimated: this.killsEstimatedTotal, potionItems: this.potions.size, xpState: this.xpState.size }
+    this.potionHead = 0
+    this.potionLastHourTotal = 0
+    this.touchPotions()
   }
 
   private baselinePokemon(row: JsonRecord): void {
     const id = pokemonId(row)
     if (!id) return
-    this.knownPokemonIds.add(id)
+    if (!this.knownPokemonIds.has(id)) this.knownPokemonIds.add(id)
     const xp = finite(row.xp)
     if (xp !== undefined) this.setXp(id, xp)
   }
@@ -240,10 +325,52 @@ export class HuntSessionRuntime {
     }
   }
 
+  private touchPotions(): void {
+    this.potionRevision++
+  }
+
+  private getPotionSnapshot(): { stock: number; items: HuntPotionSnapshot[] } {
+    if (this.cachedPotionRevision !== this.potionRevision) {
+      this.cachedPotionItems = [...this.potions.values()]
+        .sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name))
+        .map((item) => ({ ...item }))
+      this.cachedPotionStock = this.cachedPotionItems.reduce((sum, item) => sum + item.quantity, 0)
+      this.cachedPotionRevision = this.potionRevision
+    }
+    return { stock: this.cachedPotionStock, items: this.cachedPotionItems }
+  }
+
   private prune(at: number): void {
     const cutoff = at - HOUR
-    if (this.captureTimes.length) this.captureTimes = this.captureTimes.filter((value) => value >= cutoff && value <= at)
-    if (this.killTimes.length) this.killTimes = this.killTimes.filter((value) => value >= cutoff && value <= at)
-    if (this.potionUseEvents.length) this.potionUseEvents = this.potionUseEvents.filter((value) => value.at >= cutoff && value.at <= at)
+    while (this.captureHead < this.captureTimes.length && this.captureTimes[this.captureHead] < cutoff) this.captureHead++
+    while (this.killHead < this.killTimes.length && this.killTimes[this.killHead] < cutoff) this.killHead++
+    while (this.potionHead < this.potionUseEvents.length && this.potionUseEvents[this.potionHead].at < cutoff) {
+      this.potionLastHourTotal -= this.potionUseEvents[this.potionHead].amount
+      this.potionHead++
+    }
+    this.captureHead = compactNumberQueue(this.captureTimes, this.captureHead)
+    this.killHead = compactNumberQueue(this.killTimes, this.killHead)
+    this.potionHead = compactAmountQueue(this.potionUseEvents, this.potionHead)
   }
+}
+
+function samePotionState(current: Map<string, PotionState>, next: Map<string, PotionState>): boolean {
+  if (current.size !== next.size) return false
+  for (const [id, item] of next) {
+    const previous = current.get(id)
+    if (!previous || previous.name !== item.name || previous.quantity !== item.quantity || previous.used !== item.used) return false
+  }
+  return true
+}
+
+function compactNumberQueue(queue: number[], head: number): number {
+  if (head < COMPACT_HEAD_THRESHOLD || head * 2 < queue.length) return head
+  queue.splice(0, head)
+  return 0
+}
+
+function compactAmountQueue(queue: TimedAmount[], head: number): number {
+  if (head < COMPACT_HEAD_THRESHOLD || head * 2 < queue.length) return head
+  queue.splice(0, head)
+  return 0
 }
