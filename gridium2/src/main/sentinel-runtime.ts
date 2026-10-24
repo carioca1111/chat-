@@ -89,6 +89,8 @@ export interface SentinelRuntimeOptions {
   sendAlert?: (text: string) => Promise<void>
 }
 
+export const MAX_LEARNING_RECORDS = 200
+
 export class SentinelRuntime {
   private readonly settingsPath = join(app.getPath('userData'), 'gridium2-sentinel.json')
   private readonly learningPath = join(app.getPath('userData'), 'gridium2-hunt-learning.json')
@@ -310,7 +312,9 @@ export class SentinelRuntime {
     existing.observedMs += elapsed
     existing.samples++
     existing.lastSeenAt = now
+    this.learning.delete(key)
     this.learning.set(key, existing)
+    this.pruneLearning()
     this.learningDirty = true
   }
 
@@ -360,17 +364,24 @@ export class SentinelRuntime {
     try {
       const parsed = JSON.parse(readFileSync(this.learningPath, 'utf8')) as Partial<PersistedLearning>
       if (Array.isArray(parsed.records)) {
-        for (const row of parsed.records) {
+        for (const row of [...parsed.records].sort((a, b) => a.lastSeenAt - b.lastSeenAt)) {
           if (!row || typeof row !== 'object' || !row.key || !Number.isFinite(row.observedMs) || row.observedMs <= 0) continue
           this.learning.set(row.key, { ...row })
+          this.pruneLearning()
         }
       }
     } catch { /* first run */ }
   }
 
+  diagnostics() { return { learning: this.learning.size, timers: Number(Boolean(this.timer)), recoverInFlight: this.recoverInFlight.size } }
+
+  private pruneLearning(): void {
+    while (this.learning.size > MAX_LEARNING_RECORDS) this.learning.delete(this.learning.keys().next().value!)
+  }
+
   private persistLearning(force: boolean, now = Date.now()): void {
     if (!this.learningDirty || (!force && now - this.lastLearningPersistAt < LEARNING_PERSIST_MS)) return
-    const records = [...this.learning.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt).slice(0, 200)
+    const records = [...this.learning.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt).slice(0, MAX_LEARNING_RECORDS)
     try {
       writeFileSync(this.learningPath, JSON.stringify({ version: 1, records }, null, 2), 'utf8')
       this.learningDirty = false

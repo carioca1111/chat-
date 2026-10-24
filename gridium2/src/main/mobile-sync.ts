@@ -22,13 +22,17 @@ export class MobileSyncRuntime {
   private pairCode = ''
   private pairExpiresAt = 0
   private busy = false
+  private controller: AbortController | null = null
+  private generation = 0
 
   constructor(private readonly snapshotProvider: () => GridiumSnapshot, private readonly onChanged: () => void) {
     this.load(); this.refreshStatus()
   }
 
   start(): void { if (!this.timer) { this.timer = setInterval(() => void this.tick(), PUSH_INTERVAL_MS); void this.tick() } }
-  stop(): void { if (this.timer) clearInterval(this.timer); this.timer = null }
+  stop(): void { if (this.timer) clearInterval(this.timer); this.timer = null; this.generation++; this.controller?.abort() }
+
+  diagnostics() { return { timers: Number(Boolean(this.timer)), requestsInFlight: Number(this.busy) } }
 
   snapshot(): MobileSyncSnapshot {
     const pairValid = Boolean(this.pairCode && this.pairExpiresAt > Date.now())
@@ -41,6 +45,7 @@ export class MobileSyncRuntime {
   }
 
   updateSettings(input: MobileSyncSettingsInput): MobileSyncSnapshot {
+    this.generation++; this.controller?.abort()
     this.settings = { ...this.settings, enabled: Boolean(input.enabled), relayUrl: normalizeRelay(input.relayUrl) }
     const token = String(input.privateToken || '').trim()
     if (token) {
@@ -53,8 +58,10 @@ export class MobileSyncRuntime {
   }
 
   async createPairCode(): Promise<MobileSyncSnapshot> {
+    if (this.busy) return { ...this.snapshot(), message: 'Sincronização em andamento. Aguarde e gere o código novamente.' }
     const token = this.decryptToken()
     if (!token) return this.setError('Salve a chave privada do relay antes de gerar o código.')
+    this.busy = true
     this.status = 'syncing'; this.message = 'Gerando código de pareamento…'; this.onChanged()
     try {
       const result = await this.request('/api/v1/pair/start', token, { method: 'POST', body: '{}' }) as Record<string, unknown>
@@ -62,7 +69,7 @@ export class MobileSyncRuntime {
       if (!/^\d{6}$/.test(code) || expiresAt <= Date.now()) throw new Error('Resposta de pareamento inválida.')
       this.pairCode = code; this.pairExpiresAt = expiresAt; this.status = 'online'
       this.message = 'Código pronto. Digite os 6 números no Gridium Mobile.'; this.lastError = ''
-    } catch (error) { return this.setError(`Falha ao gerar código: ${errorMessage(error)}`) }
+    } catch (error) { return this.setError(`Falha ao gerar código: ${errorMessage(error)}`) } finally { this.busy = false }
     this.onChanged(); return this.snapshot()
   }
 
@@ -70,24 +77,31 @@ export class MobileSyncRuntime {
     if (this.busy || !this.settings.enabled) return
     const token = this.decryptToken()
     if (!token) { this.refreshStatus(); this.onChanged(); return }
+    const generation = this.generation
     this.busy = true; this.status = 'syncing'
     try {
       await this.request('/api/v1/push', token, { method: 'POST', body: JSON.stringify(buildMobilePayload(this.snapshotProvider())) })
+      if (generation !== this.generation) return
       this.lastPushAt = Date.now(); this.lastError = ''; this.status = 'online'; this.message = 'Gridium Mobile sincronizado.'
     } catch (error) {
+      if (generation !== this.generation) return
       this.status = 'error'; this.lastError = errorMessage(error); this.message = `Mobile Sync: ${this.lastError}`
     } finally { this.busy = false; this.onChanged() }
   }
 
   private async request(pathname: string, token: string, init: RequestInit): Promise<unknown> {
+    const controller = new AbortController()
+    this.controller = controller
+    try {
     const response = await fetch(`${this.settings.relayUrl}${pathname}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
     })
     const payload = await response.json().catch(() => ({})) as Record<string, unknown>
     if (!response.ok) throw new Error(String(payload.error || `HTTP ${response.status}`))
     return payload
+    } finally { if (this.controller === controller) this.controller = null }
   }
 
   private setError(message: string): MobileSyncSnapshot { this.status = 'error'; this.message = message; this.lastError = message; this.onChanged(); return this.snapshot() }

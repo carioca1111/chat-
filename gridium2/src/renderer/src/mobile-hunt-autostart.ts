@@ -16,9 +16,13 @@ void loadHuntSpecies().then((rows) => {
   return api.getSnapshot()
 }).then((snapshot) => refresh(snapshot)).catch(() => {})
 
-api.onSnapshot((snapshot) => refresh(snapshot))
+const unsubscribe = api.onSnapshot((snapshot) => refresh(snapshot))
+window.addEventListener('pagehide', () => { unsubscribe(); worker?.terminate(); worker = null }, { once: true })
 
 function refresh(snapshot: GridiumSnapshot): void {
+  if (!snapshot.mobileSync?.enabled) {
+    worker?.terminate(); worker = null; currentKey = ''; return
+  }
   if (!data.length || !snapshot.accounts.length) return
   const key = snapshotKey(snapshot)
   if (key === currentKey) return
@@ -27,11 +31,15 @@ function refresh(snapshot: GridiumSnapshot): void {
   worker?.terminate()
   worker = new Worker(new URL('./mobile-hunt.worker.ts', import.meta.url), { type: 'module' })
   const local = worker
+  let pending = snapshot.accounts.filter((a) => a.huntProtocolStatus === 'live' && a.huntProfile).length
+  local.onerror = () => { local.terminate(); if (worker === local) worker = null }
   local.onmessage = (event: MessageEvent<MobileHuntWorkerResponse>) => {
     if (local !== worker || event.data.key !== currentKey) return
     void api.updateMobileHuntSummary(event.data.accountId, event.data.error ? { generatedAt: Date.now(), error: event.data.error } : event.data.summary ?? null)
+    if (--pending === 0) { local.terminate(); if (worker === local) worker = null }
   }
 
+  if (!pending) { local.terminate(); worker = null }
   const active = new Set<AccountId>()
   for (const account of snapshot.accounts) {
     const scan = account.huntProfile

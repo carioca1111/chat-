@@ -38,6 +38,7 @@ let mobileSync: MobileSyncRuntime | null = null
 let layout: LayoutMode = 4
 let selectedAccount: AccountId = 1
 let performanceMode: PerformanceMode = 'auto'
+let publishTimer: ReturnType<typeof setTimeout> | null = null
 let activeModule: AppModule = 'accounts'
 
 function currentSnapshot(): GridiumSnapshot {
@@ -71,7 +72,12 @@ function currentSnapshot(): GridiumSnapshot {
 }
 
 function publish(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (publishTimer) return
+  publishTimer = setTimeout(() => { publishTimer = null; publishNow() }, 100)
+}
+
+function publishNow(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return
   const snapshot = currentSnapshot()
   whatsapp?.observe(snapshot.accounts)
   mainWindow.webContents.send('gridium2:snapshot', snapshot)
@@ -215,7 +221,7 @@ async function createWindow(): Promise<void> {
 
   accounts = new AccountRuntime(mainWindow, publish)
   accounts.setAutoMarketUiActive(activeModule === 'automarket')
-  telemetry = new TelemetryService(publish)
+  telemetry = new TelemetryService(publish, () => ({ accounts: accounts?.diagnostics(), sentinel: sentinel?.diagnostics(), mobile: mobileSync?.diagnostics() }))
   telemetry.start()
 
   mainWindow.on('resize', applyLayout)
@@ -261,6 +267,8 @@ app.whenReady().then(async () => {
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) await createWindow() })
 })
 app.on('before-quit', () => {
+  if (publishTimer) clearTimeout(publishTimer)
+  publishTimer = null
   telemetry?.stop()
   whatsapp?.stop()
   sentinel?.stop()

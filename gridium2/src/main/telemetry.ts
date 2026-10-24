@@ -1,4 +1,6 @@
-import { app } from 'electron'
+import { appendFileSync, existsSync, renameSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { app, webContents } from 'electron'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import type { TelemetrySnapshot } from '../shared/contracts'
 
@@ -14,7 +16,8 @@ export class TelemetryService {
     capturedAt: Date.now()
   }
 
-  constructor(private readonly onSample: (sample: TelemetrySnapshot) => void) {}
+  private samples = 0
+  constructor(private readonly onSample: (sample: TelemetrySnapshot) => void, private readonly diagnostics: () => unknown = () => ({})) {}
 
   start(): void {
     if (this.timer) return
@@ -55,6 +58,16 @@ export class TelemetryService {
       capturedAt: Date.now()
     }
 
+    if (process.env.GRIDIUM_DIAGNOSTICS === '1' && ++this.samples % 60 === 0) {
+      try {
+        const path = join(app.getPath('userData'), 'gridium2-diagnostics.jsonl')
+        if (existsSync(path) && statSync(path).size > 5 * 1024 * 1024) renameSync(path, `${path}.1`)
+        appendFileSync(path, JSON.stringify({ at: Date.now(), uptime: process.uptime(), pid: process.pid,
+          memory: process.memoryUsage(), processes: metrics, webContents: webContents.getAllWebContents().map((wc) => ({
+            id: wc.id, type: wc.getType(), pid: wc.getOSProcessId(), listeners: wc.eventNames().reduce((n, e) => n + wc.listenerCount(e), 0)
+          })), runtime: this.diagnostics() }) + '\n')
+      } catch { /* Diagnostics must not interrupt gameplay. */ }
+    }
     this.histogram.reset()
     this.onSample(this.last)
   }
