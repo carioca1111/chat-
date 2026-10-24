@@ -30,8 +30,8 @@ const potency = (value: unknown): 1|2|3|4|5|undefined => {
   const parsed = finite(typeof value === 'string' ? value.replace(/^P/i, '') : value)
   return parsed && [1,2,3,4,5].includes(parsed) ? parsed as 1|2|3|4|5 : undefined
 }
-const normalizeHuntSlug = (value: unknown): string => text(value).toLowerCase().replace(/[\s-]+/g, '_')
-const huntSlugOf = (estado: JsonRecord): string => normalizeHuntSlug(first(estado.huntSlug, estado.hunt))
+const huntSlugOf = (estado: JsonRecord): string => text(first(estado.huntSlug, estado.hunt))
+const huntIdentity = (slug: string): string => slug.trim().toLowerCase().replace(/[\s-]+/g, '_')
 const hasHuntSignal = (estado: JsonRecord): boolean => Object.prototype.hasOwnProperty.call(estado, 'huntSlug') || Object.prototype.hasOwnProperty.call(estado, 'hunt')
 
 function isPotionName(name: string): boolean {
@@ -128,10 +128,13 @@ export class HuntSessionRuntime {
       } else if (!this.huntSlug) {
         this.startHunt(nextHunt, at)
         sessionTransition = true
-      } else if (nextHunt !== this.huntSlug) {
+      } else if (huntIdentity(nextHunt) !== huntIdentity(this.huntSlug)) {
         this.clearSession(at, true)
         this.startHunt(nextHunt, at)
         sessionTransition = true
+      } else if (nextHunt !== this.huntSlug) {
+        // Formatting/case changed, but it is still the same Hunt.
+        this.huntSlug = nextHunt
       }
     }
 
