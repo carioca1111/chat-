@@ -17,12 +17,21 @@ const initial: GridiumSnapshot = {
 }
 
 const statusLabel = { booting: 'INICIANDO', loading: 'CARREGANDO', ready: 'ONLINE', offline: 'OFFLINE', crashed: 'REINICIAR' } as const
-const modules: Array<[string,string,AppModule|null]> = [
-  ['◉','CONTAS','accounts'], ['⚔','HUNT','hunt'], ['✦','SHINY',null], ['▣','MARKET',null], ['⌖','SNIPER',null], ['▥','PAINEL','panel']
+type HuntSurface = 'route' | 'control'
+type NavEntry = { icon: string; label: string; module: AppModule | null; huntSurface?: HuntSurface }
+const modules: NavEntry[] = [
+  { icon: '◉', label: 'CONTAS', module: 'accounts' },
+  { icon: '⚔', label: 'HUNT', module: 'hunt', huntSurface: 'route' },
+  { icon: '◆', label: 'HUNT CTRL', module: 'hunt', huntSurface: 'control' },
+  { icon: '✦', label: 'SHINY', module: null },
+  { icon: '▣', label: 'MARKET', module: null },
+  { icon: '⌖', label: 'SNIPER', module: null },
+  { icon: '▥', label: 'PAINEL', module: 'panel' }
 ]
 
 export function App() {
   const [snapshot, setSnapshot] = useState<GridiumSnapshot>(initial)
+  const [huntSurface, setHuntSurface] = useState<HuntSurface>('route')
   useEffect(() => {
     let alive = true
     void window.gridium2.getSnapshot().then((next) => alive && setSnapshot(next))
@@ -40,11 +49,16 @@ export function App() {
   const setLayout = (mode: LayoutMode) => void window.gridium2.setLayout(mode)
   const setPerformance = (mode: PerformanceMode) => void window.gridium2.setPerformanceMode(mode)
   const command = (id: AccountId, action: AccountCommand) => void window.gridium2.accountCommand(id, action)
+  const openModule = (entry: NavEntry): void => {
+    if (!entry.module) return
+    if (entry.module === 'hunt') setHuntSurface(entry.huntSurface ?? 'route')
+    void window.gridium2.setModule(entry.module)
+  }
 
   return <div class="shell">
     <aside class="sidebar poke-frame">
       <div class="brand-panel"><div class="brand-ball"><span /></div><div class="brand-copy"><strong>GRIDIIUM <em>2</em></strong><span>POKEIDLE MANAGER</span></div></div>
-      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 1.3.2</span></div>
+      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 1.3.3</span></div>
       <div class="accounts">
         {snapshot.accounts.length === 0 ? <div class="skeleton-card poke-card">Preparando as 4 sessões…</div> : snapshot.accounts.map((account) => <div class={`account-block ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} key={account.id}>
           <button class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} onClick={() => select(account.id)}>
@@ -62,25 +76,30 @@ export function App() {
     </aside>
 
     <header class="topbar poke-frame">
-      <nav class="module-nav">{modules.map(([icon,label,module]) => <button class={`module-button ${module && snapshot.activeModule === module ? 'active' : ''} ${module ? '' : 'locked'}`} disabled={!module} onClick={() => module && void window.gridium2.setModule(module)} title={module ? label : `${label} entra nas próximas versões`} key={label}><span class="module-icon">{icon}</span><span>{label}</span></button>)}</nav>
+      <nav class="module-nav">{modules.map((entry) => {
+        const active = Boolean(entry.module && snapshot.activeModule === entry.module && (entry.module !== 'hunt' || huntSurface === (entry.huntSurface ?? 'route')))
+        return <button class={`module-button ${active ? 'active' : ''} ${entry.module ? '' : 'locked'}`} disabled={!entry.module} onClick={() => openModule(entry)} title={entry.module ? entry.label : `${entry.label} entra nas próximas versões`} key={entry.label}><span class="module-icon">{entry.icon}</span><span>{entry.label}</span></button>
+      })}</nav>
       <div class="top-tools">
         {snapshot.activeModule === 'accounts' ? <>
           <div class="layout-picker poke-toggle">{([1,2,4] as LayoutMode[]).map((mode) => <button class={snapshot.layout === mode ? 'active' : ''} onClick={() => setLayout(mode)} key={mode}>{mode === 1 ? '1×1' : mode === 2 ? '1×2' : '2×2'}</button>)}</div>
           <div class="performance-picker poke-toggle"><button class={snapshot.performanceMode === 'auto' ? 'active' : ''} onClick={() => setPerformance('auto')}>⚡ ECO</button><button class={snapshot.performanceMode === 'full' ? 'active' : ''} onClick={() => setPerformance('full')}>FULL</button></div>
           <div class="account-controls"><Control label="←" title="Voltar" onClick={() => command(snapshot.selectedAccount,'back')} /><Control label="→" title="Avançar" onClick={() => command(snapshot.selectedAccount,'forward')} /><Control label="⌂" title="PokeIdle.io" onClick={() => command(snapshot.selectedAccount,'home')} /><Control label="↻" title="Recarregar" onClick={() => command(snapshot.selectedAccount,'reload')} /><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div>
-        </> : snapshot.activeModule === 'hunt' ? <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class="hunt-top-status"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class="settings-top-status"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}
+        </> : snapshot.activeModule === 'hunt' && huntSurface === 'control' ? <div class="hunt-top-status"><span>◆ HUNT CONTROL</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SESSÃO AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'hunt' ? <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class="hunt-top-status"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class="settings-top-status"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}
       </div>
     </header>
 
     {snapshot.activeModule === 'accounts'
       ? <main class="viewport-placeholder poke-frame"><PowerGrid snapshot={snapshot} /><div class="viewport-ribbon"><span class="ribbon-title">CONTA {snapshot.selectedAccount}</span><span>{selected?.title || 'PokeIdle.io'}</span><span class="ribbon-zoom">ZOOM {selected?.zoomPercent ?? 100}%</span><span class="ribbon-status"><i class={`status-dot ${selected?.status || 'booting'}`} /> {selected ? statusLabel[selected.status] : 'CARREGANDO'}</span></div></main>
       : snapshot.activeModule === 'hunt'
-        ? <><HuntAssistPanel snapshot={snapshot} /><HuntView accountId={snapshot.selectedAccount} serverProfile={selected?.huntProfile} protocolStatus={selected?.huntProtocolStatus ?? 'waiting'} /></>
+        ? huntSurface === 'control'
+          ? <HuntAssistPanel snapshot={snapshot} />
+          : <HuntView accountId={snapshot.selectedAccount} serverProfile={selected?.huntProfile} protocolStatus={selected?.huntProtocolStatus ?? 'waiting'} />
         : snapshot.activeModule === 'panel'
           ? <PanelView snapshot={snapshot} />
           : <SettingsView snapshot={snapshot} />}
 
-    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' ? '⚔ HUNT · CONTROLE + ROTA' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{selected ? powerFooter(selected.effectivePowerState) : 'CARREGANDO'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
+    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' && huntSurface === 'control' ? '◆ HUNT CONTROL · SESSÃO' : snapshot.activeModule === 'hunt' ? '⚔ HUNT · ROTA' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{selected ? powerFooter(selected.effectivePowerState) : 'CARREGANDO'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
   </div>
 }
 
