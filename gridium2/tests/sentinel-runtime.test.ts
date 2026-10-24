@@ -25,6 +25,12 @@ function account(historyMinute: PanelHistoryBucket[]): AccountSnapshot {
     suspendSupported: true,
     huntProfile: { huntSlug: 'outland-test', speciesId: 6, speciesName: 'Charizard', source: 'server', detectedAt: Date.now() },
     huntProtocolStatus: 'live',
+    huntSession: {
+      huntSlug: 'outland-test', sessionStartedAt: 0, capturesTotal: 0, capturesLastHour: 0,
+      capturesByPotency: [0,0,0,0,0], shiniesSeen: 0, shiniesCaught: 0,
+      killsEstimatedTotal: 0, killsEstimatedLastHour: 0, potionStock: 0,
+      potionsUsedTotal: 0, potionsUsedLastHour: 0, potionItems: [], lastCaptureAt: null, updatedAt: 0
+    },
     panelAnalytics: {
       revision: 1,
       sessionStartedAt: 0,

@@ -15,7 +15,7 @@ afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();for(const dir of dirs.sp
 describe('runtime lifecycle', () => {
   it('does no snapshot work disabled or busy and allows only one Mobile request', async () => {
     setup();vi.useFakeTimers()
-    const provider=vi.fn(() => ({accounts:[],autoMarket:{accounts:[],catalog:[]},telemetry:{}} as unknown as GridiumSnapshot))
+    const provider=vi.fn(() => ({accounts:[],telemetry:{}} as unknown as GridiumSnapshot))
     let resolve!: (v:unknown)=>void
     const fetcher=vi.fn(()=>new Promise(r=>{resolve=r}))
     vi.stubGlobal('fetch',fetcher)
