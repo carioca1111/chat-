@@ -93,14 +93,14 @@ export class MobileSyncRuntime {
     const controller = new AbortController()
     this.controller = controller
     try {
-    const response = await fetch(`${this.settings.relayUrl}${pathname}`, {
-      ...init,
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
-    })
-    const payload = await response.json().catch(() => ({})) as Record<string, unknown>
-    if (!response.ok) throw new Error(String(payload.error || `HTTP ${response.status}`))
-    return payload
+      const response = await fetch(`${this.settings.relayUrl}${pathname}`, {
+        ...init,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+      })
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>
+      if (!response.ok) throw new Error(String(payload.error || `HTTP ${response.status}`))
+      return payload
     } finally { if (this.controller === controller) this.controller = null }
   }
 
@@ -125,7 +125,7 @@ export function buildMobilePayload(snapshot: GridiumSnapshot): Record<string, un
   }, { capturas: 0, capturasHora: 0, xp: 0, xpHora: 0, gold: 0, goldHora: 0, marketCoins: 0, marketGems: 0, rmt: 0, shinies: 0, shiniesVistos: 0 })
   const events = accounts.flatMap((a) => a.panelAnalytics.events.slice(0, 20).map((e) => ({ ...e, accountId: a.id }))).sort((a,b) => b.at-a.at).slice(0,30)
   return {
-    version: 20, at, paused: false,
+    version: 21, at, paused: false,
     total: {
       values: { capturas: totals.capturas, xpPokemon: totals.xp, gold: totals.gold, marketCoins: totals.marketCoins, marketGems: totals.marketGems, rmtBrl: totals.rmt, shinies: totals.shinies, shiniesVistos: totals.shiniesVistos },
       rates: { capturas: totals.capturasHora, xpPokemon: totals.xpHora, gold: totals.goldHora },
@@ -137,20 +137,18 @@ export function buildMobilePayload(snapshot: GridiumSnapshot): Record<string, un
       version: snapshot.updater?.currentVersion || app.getVersion(), generatedAt: at, selectedAccount: snapshot.selectedAccount,
       performanceMode: snapshot.performanceMode, telemetry: snapshot.telemetry, updater: snapshot.updater,
       whatsapp: snapshot.whatsapp ? { enabled: snapshot.whatsapp.enabled, reportTime: snapshot.whatsapp.reportTime, alertShiny: snapshot.whatsapp.alertShiny, alertP5: snapshot.whatsapp.alertP5, tokenConfigured: snapshot.whatsapp.tokenConfigured, status: snapshot.whatsapp.status, message: snapshot.whatsapp.message, lastSentAt: snapshot.whatsapp.lastSentAt } : null,
-      sentinel: snapshot.sentinel ? { enabled: snapshot.sentinel.enabled, autoRecover: snapshot.sentinel.autoRecover, anomalyDetection: snapshot.sentinel.anomalyDetection, updatedAt: snapshot.sentinel.updatedAt } : null,
-      autoMarket: { mode: snapshot.autoMarket.mode, lastTickAt: snapshot.autoMarket.lastTickAt, catalog: snapshot.autoMarket.catalog.slice(0,30) }
+      sentinel: snapshot.sentinel ? { enabled: snapshot.sentinel.enabled, autoRecover: snapshot.sentinel.autoRecover, anomalyDetection: snapshot.sentinel.anomalyDetection, updatedAt: snapshot.sentinel.updatedAt } : null
     }}
   }
 }
 
 function mobileAccountRow(account: AccountSnapshot, snapshot: GridiumSnapshot): Record<string, unknown> {
   const panel = compactPanel(account.panelAnalytics)
-  const market = snapshot.autoMarket.accounts.find((x) => x.accountId === account.id)
   const sentinel = snapshot.sentinel?.accounts.find((x) => x.accountId === account.id)
   return {
     slot: account.id-1, status: account.status,
     health: account.status === 'ready' ? 'online' : account.status === 'loading' || account.status === 'booting' ? 'idle' : 'offline',
-    lastChange: account.huntProfile?.detectedAt || Date.now(),
+    lastChange: account.huntProfile?.detectedAt || account.huntSession.updatedAt || Date.now(),
     record: { nick: account.huntProfile?.serverNick || account.name || `Conta ${account.id}`, values: {
       capturas: panel.capturesTotal, xpPokemon: panel.pokemonXpTotal, gold: panel.goldEarnedTotal,
       marketCoins: panel.marketCoinsRevenue, marketGems: panel.marketGemsRevenue, rmtBrl: panel.rmtBrlRevenue,
@@ -159,9 +157,8 @@ function mobileAccountRow(account: AccountSnapshot, snapshot: GridiumSnapshot): 
     gridium2: {
       account: { id: account.id, name: account.name, title: account.title, status: account.status, attached: account.attached, visualMode: account.visualMode, zoomPercent: account.zoomPercent, powerMode: account.powerMode, effectivePowerState: account.effectivePowerState },
       panel,
-      hunt: { protocolStatus: account.huntProtocolStatus, profile: account.huntProfile },
+      hunt: { protocolStatus: account.huntProtocolStatus, profile: account.huntProfile, session: account.huntSession },
       huntIntelligence: getMobileHuntSummary(account.id),
-      autoMarket: market ? { connected: market.connected, socketReady: market.socketReady, serverNick: market.serverNick, coins: market.coins, gems: market.gems, lastServerAt: market.lastServerAt, inventory: market.inventory.slice(0,50), rules: market.rules, statuses: market.statuses, pending: market.pending, lastAction: market.lastAction } : null,
       sentinel: sentinel || null
     }
   }

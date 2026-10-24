@@ -7,8 +7,7 @@ import './hunt.css'
 import './hunt-route-v2.css'
 import './hunt-scan.css'
 import './account-control.css'
-import './automarket.css'
-import './automarket-items.css'
 import './panel.css'
+import './hunt-assist.css'
 
 render(<App />, document.getElementById('app')!)

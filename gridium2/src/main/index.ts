@@ -5,8 +5,6 @@ import type {
   AccountId,
   AccountPowerMode,
   AppModule,
-  AutoMarketMode,
-  AutoMarketRule,
   GridiumSnapshot,
   LayoutMode,
   MobileSyncSettingsInput,
@@ -50,7 +48,6 @@ function currentSnapshot(): GridiumSnapshot {
     keepDisplayAwake: displayPower?.isEnabled() ?? true,
     powerAutomation: accounts?.getPowerAutomation() ?? { ...DEFAULT_POWER_AUTOMATION },
     accounts: accounts?.snapshots() ?? [],
-    autoMarket: accounts?.autoMarketSnapshot() ?? { mode: 'observe', uiActive: false, accounts: [], catalog: [], lastTickAt: 0 },
     telemetry: telemetry?.getSnapshot() ?? {
       cpuPercent: 0,
       memoryMB: 0,
@@ -103,7 +100,7 @@ function applyLayout(): void {
 }
 
 function lastServerAt(accountId: AccountId): number {
-  return accounts?.autoMarketSnapshot().accounts.find((account) => account.accountId === accountId)?.lastServerAt ?? 0
+  return accounts?.lastServerAt(accountId) ?? 0
 }
 
 async function recoverAccount(accountId: AccountId): Promise<boolean> {
@@ -128,9 +125,8 @@ function registerIpc(): void {
     performanceMode = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
-    if (!['accounts', 'hunt', 'automarket', 'panel', 'settings'].includes(next)) return
+    if (!['accounts', 'hunt', 'panel', 'settings'].includes(next)) return
     activeModule = next
-    accounts?.setAutoMarketUiActive(next === 'automarket')
     applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-keep-display-awake', (_event, enabled: boolean) => {
@@ -153,14 +149,6 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:set-power-automation', (_event, key: PowerAutomationKey, enabled: boolean) => {
     if (!['blackUnfocused', 'blackWhenMinimized', 'wakeOnSelect'].includes(key) || typeof enabled !== 'boolean') return
     accounts?.setPowerAutomation(key, enabled); applyLayout(); publish()
-  })
-  ipcMain.handle('gridium2:set-automarket-mode', (_event, mode: AutoMarketMode) => {
-    if (!['observe','auto'].includes(mode)) return
-    accounts?.setAutoMarketMode(mode); publish()
-  })
-  ipcMain.handle('gridium2:set-automarket-rule', (_event, id: AccountId, rule: AutoMarketRule) => {
-    if (![1,2,3,4].includes(id) || !rule || typeof rule !== 'object') return
-    accounts?.setAutoMarketRule(id, rule); publish()
   })
   ipcMain.handle('gridium2:add-panel-rmt-sale', (_event, id: AccountId, sale: PanelRmtSaleInput) => {
     if (![1,2,3,4].includes(id) || !sale || typeof sale !== 'object') return false
@@ -210,7 +198,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.3 Mobile Sync',
+    title: 'Gridium 2 — Alpha 1.3.2 Hunt Intelligence',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -220,7 +208,6 @@ async function createWindow(): Promise<void> {
   })
 
   accounts = new AccountRuntime(mainWindow, publish)
-  accounts.setAutoMarketUiActive(activeModule === 'automarket')
   telemetry = new TelemetryService(publish, () => ({ accounts: accounts?.diagnostics(), sentinel: sentinel?.diagnostics(), mobile: mobileSync?.diagnostics() }))
   telemetry.start()
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { AccountCommand, AccountId, AppModule, GridiumSnapshot, LayoutMode, PerformanceMode } from '../../shared/contracts'
-import { AutoMarketView } from './AutoMarketView'
+import { HuntAssistPanel } from './HuntAssistPanel'
 import { HuntView } from './HuntView'
 import { PanelView } from './PanelView'
 import { SettingsView } from './SettingsView'
@@ -13,13 +13,12 @@ const initial: GridiumSnapshot = {
   keepDisplayAwake: true,
   powerAutomation: { blackUnfocused: false, blackWhenMinimized: true, wakeOnSelect: true },
   accounts: [],
-  autoMarket: { mode: 'observe', uiActive: false, accounts: [], catalog: [], lastTickAt: 0 },
   telemetry: { cpuPercent: 0, memoryMB: 0, mainEventLoopMeanMs: 0, mainEventLoopMaxMs: 0, processCount: 0, capturedAt: Date.now() }
 }
 
 const statusLabel = { booting: 'INICIANDO', loading: 'CARREGANDO', ready: 'ONLINE', offline: 'OFFLINE', crashed: 'REINICIAR' } as const
 const modules: Array<[string,string,AppModule|null]> = [
-  ['◉','CONTAS','accounts'], ['⚔','HUNT','hunt'], ['✦','SHINY',null], ['▣','MARKET',null], ['⌖','SNIPER',null], ['▤','AUTOMARKET','automarket'], ['▥','PAINEL','panel']
+  ['◉','CONTAS','accounts'], ['⚔','HUNT','hunt'], ['✦','SHINY',null], ['▣','MARKET',null], ['⌖','SNIPER',null], ['▥','PAINEL','panel']
 ]
 
 export function App() {
@@ -35,7 +34,6 @@ export function App() {
   const onlineCount = snapshot.accounts.filter((x) => x.status === 'ready').length
   const blackCount = snapshot.accounts.filter((x) => x.effectivePowerState === 'black').length
   const suspendedCount = snapshot.accounts.filter((x) => x.effectivePowerState === 'suspended').length
-  const autoRules = snapshot.autoMarket.accounts.reduce((sum, account) => sum + account.rules.filter((rule) => rule.enabled).length, 0)
 
   const select = (id: AccountId) => void window.gridium2.selectAccount(id)
   const setZoom = (id: AccountId, value: number) => void window.gridium2.setAccountZoom(id, value)
@@ -46,14 +44,14 @@ export function App() {
   return <div class="shell">
     <aside class="sidebar poke-frame">
       <div class="brand-panel"><div class="brand-ball"><span /></div><div class="brand-copy"><strong>GRIDIIUM <em>2</em></strong><span>POKEIDLE MANAGER</span></div></div>
-      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 0.7</span></div>
+      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 1.3.2</span></div>
       <div class="accounts">
         {snapshot.accounts.length === 0 ? <div class="skeleton-card poke-card">Preparando as 4 sessões…</div> : snapshot.accounts.map((account) => <div class={`account-block ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} key={account.id}>
           <button class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} onClick={() => select(account.id)}>
             <span class="account-orb">{account.id}</span><span class="account-main">
               <span class="account-line"><b>Conta {account.id}</b><small class={`account-status ${account.status}`}><i class={`status-dot ${account.status}`} /> {statusLabel[account.status]}</small></span>
               <span class="account-title">{account.title || 'PokeIdle.io'}</span>
-              <span class="account-meta">{snapshot.activeModule === 'hunt' ? huntAccountMeta(account) : snapshot.activeModule === 'automarket' ? autoMarketAccountMeta(snapshot, account.id) : accountPowerMeta(account)}</span>
+              <span class="account-meta">{snapshot.activeModule === 'hunt' ? huntAccountMeta(account) : accountPowerMeta(account)}</span>
             </span>
           </button>
           {snapshot.activeModule === 'accounts' && <div class="account-zoom"><span class="zoom-label">AFASTAMENTO</span><button class="zoom-button" onClick={() => setZoom(account.id, account.zoomPercent - 5)} disabled={account.zoomPercent <= 50}>−</button><button class="zoom-value" onClick={() => setZoom(account.id,100)}>{account.zoomPercent}%</button><button class="zoom-button" onClick={() => setZoom(account.id,account.zoomPercent + 5)} disabled={account.zoomPercent >= 140}>+</button></div>}
@@ -70,21 +68,19 @@ export function App() {
           <div class="layout-picker poke-toggle">{([1,2,4] as LayoutMode[]).map((mode) => <button class={snapshot.layout === mode ? 'active' : ''} onClick={() => setLayout(mode)} key={mode}>{mode === 1 ? '1×1' : mode === 2 ? '1×2' : '2×2'}</button>)}</div>
           <div class="performance-picker poke-toggle"><button class={snapshot.performanceMode === 'auto' ? 'active' : ''} onClick={() => setPerformance('auto')}>⚡ ECO</button><button class={snapshot.performanceMode === 'full' ? 'active' : ''} onClick={() => setPerformance('full')}>FULL</button></div>
           <div class="account-controls"><Control label="←" title="Voltar" onClick={() => command(snapshot.selectedAccount,'back')} /><Control label="→" title="Avançar" onClick={() => command(snapshot.selectedAccount,'forward')} /><Control label="⌂" title="PokeIdle.io" onClick={() => command(snapshot.selectedAccount,'home')} /><Control label="↻" title="Recarregar" onClick={() => command(snapshot.selectedAccount,'reload')} /><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div>
-        </> : snapshot.activeModule === 'hunt' ? <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'automarket' ? <div class="hunt-top-status"><span>▤ AUTOMARKET</span><b>{snapshot.autoMarket.mode === 'auto' ? `AUTO ARMADO · ${autoRules} REGRAS` : `OBSERVAR · ${autoRules} REGRAS`}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class="hunt-top-status"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class="settings-top-status"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}
+        </> : snapshot.activeModule === 'hunt' ? <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class="hunt-top-status"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class="settings-top-status"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}
       </div>
     </header>
 
     {snapshot.activeModule === 'accounts'
       ? <main class="viewport-placeholder poke-frame"><PowerGrid snapshot={snapshot} /><div class="viewport-ribbon"><span class="ribbon-title">CONTA {snapshot.selectedAccount}</span><span>{selected?.title || 'PokeIdle.io'}</span><span class="ribbon-zoom">ZOOM {selected?.zoomPercent ?? 100}%</span><span class="ribbon-status"><i class={`status-dot ${selected?.status || 'booting'}`} /> {selected ? statusLabel[selected.status] : 'CARREGANDO'}</span></div></main>
       : snapshot.activeModule === 'hunt'
-        ? <HuntView accountId={snapshot.selectedAccount} serverProfile={selected?.huntProfile} protocolStatus={selected?.huntProtocolStatus ?? 'waiting'} />
-        : snapshot.activeModule === 'automarket'
-          ? <AutoMarketView state={snapshot.autoMarket} />
-          : snapshot.activeModule === 'panel'
-            ? <PanelView snapshot={snapshot} />
-            : <SettingsView snapshot={snapshot} />}
+        ? <><HuntAssistPanel snapshot={snapshot} /><HuntView accountId={snapshot.selectedAccount} serverProfile={selected?.huntProfile} protocolStatus={selected?.huntProtocolStatus ?? 'waiting'} /></>
+        : snapshot.activeModule === 'panel'
+          ? <PanelView snapshot={snapshot} />
+          : <SettingsView snapshot={snapshot} />}
 
-    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' ? '⚔ HUNT · WEBSOCKET POKEIDLE' : snapshot.activeModule === 'automarket' ? '▤ AUTOMARKET · DADOS DO SERVIDOR' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{snapshot.activeModule === 'automarket' ? (snapshot.autoMarket.mode === 'auto' ? '⚡ COMPRA AUTOMÁTICA ARMADA' : '👁 SOMENTE OBSERVAÇÃO') : selected ? powerFooter(selected.effectivePowerState) : 'CARREGANDO'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
+    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' ? '⚔ HUNT · CONTROLE + ROTA' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{selected ? powerFooter(selected.effectivePowerState) : 'CARREGANDO'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
   </div>
 }
 
@@ -115,14 +111,8 @@ function huntAccountMeta(account: GridiumSnapshot['accounts'][number]): string {
   const profile = account.huntProfile
   if (!profile) return 'Servidor ao vivo · aguardando activeId'
   const identity = profile.speciesName || (profile.speciesId !== undefined ? `Espécie #${profile.speciesId}` : `Active #${profile.activePokemonId ?? '?'}`)
-  return `${identity}${profile.pokemonLevel !== undefined ? ` · Nv ${profile.pokemonLevel}` : ''} · SERVIDOR`
-}
-
-function autoMarketAccountMeta(snapshot: GridiumSnapshot, id: AccountId): string {
-  const account = snapshot.autoMarket.accounts.find((row) => row.accountId === id)
-  if (!account?.socketReady) return 'AutoMarket · aguardando servidor'
-  const enabled = account.rules.filter((rule) => rule.enabled).length
-  return `${account.serverNick || `Conta ${id}`} · ${enabled} regra${enabled === 1 ? '' : 's'} · ${snapshot.autoMarket.mode === 'auto' ? 'AUTO' : 'OBSERVAR'}`
+  const captures = account.huntSession.capturesTotal
+  return `${identity}${profile.pokemonLevel !== undefined ? ` · Nv ${profile.pokemonLevel}` : ''} · ${captures.toLocaleString('pt-BR')} cap`
 }
 
 function accountPowerMeta(account: GridiumSnapshot['accounts'][number]): string {

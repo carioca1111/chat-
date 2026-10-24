@@ -2,14 +2,11 @@ export type AccountId = 1 | 2 | 3 | 4
 export type LayoutMode = 1 | 2 | 4
 export type PerformanceMode = 'auto' | 'full'
 export type VisualMode = 'full' | 'eco'
-export type AppModule = 'accounts' | 'hunt' | 'automarket' | 'panel' | 'settings'
+export type AppModule = 'accounts' | 'hunt' | 'panel' | 'settings'
 export type AccountCommand = 'home' | 'reload' | 'back' | 'forward'
 export type AccountPowerMode = 'auto' | 'on' | 'black' | 'suspended'
 export type EffectivePowerState = 'on' | 'black' | 'suspended'
 export type PowerAutomationKey = 'blackUnfocused' | 'blackWhenMinimized' | 'wakeOnSelect'
-export type AutoMarketMode = 'observe' | 'auto'
-export type AutoMarketCategory = 'balls' | 'potions' | 'revives'
-export type MarketCurrency = 'coins' | 'gems'
 export type PanelGranularity = 'minute' | 'hour' | 'day'
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date' | 'error'
 export type WhatsAppStatus = 'unconfigured' | 'idle' | 'sending' | 'sent' | 'error'
@@ -231,63 +228,29 @@ export interface HuntProfileScan {
   detectedAt: number
 }
 
-export interface AutoMarketRule {
-  category: AutoMarketCategory
-  enabled: boolean
-  itemId: string
-  itemName: string
-  minStock: number
-  targetStock: number
-  maxUnitPrice: number
-  currency: MarketCurrency
-}
-
-export interface AutoMarketInventoryItem {
+export interface HuntPotionSnapshot {
   itemId: string
   name: string
   quantity: number
-  observedAt: number
+  used: number
 }
 
-export interface AutoMarketCatalogItem {
-  itemId: string
-  name: string
-  bestCoins: number | null
-  bestGems: number | null
-  observedAt: number
-}
-
-export interface AutoMarketRuleStatus {
-  category: AutoMarketCategory
-  state: 'disabled' | 'waiting' | 'ok' | 'would-buy' | 'buying' | 'bought' | 'blocked' | 'error'
-  message: string
-  stock: number | null
-  bestUnitPrice: number | null
-  suggestedQuantity: number
+export interface HuntSessionSnapshot {
+  huntSlug: string
+  sessionStartedAt: number
+  capturesTotal: number
+  capturesLastHour: number
+  capturesByPotency: [number, number, number, number, number]
+  shiniesSeen: number
+  shiniesCaught: number
+  killsEstimatedTotal: number
+  killsEstimatedLastHour: number
+  potionStock: number
+  potionsUsedTotal: number
+  potionsUsedLastHour: number
+  potionItems: HuntPotionSnapshot[]
+  lastCaptureAt: number | null
   updatedAt: number
-}
-
-export interface AutoMarketAccountSnapshot {
-  accountId: AccountId
-  connected: boolean
-  socketReady: boolean
-  serverNick: string
-  coins: number | null
-  gems: number | null
-  lastServerAt: number
-  inventory: AutoMarketInventoryItem[]
-  rules: AutoMarketRule[]
-  statuses: AutoMarketRuleStatus[]
-  pending: boolean
-  lastAction: string
-}
-
-export interface AutoMarketSnapshot {
-  mode: AutoMarketMode
-  uiActive: boolean
-  accounts: AutoMarketAccountSnapshot[]
-  catalog: AutoMarketCatalogItem[]
-  lastTickAt: number
 }
 
 export interface AccountSnapshot {
@@ -307,6 +270,7 @@ export interface AccountSnapshot {
   panelAnalytics: PanelAnalyticsSnapshot
   huntProfile: HuntProfileScan | null
   huntProtocolStatus: HuntProtocolStatus
+  huntSession: HuntSessionSnapshot
 }
 
 export interface TelemetrySnapshot {
@@ -326,7 +290,6 @@ export interface GridiumSnapshot {
   keepDisplayAwake: boolean
   powerAutomation: PowerAutomationSettings
   accounts: AccountSnapshot[]
-  autoMarket: AutoMarketSnapshot
   telemetry: TelemetrySnapshot
   updater?: UpdateSnapshot
   whatsapp?: WhatsAppSnapshot
@@ -344,8 +307,6 @@ export interface GridiumApi {
   setAccountPowerMode: (accountId: AccountId, mode: AccountPowerMode) => Promise<void>
   setAllAccountsPowerMode: (mode: AccountPowerMode) => Promise<void>
   setPowerAutomation: (key: PowerAutomationKey, enabled: boolean) => Promise<void>
-  setAutoMarketMode: (mode: AutoMarketMode) => Promise<void>
-  setAutoMarketRule: (accountId: AccountId, rule: AutoMarketRule) => Promise<void>
   addPanelRmtSale: (accountId: AccountId, sale: PanelRmtSaleInput) => Promise<boolean>
   scanHuntProfile: (accountId: AccountId) => Promise<HuntProfileScan | null>
   selectAccount: (accountId: AccountId) => Promise<void>

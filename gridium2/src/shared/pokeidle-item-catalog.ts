@@ -1,12 +1,12 @@
-import type { AutoMarketCategory } from './contracts'
+export type PokeIdleItemCategory = 'balls' | 'potions' | 'revives'
 
-export interface PokeIdleAutoMarketItem {
+export interface PokeIdleItem {
   key: string
   name: string
-  category: AutoMarketCategory
+  category: PokeIdleItemCategory
 }
 
-export const POKEIDLE_AUTO_MARKET_CATALOG: Record<AutoMarketCategory, PokeIdleAutoMarketItem[]> = {
+export const POKEIDLE_ITEM_CATALOG: Record<PokeIdleItemCategory, PokeIdleItem[]> = {
   balls: [
     { key: 'poke-ball', name: 'Poké Ball', category: 'balls' },
     { key: 'great-ball', name: 'Great Ball', category: 'balls' },
@@ -27,12 +27,6 @@ export const POKEIDLE_AUTO_MARKET_CATALOG: Record<AutoMarketCategory, PokeIdleAu
   ]
 }
 
-export const POKEIDLE_AUTO_MARKET_DEFAULTS: Record<AutoMarketCategory, string> = {
-  balls: 'Ultra Ball',
-  potions: 'Ultra Potion',
-  revives: 'Revive'
-}
-
 export function normalizePokeIdleItemName(name: string): string {
   return String(name || '')
     .trim()
@@ -43,19 +37,15 @@ export function normalizePokeIdleItemName(name: string): string {
     .replace(/\s+/g, ' ')
 }
 
-const canonicalByNormalized = new Map<string, PokeIdleAutoMarketItem>()
-for (const items of Object.values(POKEIDLE_AUTO_MARKET_CATALOG)) {
+const canonicalByNormalized = new Map<string, PokeIdleItem>()
+for (const items of Object.values(POKEIDLE_ITEM_CATALOG)) {
   for (const item of items) canonicalByNormalized.set(normalizePokeIdleItemName(item.name), item)
 }
 
-export function canonicalPokeIdleItem(name: string): PokeIdleAutoMarketItem | null {
+export function canonicalPokeIdleItem(name: string): PokeIdleItem | null {
   return canonicalByNormalized.get(normalizePokeIdleItemName(name)) ?? null
 }
 
-export function categoryForPokeIdleItem(name: string): AutoMarketCategory | null {
+export function categoryForPokeIdleItem(name: string): PokeIdleItemCategory | null {
   return canonicalPokeIdleItem(name)?.category ?? null
-}
-
-export function isCanonicalPokeIdleAutoMarketItem(name: string): boolean {
-  return canonicalPokeIdleItem(name) !== null
 }

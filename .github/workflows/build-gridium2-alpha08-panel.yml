@@ -1,4 +1,4 @@
-name: Build Gridium 2 Long-running Performance
+name: Build Gridium 2 Hunt Intelligence
 
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.3.1-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.3.2-Setup.exe" >> $env:GITHUB_OUTPUT
       - name: Verify installer and create update manifest
         shell: pwsh
         run: |
@@ -64,9 +64,9 @@ jobs:
           Write-Host "SHA256: $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.3.1-Long-Running-Performance-Windows
+          name: Gridium-2-Alpha-1.3.2-Hunt-Intelligence-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.3.1-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.2-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -76,17 +76,22 @@ jobs:
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Alpha 1.3.1 · Long-running Performance
+          name: Gridium 2 Alpha 1.3.2 · Hunt Intelligence
           body: |
-            Gridium 2 Alpha 1.3.1 — correção de degradação progressiva para uso 24/7.
+            Gridium 2 Alpha 1.3.2 — Hunt Control compacto para acompanhar a sessão em tempo real.
 
-            - hot path de analytics sem materializações duplicadas
-            - persistência coalescida e históricos/snapshots limitados
-            - caches de Hunt/Sentinel/Pokémon limitados
-            - deduplicação exata de Pokémon em SQLite com cache JS limitado
-            - teste específico para IDs muito espaçados
-            - soak acelerado, regressão Electron, typecheck e testes executados no Windows antes da publicação
+            - capturas, capturas/h e meta com progresso/ETA
+            - abates estimados por ganho confirmado de XP e abates/h
+            - P1, P2, P3, P4 e P5 por Hunt
+            - shiny visto e shiny capturado por Hunt
+            - estoque/uso de poções e ETA de retorno ao Centro Pokémon
+            - visual individual, quatro contas e grupo de contas na mesma Hunt
+            - estatísticas combinadas e contribuição de cada conta no grupo
+            - sprites dos Pokémon e imagens dos itens
+            - rota perfeita existente preservada abaixo do novo painel compacto
+            - recurso antigo de compra automática removido por completo
+            - typecheck, testes, soak com GC e regressão Electron executados no Windows antes da publicação
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.3.1-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.2-Setup.exe
             gridium2/release/gridium2-update.json

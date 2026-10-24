@@ -10,9 +10,6 @@ import type {
   AccountPowerMode,
   AccountSnapshot,
   AccountStatus,
-  AutoMarketMode,
-  AutoMarketRule,
-  AutoMarketSnapshot,
   EffectivePowerState,
   HuntProfileScan,
   HuntProtocolStatus,
@@ -22,10 +19,8 @@ import type {
   PowerAutomationSettings,
   VisualMode
 } from '../shared/contracts'
-import { AutoMarketRuntime } from './auto-market-runtime'
-import type { AutoMarketPersistedSettings } from './auto-market-runtime'
+import { HuntSessionRuntime } from './hunt-session-runtime'
 import type { Rect } from './layout'
-import { MARKET_BRIDGE_SOURCE } from './market-bridge'
 import type { PanelAnalyticsPersistedState } from './panel-analytics-runtime'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
 import { DEFAULT_POWER_AUTOMATION, resolveAccountPowerState } from './power-policy'
@@ -36,7 +31,6 @@ const GAME_URL = 'https://pokeidle.io/app'
 const POKEIDLE_ORIGINS = new Set(['https://pokeidle.io', 'https://www.pokeidle.io'])
 const POWER_MODES = new Set<AccountPowerMode>(['auto', 'on', 'black', 'suspended'])
 
-type JsonRecord = Record<string, unknown>
 type StoredPanelAnalytics = Partial<Record<AccountId, PanelAnalyticsPersistedState>>
 
 interface StoredPowerSettings {
@@ -66,7 +60,9 @@ interface AccountSlot {
   suspendSupported: boolean
   huntProfile: HuntProfileScan | null
   huntProtocolStatus: HuntProtocolStatus
+  huntSession: HuntSessionRuntime
   serverState: PokeIdleServerState
+  lastServerAt: number
   socketUrls: Map<string, string>
   debuggerOwned: boolean
   debuggerMessageHandler: ((event: Electron.Event, method: string, params: unknown) => void) | null
@@ -78,12 +74,9 @@ export class AccountRuntime {
   private readonly authWindows = new Set<BrowserWindow>()
   private readonly zoomFilePath = join(app.getPath('userData'), 'gridium2-account-zoom.json')
   private readonly powerFilePath = join(app.getPath('userData'), 'gridium2-power-settings.json')
-  private readonly autoMarketFilePath = join(app.getPath('userData'), 'gridium2-automarket.json')
   private readonly panelAnalyticsFilePath = join(app.getPath('userData'), 'gridium2-panel-analytics-v2.json')
-  private readonly autoMarket: AutoMarketRuntime
   private zoomWrite: Promise<void> = Promise.resolve()
   private powerWrite: Promise<void> = Promise.resolve()
-  private autoMarketWrite: Promise<void> = Promise.resolve()
   private readonly panelWriter = new CoalescedWriter(() => this.persistPanelAnalytics())
   private persistenceMetrics = { bytes: 0, durationMs: 0 }
   private powerAutomation: PowerAutomationSettings = { ...DEFAULT_POWER_AUTOMATION }
@@ -97,12 +90,6 @@ export class AccountRuntime {
     const storedPower = this.loadPowerSettings()
     const storedPanelAnalytics = this.loadPanelAnalyticsSettings()
     this.powerAutomation = storedPower.automation
-    this.autoMarket = new AutoMarketRuntime({
-      initial: this.loadAutoMarketSettings(),
-      onChanged: this.onChanged,
-      onPersist: (settings) => this.persistAutoMarketSettings(settings),
-      sendCommand: (accountId, command) => this.sendMarketCommand(accountId, command)
-    })
     for (const id of [1, 2, 3, 4] as AccountId[]) {
       this.createAccount(
         id,
@@ -134,24 +121,13 @@ export class AccountRuntime {
       suspendSupported: account.suspendSupported,
       panelAnalytics: account.serverState.analytics(),
       huntProfile: account.huntProfile ? { ...account.huntProfile } : null,
-      huntProtocolStatus: account.huntProtocolStatus
+      huntProtocolStatus: account.huntProtocolStatus,
+      huntSession: account.huntSession.snapshot()
     }))
   }
 
-  autoMarketSnapshot(): AutoMarketSnapshot {
-    return this.autoMarket.snapshot()
-  }
-
-  setAutoMarketUiActive(active: boolean): void {
-    this.autoMarket.setUiActive(active)
-  }
-
-  setAutoMarketMode(mode: AutoMarketMode): void {
-    this.autoMarket.setMode(mode)
-  }
-
-  setAutoMarketRule(accountId: AccountId, rule: AutoMarketRule): void {
-    this.autoMarket.updateRule(accountId, rule)
+  lastServerAt(accountId: AccountId): number {
+    return this.accounts.get(accountId)?.lastServerAt ?? 0
   }
 
   addPanelRmtSale(accountId: AccountId, sale: PanelRmtSaleInput): boolean {
@@ -284,7 +260,6 @@ export class AccountRuntime {
     this.disposed = true
     this.panelWriter.stop()
     this.flushPanelAnalyticsSync()
-    this.autoMarket.destroy()
     for (const auth of this.authWindows) if (!auth.isDestroyed()) auth.close()
     this.authWindows.clear()
     for (const account of this.accounts.values()) {
@@ -320,10 +295,12 @@ export class AccountRuntime {
       desiredVisualMode: 'eco', appliedVisualMode: 'full', ecoCssKey: null, visualUpdateRunning: false,
       zoomPercent, powerMode, desiredPowerState: 'on', appliedPowerState: 'on', powerUpdateRunning: false,
       suspendSupported: true, huntProfile: null, huntProtocolStatus: 'waiting',
+      huntSession: new HuntSessionRuntime(),
       serverState: new PokeIdleServerState({
         analyticsInitial,
         onAnalyticsPersist: () => this.schedulePersistPanelAnalytics()
       }),
+      lastServerAt: 0,
       socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null
     }
 
@@ -346,7 +323,6 @@ export class AccountRuntime {
       this.patchAccount(account, { status: 'ready' })
       this.requestVisualMode(account, account.desiredVisualMode)
       this.requestPowerState(account, account.desiredPowerState)
-      void this.installMarketBridge(account)
     })
     view.webContents.on('did-fail-load', (_event, code) => { if (code !== -3) this.patchAccount(account, { status: 'offline' }) })
     view.webContents.on('page-title-updated', (_event, title) => this.patchAccount(account, { title }))
@@ -374,11 +350,12 @@ export class AccountRuntime {
       const onDetach = (): void => {
         account.socketUrls.clear()
         account.serverState.reset()
+        account.huntSession.reset()
         account.huntProfile = null
         account.huntProtocolStatus = 'unavailable'
         account.debuggerOwned = false
         account.suspendSupported = false
-        this.autoMarket.resetConnection(account.id)
+        account.lastServerAt = 0
         if (!this.disposed) this.onChanged()
       }
       account.debuggerMessageHandler = onMessage
@@ -386,15 +363,13 @@ export class AccountRuntime {
       debuggerApi.on('message', onMessage)
       debuggerApi.on('detach', onDetach)
       await debuggerApi.sendCommand('Network.enable')
-      try { await debuggerApi.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: MARKET_BRIDGE_SOURCE }) } catch { /* current document install is fallback */ }
       if (account.huntProtocolStatus === 'unavailable') account.huntProtocolStatus = 'waiting'
       account.suspendSupported = true
-      await this.installMarketBridge(account)
     } catch {
       account.huntProtocolStatus = 'unavailable'
       account.huntProfile = null
       account.suspendSupported = false
-      this.autoMarket.resetConnection(account.id)
+      account.lastServerAt = 0
       if (!this.disposed) this.onChanged()
     }
   }
@@ -420,16 +395,11 @@ export class AccountRuntime {
     const requestId = String(payload.requestId || '')
 
     if (method === 'Network.webSocketCreated') {
-      if (requestId && typeof payload.url === 'string') {
-        account.socketUrls.set(requestId, payload.url)
-        if (this.isPokeIdleSocket(payload.url)) this.autoMarket.setSocketReady(account.id, true)
-      }
+      if (requestId && typeof payload.url === 'string') account.socketUrls.set(requestId, payload.url)
       return
     }
     if (method === 'Network.webSocketClosed') {
       if (requestId) account.socketUrls.delete(requestId)
-      const anyGameSocket = [...account.socketUrls.values()].some((url) => this.isPokeIdleSocket(url))
-      if (!anyGameSocket) this.autoMarket.setSocketReady(account.id, false)
       return
     }
     if (method !== 'Network.webSocketFrameReceived' || !requestId) return
@@ -443,22 +413,23 @@ export class AccountRuntime {
 
     try {
       const packet = JSON.parse(raw) as unknown
-      this.autoMarket.ingest(account.id, packet)
-      const auxiliaryChanged = account.serverState.ingestAuxiliary(packet)
+      account.lastServerAt = Date.now()
+      const huntSessionChanged = account.huntSession.ingest(packet, account.lastServerAt)
+      const auxiliaryChanged = account.serverState.ingestAuxiliary(packet, account.lastServerAt)
       if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) {
-        if (auxiliaryChanged) this.onChanged()
+        if (auxiliaryChanged || huntSessionChanged) this.onChanged()
         return
       }
-      const result = account.serverState.ingest(packet)
+      const result = account.serverState.ingest(packet, account.lastServerAt)
       if (!result.accepted) {
-        if (auxiliaryChanged) this.onChanged()
+        if (auxiliaryChanged || huntSessionChanged) this.onChanged()
         return
       }
       const statusChanged = account.huntProtocolStatus !== 'live'
       account.huntProtocolStatus = 'live'
       if (result.changed) account.huntProfile = result.profile
       else if (account.huntProfile === null && result.profile) account.huntProfile = result.profile
-      if (result.changed || statusChanged || auxiliaryChanged) this.onChanged()
+      if (result.changed || statusChanged || auxiliaryChanged || huntSessionChanged) this.onChanged()
     } catch {
       // Raw payloads are deliberately never logged or persisted.
     }
@@ -467,57 +438,11 @@ export class AccountRuntime {
   private resetServerState(account: AccountSlot): void {
     account.socketUrls.clear()
     const changed = account.serverState.reset() || account.huntProfile !== null || account.huntProtocolStatus !== 'waiting'
+    account.huntSession.reset()
+    account.lastServerAt = 0
     account.huntProfile = null
     if (account.huntProtocolStatus !== 'unavailable') account.huntProtocolStatus = 'waiting'
-    this.autoMarket.resetConnection(account.id)
     if (changed && !this.disposed) this.onChanged()
-  }
-
-  private async installMarketBridge(account: AccountSlot): Promise<boolean> {
-    const wc = account.view.webContents
-    if (this.disposed || wc.isDestroyed()) return false
-    try { return await wc.executeJavaScript(MARKET_BRIDGE_SOURCE, true) === true } catch { return false }
-  }
-
-  private async sendMarketCommand(accountId: AccountId, command: JsonRecord): Promise<{ ok: boolean; reason?: string }> {
-    const account = this.accounts.get(accountId)
-    if (!account || account.view.webContents.isDestroyed()) return { ok: false, reason: 'conta-indisponivel' }
-    if (account.desiredPowerState === 'suspended') return { ok: false, reason: 'conta-suspensa' }
-    if (!this.isPokeIdleUrl(account.view.webContents.getURL())) return { ok: false, reason: 'fora-do-pokeidle' }
-    const clean = this.validateAutoMarketCommand(command)
-    if (!clean) return { ok: false, reason: 'comando-rejeitado' }
-    if (!await this.installMarketBridge(account)) return { ok: false, reason: 'bridge-indisponivel' }
-    try {
-      const encoded = JSON.stringify(clean)
-      const result = await account.view.webContents.executeJavaScript(`window.__gridium2MarketSend ? window.__gridium2MarketSend(${encoded}) : ({ok:false,reason:'bridge-missing'})`, true) as { ok?: boolean; reason?: string }
-      return result?.ok === true ? { ok: true } : { ok: false, reason: String(result?.reason || 'socket-unavailable') }
-    } catch (error) {
-      return { ok: false, reason: String(error instanceof Error ? error.message : error) }
-    }
-  }
-
-  private validateAutoMarketCommand(input: JsonRecord): JsonRecord | null {
-    const type = String(input.t || '')
-    if (type === 'market.itens') {
-      const categoria = String(input.categoria ?? '').slice(0, 80)
-      const elementoRaw = input.elemento
-      const elemento = elementoRaw === '' || elementoRaw === undefined ? '' : Number(elementoRaw)
-      if (elemento !== '' && (!Number.isSafeInteger(elemento) || elemento <= 0)) return null
-      return { t: type, elemento, categoria }
-    }
-    if (type === 'market.item') {
-      const itemId = Number(input.itemId)
-      const pagina = Math.max(1, Math.min(10, Number(input.pagina) || 1))
-      if (!Number.isSafeInteger(itemId) || itemId <= 0) return null
-      return { t: type, tipo: 'item', itemId, pagina }
-    }
-    if (type === 'market.comprar') {
-      const id = Number(input.id), qtd = Number(input.qtd), preco = Number(input.preco), moeda = String(input.moeda || '')
-      if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(qtd) || qtd <= 0 || qtd > 9999) return null
-      if (!Number.isFinite(preco) || preco <= 0 || !['gold','orb'].includes(moeda)) return null
-      return { t: type, id, qtd, preco, moeda }
-    }
-    return null
   }
 
   private isPokeIdleSocket(url: string): boolean {
@@ -657,18 +582,6 @@ export class AccountRuntime {
     this.powerWrite = this.powerWrite.catch(() => undefined).then(() => writeFile(this.powerFilePath, payload, 'utf8')).catch(() => undefined)
   }
 
-  private loadAutoMarketSettings(): AutoMarketPersistedSettings {
-    try {
-      const parsed = JSON.parse(readFileSync(this.autoMarketFilePath, 'utf8')) as AutoMarketPersistedSettings
-      return parsed && typeof parsed === 'object' ? parsed : {}
-    } catch { return {} }
-  }
-
-  private persistAutoMarketSettings(settings: AutoMarketPersistedSettings): void {
-    const payload = JSON.stringify(settings, null, 2)
-    this.autoMarketWrite = this.autoMarketWrite.catch(() => undefined).then(() => writeFile(this.autoMarketFilePath, payload, 'utf8')).catch(() => undefined)
-  }
-
   private loadPanelAnalyticsSettings(): StoredPanelAnalytics {
     try {
       const parsed = JSON.parse(readFileSync(this.panelAnalyticsFilePath, 'utf8')) as { accounts?: Record<string, PanelAnalyticsPersistedState> } | Record<string, PanelAnalyticsPersistedState>
@@ -697,16 +610,15 @@ export class AccountRuntime {
     const payload = this.panelAnalyticsPayload()
     const temporary = `${this.panelAnalyticsFilePath}.pending`
     await writeFile(temporary, payload, 'utf8')
-    // Shutdown writes the newest state synchronously. Never replace it with an older in-flight write.
     if (!this.disposed) renameSync(temporary, this.panelAnalyticsFilePath)
     this.persistenceMetrics = { bytes: Buffer.byteLength(payload), durationMs: performance.now() - started }
   }
 
   diagnostics() {
     return { persistence: { ...this.panelWriter.diagnostics(), ...this.persistenceMetrics },
-      accounts: [...this.accounts.values()].map((a) => ({ id: a.id, sockets: a.socketUrls.size,
+      accounts: [...this.accounts.values()].map((a) => ({ id: a.id, sockets: a.socketUrls.size, lastServerAt: a.lastServerAt,
         listeners: a.view.webContents.eventNames().reduce((n, e) => n + a.view.webContents.listenerCount(e), 0),
-        ...a.serverState.diagnostics() })) }
+        huntSession: a.huntSession.diagnostics(), ...a.serverState.diagnostics() })) }
   }
 
   private flushPanelAnalyticsSync(): void {
