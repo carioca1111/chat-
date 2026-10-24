@@ -1,4 +1,4 @@
-name: Build Gridium 2 Hunt Control Tab
+name: Build Gridium 2 Hunt Control Polish
 
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.3.3-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.3.4-Setup.exe" >> $env:GITHUB_OUTPUT
       - name: Verify installer and create update manifest
         shell: pwsh
         run: |
@@ -64,9 +64,9 @@ jobs:
           Write-Host "SHA256: $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.3.3-Hunt-Control-Tab-Windows
+          name: Gridium-2-Alpha-1.3.4-Hunt-Control-Polish-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.3.3-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.4-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -76,19 +76,21 @@ jobs:
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Alpha 1.3.3 · Hunt Control em aba separada
+          name: Gridium 2 Alpha 1.3.4 · Hunt Control Polish
           body: |
-            Gridium 2 Alpha 1.3.3 corrige a organização da Hunt Control.
+            Gridium 2 Alpha 1.3.4 melhora a Hunt Control e corrige a edição das metas.
 
-            - HUNT volta a mostrar somente a Hunt Intelligence / rota perfeita original
-            - nova aba HUNT CTRL separada no menu superior
-            - HUNT CTRL mantém capturas, abates, meta, ETA, poções, P1-P5 e shiny visto/pego
-            - modos individual, quatro contas e grupo continuam disponíveis na nova aba
-            - a Hunt original não é mais deslocada para baixo pelo painel compacto
-            - AutoMarket continua completamente removido
-            - teste de regressão impede que Hunt Control volte a ser renderizada junto da Hunt
+            - campo de meta de capturas agora aceita digitação normal pelo teclado e confirma em Enter/blur
+            - nova meta de abates independente, com faltam, progresso e ETA
+            - Hunt Control ocupa toda a área da aba, eliminando o grande espaço terracota vazio
+            - cards reorganizados de forma mais compacta e equilibrada
+            - nome do Pokémon ativo agora fica alinhado ao sprite; a Hunt aparece separadamente
+            - poções podem exibir até três sprites de itens no mesmo card
+            - timeline considera meta de capturas, meta de abates e retorno ao Centro
+            - modos individual, quatro contas e grupo continuam disponíveis
+            - HUNT original continua em aba separada e AutoMarket continua removido
             - typecheck, testes, soak com GC e regressão Electron executados no Windows antes da publicação
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.3.3-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.4-Setup.exe
             gridium2/release/gridium2-update.json
