@@ -14,4 +14,19 @@ describe('Hunt Control navigation', () => {
     expect(app).not.toContain('<><HuntAssistPanel snapshot={snapshot} /><HuntView')
     expect(separationCss).toContain('.hunt-page{top:72px}')
   })
+
+  it('keeps capture and kill goals independently editable without committing every keystroke', () => {
+    const panel = readFileSync(join(process.cwd(), 'src/renderer/src/HuntAssistPanel.tsx'), 'utf8')
+    const css = readFileSync(join(process.cwd(), 'src/renderer/src/hunt-assist.css'), 'utf8')
+
+    expect(panel).toContain('META DE CAPTURAS')
+    expect(panel).toContain('META DE ABATES')
+    expect(panel).toContain('killGoalKey')
+    expect(panel).toContain('function GoalEditor')
+    expect(panel).toContain('onInput={(event) => setDraft')
+    expect(panel).toContain('onBlur={commit}')
+    expect(panel).toContain("event.key === 'Enter'")
+    expect(css).toContain('bottom:38px')
+    expect(css).not.toContain('.hunt-page{top:332px}')
+  })
 })
