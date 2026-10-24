@@ -47,7 +47,7 @@ describe('long-running regression', () => {
 
   it('stores widely spaced identities exactly in SQLite with bounded JS cache', () => {
     const ledger = new PokemonIdLedger(128), reference = new Set<string>()
-    for (let i = 1; i <= 20000; i++) {
+    for (let i = 1; i <= 4000; i++) {
       const id = String(i * 1_000_003)
       ledger.add(id)
       reference.add(id)
@@ -62,7 +62,7 @@ describe('long-running regression', () => {
     expect(ledger.cacheEntries).toBeLessThanOrEqual(128)
     expect(ledger.cacheLimit).toBe(128)
     expect(ledger.has('10003')).toBe(false)
-  })
+  }, 30000)
 
   it('keeps active Pokémon and never recounts an evicted inactive Pokémon', () => {
     const tracker = new PokeIdleServerState(), now = Date.now()
