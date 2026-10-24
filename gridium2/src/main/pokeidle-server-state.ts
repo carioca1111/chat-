@@ -235,8 +235,8 @@ export class PokeIdleServerState {
     if (trainerMultiplier !== undefined && trainerMultiplier > 0) this.trainerXpMultiplier = trainerMultiplier
     if (pokemonMultiplier !== undefined && pokemonMultiplier > 0) this.pokemonXpMultiplier = pokemonMultiplier
 
-    const huntSlug = safeString(firstDefined(estado.huntSlug, estado.hunt))
-    if (huntSlug) this.huntSlug = huntSlug
+    if (Object.prototype.hasOwnProperty.call(estado, 'huntSlug')) this.huntSlug = safeString(estado.huntSlug)
+    else if (Object.prototype.hasOwnProperty.call(estado, 'hunt')) this.huntSlug = safeString(estado.hunt)
 
     if (Object.prototype.hasOwnProperty.call(estado, 'activeId')) this.activeId = toPositiveId(estado.activeId)
 
