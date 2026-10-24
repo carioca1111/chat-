@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"tests/long-running-soak.test.ts\"",
     "test:watch": "vitest",
     "dist:win": "npm run build && electron-builder --win nsis --x64",
     "typecheck": "tsc --noEmit",
