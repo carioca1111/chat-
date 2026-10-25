@@ -203,6 +203,7 @@ export interface PokemonWorthSnapshot {
   speciesName?: string
   nickname?: string
   level?: number
+  pokemonXp?: number
   quality?: number
   potency?: 1 | 2 | 3 | 4 | 5
   ivTotal?: number
