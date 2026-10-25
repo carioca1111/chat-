@@ -13,4 +13,5 @@ import './hunt-control-separation.css'
 import './worth-it.css'
 import './worth-it-decision.css'
 
+document.title = 'Gridium 2 — Alpha 1.3.7 Vale a Pena'
 render(<App />, document.getElementById('app')!)
