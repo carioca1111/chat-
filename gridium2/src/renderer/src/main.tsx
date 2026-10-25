@@ -11,5 +11,6 @@ import './panel.css'
 import './hunt-assist.css'
 import './hunt-control-separation.css'
 import './worth-it.css'
+import './worth-it-decision.css'
 
 render(<App />, document.getElementById('app')!)
