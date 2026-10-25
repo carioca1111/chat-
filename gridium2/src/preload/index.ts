@@ -31,6 +31,7 @@ const api: MobileGridiumApi = {
   setPowerAutomation: (key: PowerAutomationKey, enabled: boolean) => ipcRenderer.invoke('gridium2:set-power-automation', key, enabled),
   addPanelRmtSale: (accountId: AccountId, sale: PanelRmtSaleInput) => ipcRenderer.invoke('gridium2:add-panel-rmt-sale', accountId, sale),
   scanHuntProfile: (accountId: AccountId) => ipcRenderer.invoke('gridium2:scan-hunt-profile', accountId),
+  searchPokemonRoster: (accountId: AccountId, query = '') => ipcRenderer.invoke('gridium2:search-pokemon-roster', accountId, query),
   selectAccount: (accountId: AccountId) => ipcRenderer.invoke('gridium2:select-account', accountId),
   accountCommand: (accountId: AccountId, command: AccountCommand) => ipcRenderer.invoke('gridium2:account-command', accountId, command),
   checkForUpdates: () => ipcRenderer.invoke('gridium2:check-for-updates'),

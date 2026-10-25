@@ -10,5 +10,6 @@ import './account-control.css'
 import './panel.css'
 import './hunt-assist.css'
 import './hunt-control-separation.css'
+import './worth-it.css'
 
 render(<App />, document.getElementById('app')!)

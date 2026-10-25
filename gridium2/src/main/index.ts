@@ -20,6 +20,7 @@ import { DisplayPowerController } from './display-power'
 import { computeLayout } from './layout'
 import { setMobileHuntSummary } from './mobile-hunt-cache'
 import { MobileSyncRuntime } from './mobile-sync'
+import { searchPokemonRoster } from './pokemon-roster-access'
 import { DEFAULT_POWER_AUTOMATION } from './power-policy'
 import { SentinelRuntime } from './sentinel-runtime'
 import { TelemetryService } from './telemetry'
@@ -125,7 +126,7 @@ function registerIpc(): void {
     performanceMode = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
-    if (!['accounts', 'hunt', 'panel', 'settings'].includes(next)) return
+    if (!['accounts', 'hunt', 'worth', 'panel', 'settings'].includes(next)) return
     activeModule = next
     applyLayout(); publish()
   })
@@ -161,6 +162,10 @@ function registerIpc(): void {
   ipcMain.handle('gridium2:scan-hunt-profile', async (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return null
     return await accounts?.scanHuntProfile(id) ?? null
+  })
+  ipcMain.handle('gridium2:search-pokemon-roster', (_event, id: AccountId, query = '') => {
+    if (![1,2,3,4].includes(id)) return []
+    return searchPokemonRoster(accounts, id, String(query || '').slice(0, 80))
   })
   ipcMain.handle('gridium2:select-account', (_event, id: AccountId) => {
     if (![1, 2, 3, 4].includes(id)) return
@@ -198,7 +203,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.3.2 Hunt Intelligence',
+    title: 'Gridium 2 — Alpha 1.3.6 Vale a Pena',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

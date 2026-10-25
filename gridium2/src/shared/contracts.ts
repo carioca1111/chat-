@@ -2,7 +2,7 @@ export type AccountId = 1 | 2 | 3 | 4
 export type LayoutMode = 1 | 2 | 4
 export type PerformanceMode = 'auto' | 'full'
 export type VisualMode = 'full' | 'eco'
-export type AppModule = 'accounts' | 'hunt' | 'panel' | 'settings'
+export type AppModule = 'accounts' | 'hunt' | 'worth' | 'panel' | 'settings'
 export type AccountCommand = 'home' | 'reload' | 'back' | 'forward'
 export type AccountPowerMode = 'auto' | 'on' | 'black' | 'suspended'
 export type EffectivePowerState = 'on' | 'black' | 'suspended'
@@ -196,6 +196,29 @@ export interface HuntStatBlock {
   speed?: number
 }
 
+export interface PokemonWorthSnapshot {
+  instanceId: string
+  accountId?: AccountId
+  speciesId?: number
+  speciesName?: string
+  nickname?: string
+  level?: number
+  quality?: number
+  potency?: 1 | 2 | 3 | 4 | 5
+  ivTotal?: number
+  ivs?: HuntStatBlock
+  stats?: HuntStatBlock
+  baseStats?: HuntStatBlock
+  refinement?: HuntStatBlock
+  shiny?: boolean
+  legendary?: boolean
+  types?: string[]
+  calculatorScore?: number
+  power?: number
+  combatHp?: number
+  source: 'account' | 'external'
+}
+
 export interface HuntProfileScan {
   trainerLevel?: number
   trainerXp?: number
@@ -309,6 +332,7 @@ export interface GridiumApi {
   setPowerAutomation: (key: PowerAutomationKey, enabled: boolean) => Promise<void>
   addPanelRmtSale: (accountId: AccountId, sale: PanelRmtSaleInput) => Promise<boolean>
   scanHuntProfile: (accountId: AccountId) => Promise<HuntProfileScan | null>
+  searchPokemonRoster: (accountId: AccountId, query?: string) => Promise<PokemonWorthSnapshot[]>
   selectAccount: (accountId: AccountId) => Promise<void>
   accountCommand: (accountId: AccountId, command: AccountCommand) => Promise<void>
   checkForUpdates: () => Promise<UpdateSnapshot>
