@@ -91,6 +91,7 @@ export function pokemonWorthFromServerRow(instanceId: string, row: JsonRecord, a
     speciesName: speciesName(row),
     nickname: safeText(firstDefined(row.nickname, row.apelido, row.name, row.nome)),
     level: finite(firstDefined(row.level, row.nivel, row.lvl)),
+    pokemonXp: finite(row.xp),
     quality: finite(firstDefined(row.qualidade, row.quality)),
     potency: potency(firstDefined(row.potencia, row.potency)),
     ivTotal: ivTotal(row, ivs),
