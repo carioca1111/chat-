@@ -7,8 +7,9 @@ import { PokemonIdLedger } from './pokemon-id-ledger'
 
 type JsonRecord = Record<string, unknown>
 interface XpState { xp: number }
-interface PotionState { itemId: string; name: string; quantity: number; used: number }
+interface ConsumableState { itemId: string; name: string; quantity: number; used: number }
 interface TimedAmount { at: number; amount: number }
+type SustainCategory = 'potions' | 'revives'
 
 export interface HuntSessionPersistedState {
   version: 1
@@ -39,7 +40,7 @@ interface StoredHuntSessions {
 const HOUR = 60 * 60 * 1000
 const MAX_XP_CACHE = 20_000
 const COMPACT_HEAD_THRESHOLD = 1_024
-const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bag', 'consumables', 'consumiveis']
+const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bag', 'consumables', 'consumiveis', 'itemBag', 'inventoryItems', 'itensInventario', 'backpack', 'supplies', 'suprimentos']
 const HUNT_SESSION_FILE = 'gridium2-hunt-sessions-v1.json'
 const PERSIST_DELAY_MS = 15_000
 const CONTINUITY_SESSION_MS = (34 * 60 + 37) * 60 * 1000
@@ -237,40 +238,112 @@ function battleEventKey(event: JsonRecord): string {
   return `fp:${kind}|${species}|${JSON.stringify(event).slice(0, 220)}`
 }
 
-function isPotionName(name: string): boolean {
+function sustainCategory(name: string): SustainCategory | null {
   const canonical = canonicalPokeIdleItem(name)
-  if (canonical?.category === 'potions') return true
-  const normalized = normalizePokeIdleItemName(name)
-  return /\b(potion|pocao|pocoes|potions)\b/.test(normalized)
+  if (canonical?.category === 'potions' || canonical?.category === 'revives') return canonical.category
+  const normalized = normalizePokeIdleItemName(name.replace(/([a-z0-9])([A-Z])/g, '$1 $2'))
+  if (/\b(potion|potions|pocao|pocoes)\b/.test(normalized)) return 'potions'
+  if (/\b(revive|revives|reviver|reviveres)\b/.test(normalized)) return 'revives'
+  return null
+}
+
+function canonicalSustainName(name: string): string {
+  const direct = canonicalPokeIdleItem(name)
+  if (direct) return direct.name
+  const splitCamel = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  return canonicalPokeIdleItem(splitCamel)?.name ?? splitCamel
+}
+
+function looksLikeInventoryKey(key: string): boolean {
+  const normalized = normalizeKey(key)
+  return /(item|iten|invent|bag|mochila|consum|supply|supriment)/.test(normalized)
 }
 
 function inventoryRows(estado: JsonRecord): Array<{ itemId: string; name: string; quantity: number }> {
   const rows = new Map<string, { itemId: string; name: string; quantity: number }>()
-  const add = (idRaw: unknown, value: unknown, fallbackName = ''): void => {
-    const itemId = idRaw === undefined || idRaw === null ? '' : String(idRaw)
-    if (!itemId) return
+
+  const add = (idRaw: unknown, value: unknown, fallbackName = ''): boolean => {
     if (typeof value === 'number' || typeof value === 'string') {
       const quantity = finite(value)
-      if (quantity !== undefined && quantity >= 0) rows.set(itemId, { itemId, name: fallbackName || `Item #${itemId}`, quantity: Math.floor(quantity) })
+      const name = canonicalSustainName(fallbackName)
+      if (quantity === undefined || quantity < 0 || !sustainCategory(name)) return false
+      const itemId = idRaw === undefined || idRaw === null || String(idRaw) === '' ? normalizePokeIdleItemName(name) : String(idRaw)
+      rows.set(itemId, { itemId, name, quantity: Math.floor(quantity) })
+      return true
+    }
+    if (!isRecord(value)) return false
+
+    const nestedItem = isRecord(value.item) ? value.item
+      : isRecord(value.definition) ? value.definition
+        : isRecord(value.def) ? value.def
+          : isRecord(value.catalog) ? value.catalog
+            : undefined
+    const quantity = finite(first(
+      value.qtd, value.quantidade, value.quantity, value.qty, value.count, value.amount, value.total, value.estoque, value.stock, value.q, value.qt, value.quant
+    ))
+    const rawName = text(first(
+      value.nome, value.name, value.itemNome, value.itemName, value.label, value.slug, value.key, value.itemKey, value.itemSlug, value.code, value.tipo,
+      nestedItem?.nome, nestedItem?.name, nestedItem?.label, nestedItem?.slug, nestedItem?.key, nestedItem?.code,
+      fallbackName
+    ))
+    if (quantity === undefined || quantity < 0 || !rawName) return false
+    const name = canonicalSustainName(rawName)
+    if (!sustainCategory(name)) return false
+    const resolvedId = first(
+      value.itemId, value.id, value.item_id, value.i,
+      nestedItem?.itemId, nestedItem?.id, nestedItem?.item_id, nestedItem?.key, nestedItem?.slug,
+      idRaw, rawName
+    )
+    const itemId = resolvedId === undefined || resolvedId === null || String(resolvedId) === '' ? normalizePokeIdleItemName(name) : String(resolvedId)
+    rows.set(itemId, { itemId, name, quantity: Math.floor(quantity) })
+    return true
+  }
+
+  const parseContainer = (container: unknown, hint = '', depth = 0): void => {
+    if (depth > 5) return
+    if (Array.isArray(container)) {
+      for (const entry of container) {
+        if (!isRecord(entry)) continue
+        const id = first(entry.itemId, entry.id, entry.item_id, entry.i, entry.slug, entry.key)
+        add(id, entry, hint)
+        for (const [key, child] of Object.entries(entry)) {
+          if ((isRecord(child) || Array.isArray(child)) && (looksLikeInventoryKey(key) || key === 'item' || key === 'definition' || key === 'def')) parseContainer(child, key, depth + 1)
+        }
+      }
       return
     }
-    if (!isRecord(value)) return
-    const quantity = finite(first(value.qtd, value.quantidade, value.quantity, value.qty, value.count, value.amount, value.total, value.estoque))
-    if (quantity === undefined || quantity < 0) return
-    const name = text(first(value.nome, value.name, value.itemNome, value.label)) || fallbackName || `Item #${itemId}`
-    rows.set(itemId, { itemId, name, quantity: Math.floor(quantity) })
-  }
-  for (const key of INVENTORY_KEYS) {
-    const container = estado[key]
-    if (Array.isArray(container)) {
-      for (const row of container) if (isRecord(row)) add(first(row.itemId, row.id, row.item_id), row)
-    } else if (isRecord(container)) {
-      for (const [mapKey, value] of Object.entries(container)) {
-        if (isRecord(value)) add(first(value.itemId, value.id, value.item_id, mapKey), value, /^\d+$/.test(mapKey) ? '' : mapKey)
-        else add(mapKey, value, /^\d+$/.test(mapKey) ? '' : mapKey)
+    if (!isRecord(container)) return
+
+    add(first(container.itemId, container.id, container.item_id, container.i, container.slug, container.key), container, hint)
+    for (const [mapKey, child] of Object.entries(container)) {
+      if (typeof child === 'number' || typeof child === 'string') {
+        add(mapKey, child, mapKey)
+        continue
+      }
+      if (isRecord(child)) {
+        add(first(child.itemId, child.id, child.item_id, child.i, child.slug, child.key, mapKey), child, mapKey)
+        parseContainer(child, mapKey, depth + 1)
+      } else if (Array.isArray(child)) {
+        parseContainer(child, mapKey, depth + 1)
       }
     }
   }
+
+  const scanForContainers = (value: unknown, depth = 0): void => {
+    if (!isRecord(value) || depth > 4) return
+    for (const [key, child] of Object.entries(value)) {
+      if (looksLikeInventoryKey(key)) {
+        parseContainer(child, key)
+        continue
+      }
+      if (isRecord(child)) scanForContainers(child, depth + 1)
+    }
+  }
+
+  for (const key of INVENTORY_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(estado, key)) parseContainer(estado[key], key)
+  }
+  scanForContainers(estado)
   return [...rows.values()]
 }
 
@@ -290,7 +363,7 @@ export class HuntSessionRuntime {
   private updatedAt = Date.now()
   private readonly knownPokemonIds = new PokemonIdLedger()
   private readonly xpState = new Map<string, XpState>()
-  private readonly potions = new Map<string, PotionState>()
+  private readonly consumables = new Map<string, ConsumableState>()
   private readonly shinySeenEvents = new Set<string>()
   private captureTimes: number[] = []
   private captureHead = 0
@@ -299,10 +372,10 @@ export class HuntSessionRuntime {
   private potionUseEvents: TimedAmount[] = []
   private potionHead = 0
   private potionLastHourTotal = 0
-  private potionRevision = 0
-  private cachedPotionRevision = -1
+  private consumableRevision = 0
+  private cachedConsumableRevision = -1
   private cachedPotionStock = 0
-  private cachedPotionItems: HuntPotionSnapshot[] = []
+  private cachedConsumableItems: HuntPotionSnapshot[] = []
 
   constructor(initial?: Partial<HuntSessionPersistedState> | null) {
     const disk = initial ? null : loadStoredSessions()
@@ -408,35 +481,37 @@ export class HuntSessionRuntime {
         }
       }
 
-      const inventory = inventoryRows(estado).filter((row) => isPotionName(row.name))
+      const inventory = inventoryRows(estado)
       if (inventory.length) {
         if (fullState) {
-          const replacement = new Map<string, PotionState>()
+          const replacement = new Map<string, ConsumableState>()
           for (const row of inventory) {
-            const previous = this.potions.get(row.itemId)
+            const previous = this.consumables.get(row.itemId)
             replacement.set(row.itemId, { ...row, used: previous?.used ?? 0 })
           }
-          if (!samePotionState(this.potions, replacement)) {
-            this.potions.clear()
-            for (const [id, item] of replacement) this.potions.set(id, item)
-            this.touchPotions()
+          if (!sameConsumableState(this.consumables, replacement)) {
+            this.consumables.clear()
+            for (const [id, item] of replacement) this.consumables.set(id, item)
+            this.touchConsumables()
             changed = true
           }
         } else {
           for (const row of inventory) {
-            const previous = this.potions.get(row.itemId)
+            const previous = this.consumables.get(row.itemId)
             const usedBefore = previous?.used ?? 0
             if (previous && row.quantity < previous.quantity) {
               const used = previous.quantity - row.quantity
-              this.potionsUsedTotal += used
-              this.potionUseEvents.push({ at, amount: used })
-              this.potionLastHourTotal += used
-              this.potions.set(row.itemId, { ...row, used: usedBefore + used })
-              this.touchPotions()
+              if (sustainCategory(row.name) === 'potions') {
+                this.potionsUsedTotal += used
+                this.potionUseEvents.push({ at, amount: used })
+                this.potionLastHourTotal += used
+              }
+              this.consumables.set(row.itemId, { ...row, used: usedBefore + used })
+              this.touchConsumables()
               changed = true
             } else if (!previous || previous.quantity !== row.quantity || previous.name !== row.name) {
-              this.potions.set(row.itemId, { ...row, used: usedBefore })
-              this.touchPotions()
+              this.consumables.set(row.itemId, { ...row, used: usedBefore })
+              this.touchConsumables()
               changed = true
             }
           }
@@ -454,7 +529,7 @@ export class HuntSessionRuntime {
 
   snapshot(at = Date.now()): HuntSessionSnapshot {
     this.prune(at)
-    const potionSnapshot = this.getPotionSnapshot()
+    const consumableSnapshot = this.getConsumableSnapshot()
     return {
       huntSlug: this.huntSlug,
       sessionStartedAt: this.sessionStartedAt,
@@ -465,10 +540,10 @@ export class HuntSessionRuntime {
       shiniesCaught: this.shiniesCaught,
       killsEstimatedTotal: this.killsEstimatedTotal,
       killsEstimatedLastHour: this.killTimes.length - this.killHead,
-      potionStock: potionSnapshot.stock,
+      potionStock: consumableSnapshot.potionStock,
       potionsUsedTotal: this.potionsUsedTotal,
       potionsUsedLastHour: this.potionLastHourTotal,
-      potionItems: potionSnapshot.items,
+      potionItems: consumableSnapshot.items,
       lastCaptureAt: this.lastCaptureAt,
       updatedAt: this.updatedAt
     }
@@ -476,7 +551,7 @@ export class HuntSessionRuntime {
 
   persisted(at = Date.now()): HuntSessionPersistedState {
     this.prune(at)
-    const potionSnapshot = this.getPotionSnapshot()
+    const consumableSnapshot = this.getConsumableSnapshot()
     return {
       version: 1,
       huntSlug: this.huntSlug,
@@ -494,7 +569,7 @@ export class HuntSessionRuntime {
       captureTimes: this.captureTimes.slice(this.captureHead),
       killTimes: this.killTimes.slice(this.killHead),
       potionUseEvents: this.potionUseEvents.slice(this.potionHead).map((event) => ({ ...event })),
-      potionItems: potionSnapshot.items.map((item) => ({ ...item }))
+      potionItems: consumableSnapshot.items.map((item) => ({ ...item }))
     }
   }
 
@@ -510,7 +585,7 @@ export class HuntSessionRuntime {
       killsEstimated: this.killsEstimatedTotal,
       shiniesSeen: this.shiniesSeen,
       shiniesCaught: this.shiniesCaught,
-      potionItems: this.potions.size,
+      potionItems: this.consumables.size,
       xpState: this.xpState.size,
       captureEvents: this.captureTimes.length - this.captureHead,
       killEvents: this.killTimes.length - this.killHead,
@@ -545,11 +620,11 @@ export class HuntSessionRuntime {
         const row = item as Partial<HuntPotionSnapshot>
         const itemId = text(row.itemId)
         const name = text(row.name)
-        if (!itemId || !name) continue
-        this.potions.set(itemId, { itemId, name, quantity: nonNegativeInt(row.quantity), used: nonNegativeInt(row.used) })
+        if (!itemId || !name || !sustainCategory(name)) continue
+        this.consumables.set(itemId, { itemId, name: canonicalSustainName(name), quantity: nonNegativeInt(row.quantity), used: nonNegativeInt(row.used) })
       }
     }
-    this.touchPotions()
+    this.touchConsumables()
     this.prune(now)
   }
 
@@ -580,7 +655,7 @@ export class HuntSessionRuntime {
     this.updatedAt = at
     this.knownPokemonIds.clear()
     this.xpState.clear()
-    this.potions.clear()
+    this.consumables.clear()
     this.shinySeenEvents.clear()
     this.captureTimes = []
     this.captureHead = 0
@@ -589,7 +664,7 @@ export class HuntSessionRuntime {
     this.potionUseEvents = []
     this.potionHead = 0
     this.potionLastHourTotal = 0
-    this.touchPotions()
+    this.touchConsumables()
   }
 
   private ingestBattleEvents(packet: JsonRecord, at: number): boolean {
@@ -640,19 +715,19 @@ export class HuntSessionRuntime {
     }
   }
 
-  private touchPotions(): void {
-    this.potionRevision++
+  private touchConsumables(): void {
+    this.consumableRevision++
   }
 
-  private getPotionSnapshot(): { stock: number; items: HuntPotionSnapshot[] } {
-    if (this.cachedPotionRevision !== this.potionRevision) {
-      this.cachedPotionItems = [...this.potions.values()]
+  private getConsumableSnapshot(): { potionStock: number; items: HuntPotionSnapshot[] } {
+    if (this.cachedConsumableRevision !== this.consumableRevision) {
+      this.cachedConsumableItems = [...this.consumables.values()]
         .sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name))
         .map((item) => ({ ...item }))
-      this.cachedPotionStock = this.cachedPotionItems.reduce((sum, item) => sum + item.quantity, 0)
-      this.cachedPotionRevision = this.potionRevision
+      this.cachedPotionStock = this.cachedConsumableItems.reduce((sum, item) => sum + (sustainCategory(item.name) === 'potions' ? item.quantity : 0), 0)
+      this.cachedConsumableRevision = this.consumableRevision
     }
-    return { stock: this.cachedPotionStock, items: this.cachedPotionItems }
+    return { potionStock: this.cachedPotionStock, items: this.cachedConsumableItems }
   }
 
   private prune(at: number): void {
@@ -669,7 +744,7 @@ export class HuntSessionRuntime {
   }
 }
 
-function samePotionState(current: Map<string, PotionState>, next: Map<string, PotionState>): boolean {
+function sameConsumableState(current: Map<string, ConsumableState>, next: Map<string, ConsumableState>): boolean {
   if (current.size !== next.size) return false
   for (const [id, item] of next) {
     const previous = current.get(id)

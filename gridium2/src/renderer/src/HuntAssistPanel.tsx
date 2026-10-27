@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { AccountSnapshot, GridiumSnapshot, HuntPotionSnapshot } from '../../shared/contracts'
+import { categoryForPokeIdleItem, normalizePokeIdleItemName } from '../../shared/pokeidle-item-catalog'
 import { itemSpriteUrl } from './item-visuals'
 import { PokemonSprite } from './PokemonSprite'
 
 type ViewMode = 'individual' | 'all' | 'group'
 type Goals = Record<string, number>
+type SustainCategory = 'potions' | 'revives'
+type SustainProjection = {
+  potionEtaHours: number
+  centerEtaHours: number
+  minimumCenterEtaHours: number
+  revivesAfterPotions: number
+}
 const GOAL_STORAGE = 'gridium2-hunt-capture-goals-v1'
 const HOUR = 60 * 60 * 1000
 
@@ -34,6 +42,7 @@ export function HuntAssistPanel({ snapshot }: { snapshot: GridiumSnapshot }) {
 
   const accounts = mode === 'group' && joinSameHunt && groupAvailable ? sameHunt : [selected]
   const aggregate = aggregateAccounts(accounts)
+  const sustain = sustainProjection(aggregate)
   const baseGoalKey = mode === 'group' ? `group:${selectedHunt}` : `account:${selected.id}:${selectedHunt || 'sem-hunt'}`
   const captureGoalKey = baseGoalKey
   const killGoalKey = `kill:${baseGoalKey}`
@@ -43,11 +52,11 @@ export function HuntAssistPanel({ snapshot }: { snapshot: GridiumSnapshot }) {
   const killRemaining = Math.max(0, killGoal - aggregate.killsEstimatedTotal)
   const captureEtaHours = aggregate.capturesPerHour > 0 ? captureRemaining / aggregate.capturesPerHour : Infinity
   const killEtaHours = aggregate.killsPerHour > 0 ? killRemaining / aggregate.killsPerHour : Infinity
-  const etaCenterHours = aggregate.potionsPerHour > 0 ? aggregate.potionStock / aggregate.potionsPerHour : Infinity
   const captureProgress = Math.min(100, aggregate.capturesTotal / captureGoal * 100)
   const killProgress = Math.min(100, aggregate.killsEstimatedTotal / killGoal * 100)
-  const health = huntHealth(aggregate.capturesPerHour, etaCenterHours, aggregate.sessionHours)
-  const timeline = buildTimeline(captureRemaining, captureEtaHours, killRemaining, killEtaHours, etaCenterHours)
+  const riskEta = Number.isFinite(sustain.centerEtaHours) ? sustain.centerEtaHours : sustain.minimumCenterEtaHours
+  const health = huntHealth(aggregate.capturesPerHour, riskEta, aggregate.sessionHours)
+  const timeline = buildTimeline(captureRemaining, captureEtaHours, killRemaining, killEtaHours, sustain)
   const huntLabel = formatHuntName(selectedHunt)
   const activePokemon = activePokemonLabel(selected)
 
@@ -76,13 +85,13 @@ export function HuntAssistPanel({ snapshot }: { snapshot: GridiumSnapshot }) {
         <CompactStat label="CAPTURAS" value={formatNumber(aggregate.capturesTotal)} sub={`${formatRate(aggregate.capturesPerHour)}/h`} accent />
         <CompactStat label="ABATES ESTIM." value={formatNumber(aggregate.killsEstimatedTotal)} sub={`${formatRate(aggregate.killsPerHour)}/h`} />
         <CompactStat label="SESSÃO" value={formatDuration(aggregate.sessionHours)} sub={mode === 'group' ? `${accounts.length} contas somadas` : 'tempo nesta Hunt'} />
-        <CompactStat label="CENTRO" value={formatEta(etaCenterHours)} sub={aggregate.potionsPerHour > 0 ? `${formatRate(aggregate.potionsPerHour)} poções/h` : 'sustain estável'} />
+        <CompactStat label="CENTRO" value={formatCenterEta(sustain)} sub={centerSubtitle(aggregate, sustain)} />
       </div>
 
       <GoalCard className="capture" label="META DE CAPTURAS" current={aggregate.capturesTotal} goal={captureGoal} remaining={captureRemaining} eta={captureEtaHours} progress={captureProgress} onCommit={(value) => saveGoal(captureGoalKey, value)} />
       <GoalCard className="kills" label="META DE ABATES" current={aggregate.killsEstimatedTotal} goal={killGoal} remaining={killRemaining} eta={killEtaHours} progress={killProgress} onCommit={(value) => saveGoal(killGoalKey, value)} />
 
-      <PotionCard items={aggregate.potionItems} stock={aggregate.potionStock} used={aggregate.potionsUsedTotal} rate={aggregate.potionsPerHour} centerEta={etaCenterHours} />
+      <SustainCard items={aggregate.consumableItems} aggregate={aggregate} projection={sustain} />
 
       <div class="ha-potency">
         {aggregate.capturesByPotency.map((value,index) => <span class={`p${index + 1}`} key={index}><small>P{index + 1}</small><b>{formatNumber(value)}</b></span>)}
@@ -115,14 +124,14 @@ function AssistHeader({ mode, setMode, joinSameHunt, setJoinSameHunt, groupAvail
 
 function AccountMiniCard({ account, onSelect }: { account: AccountSnapshot; onSelect: () => void }) {
   const session = account.huntSession
+  const aggregate = aggregateAccounts([account])
+  const sustain = sustainProjection(aggregate)
   const captureRate = normalizedRate(session.capturesTotal, session.capturesLastHour, session.sessionStartedAt)
   const killRate = normalizedRate(session.killsEstimatedTotal, session.killsEstimatedLastHour, session.sessionStartedAt)
-  const potionRate = normalizedRate(session.potionsUsedTotal, session.potionsUsedLastHour, session.sessionStartedAt)
-  const center = potionRate > 0 ? session.potionStock / potionRate : Infinity
   return <button class={`ha-account-mini ${account.huntProtocolStatus === 'live' ? 'live' : ''}`} onClick={onSelect}>
     <PokemonSprite speciesId={account.huntProfile?.speciesId} name={account.huntProfile?.speciesName || `Conta ${account.id}`} className="ha-mini-pokemon" />
     <div class="ha-mini-head"><b>CONTA {account.id} · {activePokemonLabel(account)}</b><small>{formatHuntName(huntKey(account)) || 'aguardando Hunt'}</small></div>
-    <div class="ha-mini-values"><span><small>CAP</small><b>{formatNumber(session.capturesTotal)}</b><em>{formatRate(captureRate)}/h</em></span><span><small>ABATES</small><b>{formatNumber(session.killsEstimatedTotal)}</b><em>{formatRate(killRate)}/h</em></span><span><small>POÇÕES</small><b>{formatNumber(session.potionStock)}</b><em>centro {formatEta(center)}</em></span><span class="mini-shiny"><small>SHINY</small><b>✦{session.shiniesSeen} / ★{session.shiniesCaught}</b><em>P5 {session.capturesByPotency[4]}</em></span></div>
+    <div class="ha-mini-values"><span><small>CAP</small><b>{formatNumber(session.capturesTotal)}</b><em>{formatRate(captureRate)}/h</em></span><span><small>ABATES</small><b>{formatNumber(session.killsEstimatedTotal)}</b><em>{formatRate(killRate)}/h</em></span><span><small>SUPRIMENTOS</small><b>{formatNumber(aggregate.potionStock)}P · {formatNumber(aggregate.reviveStock)}R</b><em>centro {formatCenterEta(sustain)}</em></span><span class="mini-shiny"><small>SHINY</small><b>✦{session.shiniesSeen} / ★{session.shiniesCaught}</b><em>P5 {session.capturesByPotency[4]}</em></span></div>
   </button>
 }
 
@@ -172,23 +181,42 @@ function GoalEditor({ value, onCommit }: { value: number; onCommit: (value: numb
   />
 }
 
-function PotionCard({ items, stock, used, rate, centerEta }: { items: HuntPotionSnapshot[]; stock: number; used: number; rate: number; centerEta: number }) {
-  const visible = items.slice(0, 3)
+function SustainCard({ items, aggregate, projection }: {
+  items: HuntPotionSnapshot[]
+  aggregate: ReturnType<typeof aggregateAccounts>
+  projection: SustainProjection
+}) {
+  const visible = items.slice(0, 4)
   return <div class="ha-potion-block">
     <div class="ha-potion-icons">{visible.length ? visible.map((item) => {
       const src = itemSpriteUrl(item.name)
-      return <span title={`${item.name}: ${formatNumber(item.quantity)}`} key={item.itemId}>{src ? <img src={src} alt={item.name} /> : '▥'}</span>
+      return <span title={`${item.name}: ${formatNumber(item.quantity)}`} key={`${item.itemId}:${item.name}`}>{src ? <img src={src} alt={item.name} /> : '▥'}</span>
     }) : <span class="empty">▥</span>}</div>
-    <div class="ha-potion-copy"><small>POÇÕES</small><b>{formatNumber(stock)} <i>estoque</i></b><span>{formatNumber(used)} usadas · {rate > 0 ? `${formatRate(rate)}/h` : 'sem consumo medido'}</span><strong>Centro {formatEta(centerEta)}</strong></div>
+    <div class="ha-potion-copy">
+      <small>POÇÕES / REVIVES</small>
+      <b>{formatNumber(aggregate.potionStock)} <i>poções</i> · {formatNumber(aggregate.reviveStock)} <i>revives</i></b>
+      <span>Poções: {formatNumber(aggregate.potionsUsedTotal)} usadas · {aggregate.potionsPerHour > 0 ? `${formatRate(aggregate.potionsPerHour)}/h` : 'sem consumo medido'}</span>
+      <span>Revives: {formatNumber(aggregate.revivesUsedTotal)} usados · {aggregate.revivesPerHour > 0 ? `${formatRate(aggregate.revivesPerHour)}/h média` : 'sem consumo medido'}</span>
+      <strong>Após poções: {formatNumber(projection.revivesAfterPotions)} revives · Centro {formatCenterEta(projection)}</strong>
+    </div>
   </div>
+}
+
+function consumableCategory(name: string): SustainCategory | null {
+  const canonical = categoryForPokeIdleItem(name)
+  if (canonical === 'potions' || canonical === 'revives') return canonical
+  const normalized = normalizePokeIdleItemName(name.replace(/([a-z0-9])([A-Z])/g, '$1 $2'))
+  if (/\b(potion|potions|pocao|pocoes)\b/.test(normalized)) return 'potions'
+  if (/\b(revive|revives|reviver|reviveres)\b/.test(normalized)) return 'revives'
+  return null
 }
 
 function aggregateAccounts(accounts: AccountSnapshot[]) {
   const now = Date.now()
   const capturesByPotency: [number,number,number,number,number] = [0,0,0,0,0]
-  const potionMap = new Map<string, HuntPotionSnapshot>()
+  const consumableMap = new Map<string, HuntPotionSnapshot>()
   let capturesTotal = 0, capturesPerHour = 0, killsEstimatedTotal = 0, killsPerHour = 0
-  let potionStock = 0, potionsUsedTotal = 0, potionsPerHour = 0, shiniesSeen = 0, shiniesCaught = 0
+  let potionStock = 0, potionsUsedTotal = 0, potionsPerHour = 0, reviveStock = 0, revivesUsedTotal = 0, revivesPerHour = 0, shiniesSeen = 0, shiniesCaught = 0
   let sessionStartedAt = now
   for (const account of accounts) {
     const s = account.huntSession
@@ -207,22 +235,62 @@ function aggregateAccounts(accounts: AccountSnapshot[]) {
     capturesByPotency[2] += s.capturesByPotency[2]
     capturesByPotency[3] += s.capturesByPotency[3]
     capturesByPotency[4] += s.capturesByPotency[4]
+
+    let accountRevivesUsed = 0
     for (const item of s.potionItems) {
-      const key = item.name.toLowerCase()
-      const previous = potionMap.get(key)
-      potionMap.set(key, { itemId: item.itemId, name: item.name, quantity: (previous?.quantity || 0) + item.quantity, used: (previous?.used || 0) + item.used })
+      const category = consumableCategory(item.name)
+      if (!category) continue
+      if (category === 'revives') {
+        reviveStock += item.quantity
+        revivesUsedTotal += item.used
+        accountRevivesUsed += item.used
+      }
+      const key = `${category}:${normalizePokeIdleItemName(item.name)}`
+      const previous = consumableMap.get(key)
+      consumableMap.set(key, { itemId: item.itemId, name: item.name, quantity: (previous?.quantity || 0) + item.quantity, used: (previous?.used || 0) + item.used })
     }
+    revivesPerHour += lifetimeRate(accountRevivesUsed, s.sessionStartedAt, now)
   }
   return {
     capturesTotal, capturesPerHour, killsEstimatedTotal, killsPerHour, potionStock, potionsUsedTotal, potionsPerHour,
+    reviveStock, revivesUsedTotal, revivesPerHour,
     capturesByPotency, shiniesSeen, shiniesCaught, sessionHours: Math.max(0, (now - sessionStartedAt) / HOUR),
-    potionItems: [...potionMap.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name))
+    consumableItems: [...consumableMap.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name))
   }
+}
+
+function sustainProjection(aggregate: ReturnType<typeof aggregateAccounts>): SustainProjection {
+  const potionEtaHours = aggregate.potionStock <= 0 ? 0 : aggregate.potionsPerHour > 0 ? aggregate.potionStock / aggregate.potionsPerHour : Infinity
+  const revivesProjected = Number.isFinite(potionEtaHours)
+    ? Math.max(0, aggregate.reviveStock - aggregate.revivesPerHour * potionEtaHours)
+    : aggregate.reviveStock
+  const revivesAfterPotions = Math.max(0, Math.round(revivesProjected))
+
+  if (aggregate.potionStock <= 0 && revivesAfterPotions <= 0) {
+    return { potionEtaHours: 0, centerEtaHours: 0, minimumCenterEtaHours: 0, revivesAfterPotions: 0 }
+  }
+  if (!Number.isFinite(potionEtaHours)) {
+    return { potionEtaHours, centerEtaHours: Infinity, minimumCenterEtaHours: Infinity, revivesAfterPotions }
+  }
+  if (revivesProjected <= 0) {
+    return { potionEtaHours, centerEtaHours: potionEtaHours, minimumCenterEtaHours: potionEtaHours, revivesAfterPotions: 0 }
+  }
+  if (aggregate.revivesPerHour > 0) {
+    const revivePhaseHours = revivesProjected / aggregate.revivesPerHour
+    return { potionEtaHours, centerEtaHours: potionEtaHours + revivePhaseHours, minimumCenterEtaHours: potionEtaHours, revivesAfterPotions }
+  }
+  return { potionEtaHours, centerEtaHours: Infinity, minimumCenterEtaHours: potionEtaHours, revivesAfterPotions }
 }
 
 function normalizedRate(total: number, lastHour: number, startedAt: number, now = Date.now()): number {
   const elapsedHours = Math.max(1 / 60, (now - startedAt) / HOUR)
   return elapsedHours < 1 ? total / elapsedHours : lastHour
+}
+
+function lifetimeRate(total: number, startedAt: number, now = Date.now()): number {
+  if (total <= 0) return 0
+  const elapsedHours = Math.max(1 / 60, (now - startedAt) / HOUR)
+  return total / elapsedHours
 }
 
 function huntKey(account?: AccountSnapshot): string {
@@ -248,15 +316,34 @@ function huntHealth(captureRate: number, centerHours: number, sessionHours: numb
   return { label: 'HUNT ESTÁVEL', className: 'good' }
 }
 
-function buildTimeline(captureRemaining: number, captureEta: number, killRemaining: number, killEta: number, centerEta: number): Array<{ when: string; label: string }> {
+function centerSubtitle(aggregate: ReturnType<typeof aggregateAccounts>, projection: SustainProjection): string {
+  if (aggregate.potionsPerHour <= 0 && aggregate.revivesPerHour <= 0) return 'coletando consumo real'
+  if (!Number.isFinite(projection.centerEtaHours) && Number.isFinite(projection.minimumCenterEtaHours) && projection.revivesAfterPotions > 0) {
+    return `${formatNumber(projection.revivesAfterPotions)} revives após poções`
+  }
+  if (aggregate.revivesPerHour > 0) return `${formatRate(aggregate.potionsPerHour)} poções/h · ${formatRate(aggregate.revivesPerHour)} revives/h`
+  return `${formatRate(aggregate.potionsPerHour)} poções/h`
+}
+
+function buildTimeline(captureRemaining: number, captureEta: number, killRemaining: number, killEta: number, sustain: SustainProjection): Array<{ when: string; label: string }> {
   const rows: Array<{ hours: number; when: string; label: string }> = []
   if (captureRemaining === 0) rows.push({ hours: 0, when: 'AGORA', label: 'meta de capturas concluída' })
   else if (Number.isFinite(captureEta)) rows.push({ hours: captureEta, when: formatEta(captureEta), label: 'meta de capturas' })
   if (killRemaining === 0) rows.push({ hours: 0, when: 'AGORA', label: 'meta de abates concluída' })
   else if (Number.isFinite(killEta)) rows.push({ hours: killEta, when: formatEta(killEta), label: 'meta de abates' })
-  if (Number.isFinite(centerEta)) rows.push({ hours: centerEta, when: formatEta(centerEta), label: 'retorno estimado ao Centro' })
+  if (Number.isFinite(sustain.centerEtaHours)) {
+    rows.push({ hours: sustain.centerEtaHours, when: formatEta(sustain.centerEtaHours), label: 'retorno estimado ao Centro' })
+  } else if (Number.isFinite(sustain.potionEtaHours) && sustain.potionEtaHours > 0) {
+    rows.push({ hours: sustain.potionEtaHours, when: formatEta(sustain.potionEtaHours), label: `poções acabam · ${formatNumber(sustain.revivesAfterPotions)} revives restantes` })
+  }
   if (!rows.length) rows.push({ hours: Infinity, when: '—', label: 'coletando ritmo real' })
   return rows.sort((a,b) => a.hours - b.hours).slice(0,3)
+}
+
+function formatCenterEta(projection: SustainProjection): string {
+  if (Number.isFinite(projection.centerEtaHours)) return formatEta(projection.centerEtaHours)
+  if (Number.isFinite(projection.minimumCenterEtaHours) && projection.minimumCenterEtaHours > 0) return `≥${formatEta(projection.minimumCenterEtaHours)}`
+  return '—'
 }
 
 function formatEta(hours: number): string {

@@ -143,4 +143,54 @@ describe('HuntSessionRuntime', () => {
     expect(restored.killsEstimatedTotal).toBe(49_236)
     expect(restored.shiniesSeen).toBe(0)
   })
+
+  it('tracks nested slug/key potion and revive inventory while counting potion use separately', () => {
+    const runtime = new HuntSessionRuntime()
+    const now = Date.now()
+
+    runtime.ingest({ t: 'welcome', estado: {
+      id: 42,
+      huntSlug: 'outland-02',
+      pokemons: [{ id: 1, xp: 100 }],
+      player: {
+        backpack: {
+          consumables: {
+            smallPotion: { key: 'small-potion', qty: 20 },
+            revive: { slug: 'revive', count: 8 },
+            maxRevive: { item: { slug: 'max-revive' }, quantity: 2 }
+          }
+        }
+      }
+    } }, now)
+
+    let snapshot = runtime.snapshot(now)
+    expect(snapshot.potionStock).toBe(20)
+    expect(snapshot.potionsUsedTotal).toBe(0)
+    expect(snapshot.potionItems.map((item) => [item.name, item.quantity, item.used])).toEqual(expect.arrayContaining([
+      ['Small Potion', 20, 0],
+      ['Revive', 8, 0],
+      ['Max Revive', 2, 0]
+    ]))
+
+    runtime.ingest({ t: 'estado', estado: {
+      huntSlug: 'outland-02',
+      player: {
+        backpack: {
+          consumables: {
+            smallPotion: { key: 'small-potion', qty: 17 },
+            revive: { slug: 'revive', count: 7 },
+            maxRevive: { item: { slug: 'max-revive' }, quantity: 2 }
+          }
+        }
+      }
+    } }, now + 10_000)
+
+    snapshot = runtime.snapshot(now + 10_000)
+    expect(snapshot.potionStock).toBe(17)
+    expect(snapshot.potionsUsedTotal).toBe(3)
+    expect(snapshot.potionsUsedLastHour).toBe(3)
+    expect(snapshot.potionItems.find((item) => item.name === 'Small Potion')?.used).toBe(3)
+    expect(snapshot.potionItems.find((item) => item.name === 'Revive')?.used).toBe(1)
+    expect(snapshot.potionItems.find((item) => item.name === 'Max Revive')?.used).toBe(0)
+  })
 })

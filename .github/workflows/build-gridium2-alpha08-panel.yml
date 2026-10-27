@@ -1,4 +1,4 @@
-name: Build Gridium 2 Hunt Persistence
+name: Build Gridium 2 Hunt Sustain
 
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.3.8-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.3.9-Setup.exe" >> $env:GITHUB_OUTPUT
       - name: Verify installer and create update manifest
         shell: pwsh
         run: |
@@ -64,9 +64,9 @@ jobs:
           Write-Host "SHA256: $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.3.8-Hunt-Persistence-Windows
+          name: Gridium-2-Alpha-1.3.9-Hunt-Sustain-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.3.8-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.9-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -76,23 +76,21 @@ jobs:
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Alpha 1.3.8 · Hunt Persistence & Shiny Fix
+          name: Gridium 2 Alpha 1.3.9 · Hunt Sustain Fix
           body: |
-            Gridium 2 Alpha 1.3.8 protege a continuidade do Hunt Control entre fechamento, atualização e reinício do aplicativo.
+            Gridium 2 Alpha 1.3.9 corrige o acompanhamento de suprimentos do Hunt Control.
 
-            - salva a sessão de Hunt em userData e restaura automaticamente na próxima abertura
-            - gravação é coalescida e possui flush no encerramento, evitando escrita a cada abate
-            - primeira abertura desta versão migra o progresso informado pelo usuário: 2.101 capturas, 143.077 abates estimados, sessão de 34h37 e P1–P5 1.563/417/107/13/1 nas contas 2, 3 e 4
-            - C2 inicia com 710 capturas, C3 com 723 e C4 com 668, preservando o total e a contribuição do grupo
-            - a migração só é usada quando ainda não existe arquivo real de sessão; depois o estado salvo em disco é a fonte oficial
-            - o primeiro pacote do servidor adota a Hunt atual sem apagar os contadores migrados
-            - reload, reconexão e perda temporária do monitor continuam sem resetar a sessão
-            - saída real da Hunt, troca para outra Hunt ou troca real de conta continuam encerrando a sessão
-            - amplia a detecção de shiny visto para aliases/campos aninhados e eventos explícitos de encontro
-            - amplia a detecção de shiny capturado para flags aninhadas/variantes, com deduplicação de encontros vistos
-            - preserva Vale a Pena XP Intelligence da Alpha 1.3.7 e todas as otimizações anteriores
+            - parser de inventário mais tolerante a campos aninhados, slug/key, nomes em camelCase e aliases do servidor
+            - contabiliza Small/Great/Ultra/Hyper/Ultimate/Golden Potion mesmo quando o pacote não traz o nome no formato antigo
+            - passa a rastrear Revive e Max Revive junto do estado persistido da Hunt
+            - poções/h usa o consumo confirmado na última hora; durante a primeira hora usa a média da sessão
+            - revives usados e estoque restante aparecem separadamente das poções
+            - calcula quantos revives devem restar quando as poções acabarem usando o ritmo de consumo medido
+            - ETA do Centro deixa de assumir que o retorno acontece no instante em que as poções zeram
+            - quando ainda não há consumo de revive suficiente para estimar a segunda fase, mostra um ETA mínimo (≥) em vez de inventar precisão
+            - mantém a persistência da Alpha 1.3.8 e todas as otimizações anteriores
             - typecheck, testes unitários, soak com GC e regressão Electron executados no Windows antes da publicação
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.3.8-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.9-Setup.exe
             gridium2/release/gridium2-update.json
