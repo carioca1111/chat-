@@ -48,6 +48,7 @@ type LocalSlotId = 1 | 2 | 3 | 4
 let nextLocalSlot = 0
 let storedSessions: StoredHuntSessions | null = null
 let storedSessionsSeeded = false
+let cachedSessionPath: string | null | undefined
 let persistenceDirty = false
 let persistenceTimer: ReturnType<typeof setTimeout> | null = null
 let exitFlushInstalled = false
@@ -68,6 +69,8 @@ const timestampOr = (value: unknown, fallback: number): number => {
   return parsed !== undefined && parsed > 0 ? parsed : fallback
 }
 const truthy = (value: unknown): boolean => value === true || value === 1 || value === '1' || value === 'true' || value === 'sim' || value === 'yes' || value === 'shiny'
+const normalizeKey = (value: string): string => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
+const isShinyKey = (value: string): boolean => value.includes('shiny') || value.includes('shinie')
 const pokemonId = (row: JsonRecord): string => {
   const id = first(row.id, row.pokemonInstanceId, row.uid)
   return id === undefined || id === null ? '' : String(id)
@@ -79,7 +82,6 @@ const potency = (value: unknown): 1|2|3|4|5|undefined => {
 const huntSlugOf = (estado: JsonRecord): string => text(first(estado.huntSlug, estado.hunt))
 const huntIdentity = (slug: string): string => slug.trim().toLowerCase().replace(/[\s-]+/g, '_')
 const hasHuntSignal = (estado: JsonRecord): boolean => Object.prototype.hasOwnProperty.call(estado, 'huntSlug') || Object.prototype.hasOwnProperty.call(estado, 'hunt')
-const normalizeKey = (value: string): string => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
 
 function allocateLocalSlot(): LocalSlotId {
   const id = (nextLocalSlot % 4) + 1
@@ -88,10 +90,15 @@ function allocateLocalSlot(): LocalSlotId {
 }
 
 function runtimeStoragePath(): string | null {
+  if (cachedSessionPath !== undefined) return cachedSessionPath
   try {
     if (!app || typeof app.getPath !== 'function' || !app.isReady()) return null
-    return join(app.getPath('userData'), HUNT_SESSION_FILE)
-  } catch { return null }
+    cachedSessionPath = join(app.getPath('userData'), HUNT_SESSION_FILE)
+    return cachedSessionPath
+  } catch {
+    cachedSessionPath = null
+    return null
+  }
 }
 
 function recentTimes(count: number, at: number): number[] {
@@ -101,8 +108,8 @@ function recentTimes(count: number, at: number): number[] {
   return Array.from({ length: count }, (_, index) => start + Math.floor(span * (index + 1) / (count + 1)))
 }
 
-function continuitySeed(at: number): StoredHuntSessions {
-  const base = (slot: 2|3|4, capturesTotal: number, capturesByPotency: [number,number,number,number,number], kills: number, capturesHour: number, killsHour: number): HuntSessionPersistedState => ({
+function seededSession(at: number, capturesTotal: number, capturesByPotency: [number,number,number,number,number], kills: number, capturesHour: number, killsHour: number): HuntSessionPersistedState {
+  return {
     version: 1,
     huntSlug: '',
     accountId: '',
@@ -120,14 +127,17 @@ function continuitySeed(at: number): StoredHuntSessions {
     killTimes: recentTimes(killsHour, at),
     potionUseEvents: [],
     potionItems: []
-  })
+  }
+}
+
+function continuitySeed(at: number): StoredHuntSessions {
   return {
     version: 1,
     savedAt: at,
     accounts: {
-      '2': base(2, 710, [529,141,36,4,0], 48_351, 26, 1_469),
-      '3': base(3, 723, [537,143,37,5,1], 49_236, 27, 1_496),
-      '4': base(4, 668, [497,133,34,4,0], 45_490, 24, 1_382)
+      '2': seededSession(at, 710, [529,141,36,4,0], 48_351, 26, 1_469),
+      '3': seededSession(at, 723, [537,143,37,5,1], 49_236, 27, 1_496),
+      '4': seededSession(at, 668, [497,133,34,4,0], 45_490, 24, 1_382)
     }
   }
 }
@@ -142,7 +152,7 @@ function loadStoredSessions(): StoredHuntSessions | null {
       storedSessions = { version: 1, savedAt: timestampOr(parsed.savedAt, Date.now()), accounts: parsed.accounts as Record<string, HuntSessionPersistedState> }
       return storedSessions
     }
-  } catch { /* first run: seed the current live group below */ }
+  } catch { /* first run is migrated below */ }
   storedSessions = continuitySeed(Date.now())
   storedSessionsSeeded = true
   return storedSessions
@@ -151,7 +161,7 @@ function loadStoredSessions(): StoredHuntSessions | null {
 function installExitFlush(): void {
   if (exitFlushInstalled) return
   exitFlushInstalled = true
-  process.once('exit', () => flushSessionsSync())
+  process.once('exit', flushSessionsSync)
 }
 
 function markSessionsDirty(): void {
@@ -163,6 +173,8 @@ function markSessionsDirty(): void {
     persistenceTimer = null
     flushSessionsSync()
   }, PERSIST_DELAY_MS)
+  const timer = persistenceTimer as NodeJS.Timeout
+  if (typeof timer.unref === 'function') timer.unref()
 }
 
 function flushSessionsSync(): void {
@@ -179,14 +191,14 @@ function flushSessionsSync(): void {
     storedSessions = payload
     storedSessionsSeeded = false
     persistenceDirty = false
-  } catch { /* best effort; dirty flag remains for the next coalesced attempt */ }
+  } catch { /* best effort; next dirty event retries */ }
 }
 
 function findShinySeenCounter(value: unknown, depth = 0): number | undefined {
   if (!isRecord(value) || depth > 3) return undefined
   for (const [key, raw] of Object.entries(value)) {
     const normalized = normalizeKey(key)
-    if (normalized.includes('shiny') && (normalized.includes('seen') || normalized.includes('vist'))) {
+    if (isShinyKey(normalized) && (normalized.includes('seen') || normalized.includes('vist'))) {
       const count = finite(raw)
       if (count !== undefined && count >= 0) return count
     }
@@ -202,7 +214,7 @@ function shinyFlag(value: unknown, depth = 0): boolean {
   if (!isRecord(value) || depth > 2) return false
   for (const [key, raw] of Object.entries(value)) {
     const normalized = normalizeKey(key)
-    if (normalized.includes('shiny') && truthy(raw)) return true
+    if (isShinyKey(normalized) && truthy(raw)) return true
     if (['variant','form','skin','rarity','raridade','tipo'].includes(normalized) && typeof raw === 'string' && normalizeKey(raw).includes('shiny')) return true
   }
   for (const raw of Object.values(value)) if (shinyFlag(raw, depth + 1)) return true
@@ -212,7 +224,7 @@ function shinyFlag(value: unknown, depth = 0): boolean {
 function shinySeenBattleEvent(event: JsonRecord): boolean {
   const kind = normalizeKey(text(first(event.k, event.kind, event.type, event.event, event.evento)))
   if (!kind) return false
-  const shinyNamed = kind.includes('shiny')
+  const shinyNamed = isShinyKey(kind)
   const encounterKind = /(vist|seen|encontr|spawn|aparec|wild)/.test(kind)
   return (shinyNamed && encounterKind) || (shinyFlag(event) && encounterKind)
 }
@@ -308,7 +320,10 @@ export class HuntSessionRuntime {
     const type = String(packet.t || '')
     if (type === 'batalha') {
       const changed = this.ingestBattleEvents(packet, at)
-      if (changed) { this.updatedAt = at; markSessionsDirty() }
+      if (changed) {
+        this.updatedAt = at
+        markSessionsDirty()
+      }
       return changed
     }
     if (type !== 'welcome' && type !== 'estado') return false
@@ -342,7 +357,6 @@ export class HuntSessionRuntime {
         this.startHunt(nextHunt, at)
         sessionTransition = true
       } else if (nextHunt !== this.huntSlug) {
-        // Formatting/case changed, but it is still the same Hunt.
         this.huntSlug = nextHunt
       }
     }
@@ -356,9 +370,6 @@ export class HuntSessionRuntime {
 
     let changed = sessionTransition
     if (fullState) {
-      // A reconnect is not a new Hunt. Keep the exact identity ledger and counters,
-      // only rebuild volatile XP baselines from the fresh full state. Outside a Hunt,
-      // skip ledger work entirely so idle/reload packets remain cheap.
       this.xpState.clear()
       if (this.huntSlug) for (const row of rows) this.baselinePokemon(row)
     } else if (this.huntSlug) {
@@ -391,7 +402,10 @@ export class HuntSessionRuntime {
       if (seen !== undefined && seen >= 0) {
         if (this.shiniesSeenBaseline === null || seen - this.shiniesSeenBaseline < this.shiniesSeen) this.shiniesSeenBaseline = seen - this.shiniesSeen
         const nextSeen = Math.max(this.shiniesSeen, Math.floor(seen - this.shiniesSeenBaseline))
-        if (nextSeen !== this.shiniesSeen) { this.shiniesSeen = nextSeen; changed = true }
+        if (nextSeen !== this.shiniesSeen) {
+          this.shiniesSeen = nextSeen
+          changed = true
+        }
       }
 
       const inventory = inventoryRows(estado).filter((row) => isPotionName(row.name))
@@ -484,10 +498,6 @@ export class HuntSessionRuntime {
     }
   }
 
-  /**
-   * Transport/page resets are intentionally non-destructive. The Hunt session is
-   * ended only by an explicit server Hunt exit, a direct Hunt switch, or account switch.
-   */
   reset(at = Date.now()): void {
     this.prune(at)
   }
@@ -584,7 +594,7 @@ export class HuntSessionRuntime {
 
   private ingestBattleEvents(packet: JsonRecord, at: number): boolean {
     if (!this.huntSlug || !Array.isArray(packet.ev)) return false
-    let changed = false
+    let added = 0
     for (const raw of packet.ev) {
       if (!isRecord(raw) || !shinySeenBattleEvent(raw)) continue
       const key = battleEventKey(raw)
@@ -595,11 +605,12 @@ export class HuntSessionRuntime {
         if (!oldest) break
         this.shinySeenEvents.delete(oldest)
       }
-      this.shiniesSeen++
-      changed = true
+      added++
     }
-    if (changed && this.shiniesSeenBaseline !== null) this.shiniesSeenBaseline -= 1
-    return changed
+    if (added <= 0) return false
+    this.shiniesSeen += added
+    this.updatedAt = at
+    return true
   }
 
   private baselinePokemon(row: JsonRecord): void {
