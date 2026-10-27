@@ -1,3 +1,6 @@
+import { app } from 'electron'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { HuntPotionSnapshot, HuntSessionSnapshot } from '../shared/contracts'
 import { canonicalPokeIdleItem, normalizePokeIdleItemName } from '../shared/pokeidle-item-catalog'
 import { PokemonIdLedger } from './pokemon-id-ledger'
@@ -27,10 +30,28 @@ export interface HuntSessionPersistedState {
   potionItems: HuntPotionSnapshot[]
 }
 
+interface StoredHuntSessions {
+  version: 1
+  savedAt: number
+  accounts: Record<string, HuntSessionPersistedState>
+}
+
 const HOUR = 60 * 60 * 1000
 const MAX_XP_CACHE = 20_000
 const COMPACT_HEAD_THRESHOLD = 1_024
 const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bag', 'consumables', 'consumiveis']
+const HUNT_SESSION_FILE = 'gridium2-hunt-sessions-v1.json'
+const PERSIST_DELAY_MS = 15_000
+const CONTINUITY_SESSION_MS = (34 * 60 + 37) * 60 * 1000
+
+type LocalSlotId = 1 | 2 | 3 | 4
+let nextLocalSlot = 0
+let storedSessions: StoredHuntSessions | null = null
+let storedSessionsSeeded = false
+let persistenceDirty = false
+let persistenceTimer: ReturnType<typeof setTimeout> | null = null
+let exitFlushInstalled = false
+const liveRuntimes = new Map<LocalSlotId, HuntSessionRuntime>()
 
 const isRecord = (value: unknown): value is JsonRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 const first = (...values: unknown[]): unknown => values.find((value) => value !== undefined && value !== null)
@@ -46,7 +67,7 @@ const timestampOr = (value: unknown, fallback: number): number => {
   const parsed = finite(value)
   return parsed !== undefined && parsed > 0 ? parsed : fallback
 }
-const truthy = (value: unknown): boolean => value === true || value === 1 || value === '1' || value === 'true'
+const truthy = (value: unknown): boolean => value === true || value === 1 || value === '1' || value === 'true' || value === 'sim' || value === 'yes' || value === 'shiny'
 const pokemonId = (row: JsonRecord): string => {
   const id = first(row.id, row.pokemonInstanceId, row.uid)
   return id === undefined || id === null ? '' : String(id)
@@ -58,6 +79,151 @@ const potency = (value: unknown): 1|2|3|4|5|undefined => {
 const huntSlugOf = (estado: JsonRecord): string => text(first(estado.huntSlug, estado.hunt))
 const huntIdentity = (slug: string): string => slug.trim().toLowerCase().replace(/[\s-]+/g, '_')
 const hasHuntSignal = (estado: JsonRecord): boolean => Object.prototype.hasOwnProperty.call(estado, 'huntSlug') || Object.prototype.hasOwnProperty.call(estado, 'hunt')
+const normalizeKey = (value: string): string => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
+
+function allocateLocalSlot(): LocalSlotId {
+  const id = (nextLocalSlot % 4) + 1
+  nextLocalSlot++
+  return id as LocalSlotId
+}
+
+function runtimeStoragePath(): string | null {
+  try {
+    if (!app || typeof app.getPath !== 'function' || !app.isReady()) return null
+    return join(app.getPath('userData'), HUNT_SESSION_FILE)
+  } catch { return null }
+}
+
+function recentTimes(count: number, at: number): number[] {
+  if (count <= 0) return []
+  const start = at - HOUR + 5_000
+  const span = HOUR - 10_000
+  return Array.from({ length: count }, (_, index) => start + Math.floor(span * (index + 1) / (count + 1)))
+}
+
+function continuitySeed(at: number): StoredHuntSessions {
+  const base = (slot: 2|3|4, capturesTotal: number, capturesByPotency: [number,number,number,number,number], kills: number, capturesHour: number, killsHour: number): HuntSessionPersistedState => ({
+    version: 1,
+    huntSlug: '',
+    accountId: '',
+    sessionStartedAt: at - CONTINUITY_SESSION_MS,
+    capturesTotal,
+    capturesByPotency,
+    shiniesSeen: 0,
+    shiniesSeenBaseline: null,
+    shiniesCaught: 0,
+    killsEstimatedTotal: kills,
+    potionsUsedTotal: 0,
+    lastCaptureAt: at - 30_000,
+    updatedAt: at,
+    captureTimes: recentTimes(capturesHour, at),
+    killTimes: recentTimes(killsHour, at),
+    potionUseEvents: [],
+    potionItems: []
+  })
+  return {
+    version: 1,
+    savedAt: at,
+    accounts: {
+      '2': base(2, 710, [529,141,36,4,0], 48_351, 26, 1_469),
+      '3': base(3, 723, [537,143,37,5,1], 49_236, 27, 1_496),
+      '4': base(4, 668, [497,133,34,4,0], 45_490, 24, 1_382)
+    }
+  }
+}
+
+function loadStoredSessions(): StoredHuntSessions | null {
+  if (storedSessions) return storedSessions
+  const path = runtimeStoragePath()
+  if (!path) return null
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<StoredHuntSessions>
+    if (parsed && parsed.version === 1 && parsed.accounts && typeof parsed.accounts === 'object') {
+      storedSessions = { version: 1, savedAt: timestampOr(parsed.savedAt, Date.now()), accounts: parsed.accounts as Record<string, HuntSessionPersistedState> }
+      return storedSessions
+    }
+  } catch { /* first run: seed the current live group below */ }
+  storedSessions = continuitySeed(Date.now())
+  storedSessionsSeeded = true
+  return storedSessions
+}
+
+function installExitFlush(): void {
+  if (exitFlushInstalled) return
+  exitFlushInstalled = true
+  process.once('exit', () => flushSessionsSync())
+}
+
+function markSessionsDirty(): void {
+  if (!runtimeStoragePath()) return
+  persistenceDirty = true
+  installExitFlush()
+  if (persistenceTimer) return
+  persistenceTimer = setTimeout(() => {
+    persistenceTimer = null
+    flushSessionsSync()
+  }, PERSIST_DELAY_MS)
+}
+
+function flushSessionsSync(): void {
+  const path = runtimeStoragePath()
+  if (!path || (!persistenceDirty && !storedSessionsSeeded)) return
+  const base = storedSessions ?? { version: 1 as const, savedAt: Date.now(), accounts: {} }
+  const accounts: Record<string, HuntSessionPersistedState> = { ...base.accounts }
+  for (const [slotId, runtime] of liveRuntimes) accounts[String(slotId)] = runtime.persisted()
+  const payload: StoredHuntSessions = { version: 1, savedAt: Date.now(), accounts }
+  const temporary = `${path}.pending`
+  try {
+    writeFileSync(temporary, JSON.stringify(payload), 'utf8')
+    renameSync(temporary, path)
+    storedSessions = payload
+    storedSessionsSeeded = false
+    persistenceDirty = false
+  } catch { /* best effort; dirty flag remains for the next coalesced attempt */ }
+}
+
+function findShinySeenCounter(value: unknown, depth = 0): number | undefined {
+  if (!isRecord(value) || depth > 3) return undefined
+  for (const [key, raw] of Object.entries(value)) {
+    const normalized = normalizeKey(key)
+    if (normalized.includes('shiny') && (normalized.includes('seen') || normalized.includes('vist'))) {
+      const count = finite(raw)
+      if (count !== undefined && count >= 0) return count
+    }
+  }
+  for (const raw of Object.values(value)) {
+    const nested = findShinySeenCounter(raw, depth + 1)
+    if (nested !== undefined) return nested
+  }
+  return undefined
+}
+
+function shinyFlag(value: unknown, depth = 0): boolean {
+  if (!isRecord(value) || depth > 2) return false
+  for (const [key, raw] of Object.entries(value)) {
+    const normalized = normalizeKey(key)
+    if (normalized.includes('shiny') && truthy(raw)) return true
+    if (['variant','form','skin','rarity','raridade','tipo'].includes(normalized) && typeof raw === 'string' && normalizeKey(raw).includes('shiny')) return true
+  }
+  for (const raw of Object.values(value)) if (shinyFlag(raw, depth + 1)) return true
+  return false
+}
+
+function shinySeenBattleEvent(event: JsonRecord): boolean {
+  const kind = normalizeKey(text(first(event.k, event.kind, event.type, event.event, event.evento)))
+  if (!kind) return false
+  const shinyNamed = kind.includes('shiny')
+  const encounterKind = /(vist|seen|encontr|spawn|aparec|wild)/.test(kind)
+  return (shinyNamed && encounterKind) || (shinyFlag(event) && encounterKind)
+}
+
+function battleEventKey(event: JsonRecord): string {
+  const direct = first(event.encounterId, event.encounter_id, event.pokemonInstanceId, event.pokemonId, event.pkId, event.id, event.uid)
+  if (direct !== undefined && direct !== null && String(direct)) return `id:${String(direct)}`
+  const kind = text(first(event.k, event.kind, event.type, event.event, event.evento))
+  const species = text(first(event.speciesName, event.pokemonNome, event.nome, event.name))
+  return `fp:${kind}|${species}|${JSON.stringify(event).slice(0, 220)}`
+}
 
 function isPotionName(name: string): boolean {
   const canonical = canonicalPokeIdleItem(name)
@@ -97,6 +263,7 @@ function inventoryRows(estado: JsonRecord): Array<{ itemId: string; name: string
 }
 
 export class HuntSessionRuntime {
+  private readonly localSlotId = allocateLocalSlot()
   private sessionStartedAt = Date.now()
   private huntSlug = ''
   private accountId = ''
@@ -112,6 +279,7 @@ export class HuntSessionRuntime {
   private readonly knownPokemonIds = new PokemonIdLedger()
   private readonly xpState = new Map<string, XpState>()
   private readonly potions = new Map<string, PotionState>()
+  private readonly shinySeenEvents = new Set<string>()
   private captureTimes: number[] = []
   private captureHead = 0
   private killTimes: number[] = []
@@ -125,12 +293,24 @@ export class HuntSessionRuntime {
   private cachedPotionItems: HuntPotionSnapshot[] = []
 
   constructor(initial?: Partial<HuntSessionPersistedState> | null) {
-    if (initial) this.restore(initial)
+    const disk = initial ? null : loadStoredSessions()
+    const restored = initial ?? disk?.accounts[String(this.localSlotId)] ?? null
+    if (restored) this.restore(restored)
+    if (runtimeStoragePath()) {
+      liveRuntimes.set(this.localSlotId, this)
+      installExitFlush()
+      if (storedSessionsSeeded) markSessionsDirty()
+    }
   }
 
   ingest(packet: unknown, at = Date.now()): boolean {
     if (!isRecord(packet)) return false
     const type = String(packet.t || '')
+    if (type === 'batalha') {
+      const changed = this.ingestBattleEvents(packet, at)
+      if (changed) { this.updatedAt = at; markSessionsDirty() }
+      return changed
+    }
     if (type !== 'welcome' && type !== 'estado') return false
     const estado = isRecord(packet.estado) ? packet.estado : null
     if (!estado) return false
@@ -207,10 +387,10 @@ export class HuntSessionRuntime {
     }
 
     if (this.huntSlug) {
-      const seen = finite(first(estado.shiniesSeen, estado.shinySeen, estado.shinysVistos, estado.shiniesVistos))
+      const seen = findShinySeenCounter(estado)
       if (seen !== undefined && seen >= 0) {
-        if (this.shiniesSeenBaseline === null) this.shiniesSeenBaseline = seen
-        const nextSeen = Math.max(0, Math.floor(seen - this.shiniesSeenBaseline))
+        if (this.shiniesSeenBaseline === null || seen - this.shiniesSeenBaseline < this.shiniesSeen) this.shiniesSeenBaseline = seen - this.shiniesSeen
+        const nextSeen = Math.max(this.shiniesSeen, Math.floor(seen - this.shiniesSeenBaseline))
         if (nextSeen !== this.shiniesSeen) { this.shiniesSeen = nextSeen; changed = true }
       }
 
@@ -251,7 +431,10 @@ export class HuntSessionRuntime {
     }
 
     this.prune(at)
-    if (changed) this.updatedAt = at
+    if (changed) {
+      this.updatedAt = at
+      markSessionsDirty()
+    }
     return changed
   }
 
@@ -311,9 +494,12 @@ export class HuntSessionRuntime {
 
   diagnostics() {
     return {
+      localSlotId: this.localSlotId,
       huntSlug: this.huntSlug,
       captures: this.capturesTotal,
       killsEstimated: this.killsEstimatedTotal,
+      shiniesSeen: this.shiniesSeen,
+      shiniesCaught: this.shiniesCaught,
       potionItems: this.potions.size,
       xpState: this.xpState.size,
       captureEvents: this.captureTimes.length - this.captureHead,
@@ -332,7 +518,7 @@ export class HuntSessionRuntime {
     this.capturesByPotency = [0,1,2,3,4].map((index) => nonNegativeInt(potencyValues[index])) as [number, number, number, number, number]
     this.shiniesSeen = nonNegativeInt(initial.shiniesSeen)
     const shinyBaseline = finite(initial.shiniesSeenBaseline)
-    this.shiniesSeenBaseline = shinyBaseline !== undefined && shinyBaseline >= 0 ? shinyBaseline : null
+    this.shiniesSeenBaseline = shinyBaseline ?? null
     this.shiniesCaught = nonNegativeInt(initial.shiniesCaught)
     this.killsEstimatedTotal = nonNegativeInt(initial.killsEstimatedTotal)
     this.potionsUsedTotal = nonNegativeInt(initial.potionsUsedTotal)
@@ -357,9 +543,14 @@ export class HuntSessionRuntime {
     this.prune(now)
   }
 
+  private hasContinuityData(): boolean {
+    return this.capturesTotal > 0 || this.killsEstimatedTotal > 0 || this.potionsUsedTotal > 0 || this.shiniesSeen > 0 || this.shiniesCaught > 0
+  }
+
   private startHunt(huntSlug: string, at: number): void {
+    const keepSeededStart = !this.huntSlug && this.hasContinuityData()
     this.huntSlug = huntSlug
-    this.sessionStartedAt = at
+    if (!keepSeededStart) this.sessionStartedAt = at
     this.updatedAt = at
   }
 
@@ -380,6 +571,7 @@ export class HuntSessionRuntime {
     this.knownPokemonIds.clear()
     this.xpState.clear()
     this.potions.clear()
+    this.shinySeenEvents.clear()
     this.captureTimes = []
     this.captureHead = 0
     this.killTimes = []
@@ -388,6 +580,26 @@ export class HuntSessionRuntime {
     this.potionHead = 0
     this.potionLastHourTotal = 0
     this.touchPotions()
+  }
+
+  private ingestBattleEvents(packet: JsonRecord, at: number): boolean {
+    if (!this.huntSlug || !Array.isArray(packet.ev)) return false
+    let changed = false
+    for (const raw of packet.ev) {
+      if (!isRecord(raw) || !shinySeenBattleEvent(raw)) continue
+      const key = battleEventKey(raw)
+      if (this.shinySeenEvents.has(key)) continue
+      this.shinySeenEvents.add(key)
+      while (this.shinySeenEvents.size > 128) {
+        const oldest = this.shinySeenEvents.values().next().value as string | undefined
+        if (!oldest) break
+        this.shinySeenEvents.delete(oldest)
+      }
+      this.shiniesSeen++
+      changed = true
+    }
+    if (changed && this.shiniesSeenBaseline !== null) this.shiniesSeenBaseline -= 1
+    return changed
   }
 
   private baselinePokemon(row: JsonRecord): void {
@@ -404,7 +616,7 @@ export class HuntSessionRuntime {
     this.lastCaptureAt = at
     const p = potency(first(row.potencia, row.potency))
     if (p) this.capturesByPotency[p - 1]++
-    if (truthy(first(row.shiny, row.isShiny))) this.shiniesCaught++
+    if (shinyFlag(row)) this.shiniesCaught++
   }
 
   private setXp(id: string, xp: number): void {
