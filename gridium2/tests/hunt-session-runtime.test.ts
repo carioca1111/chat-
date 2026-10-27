@@ -32,8 +32,6 @@ describe('HuntSessionRuntime', () => {
     expect(beforeReconnect.potionStock).toBe(10)
     expect(beforeReconnect.potionsUsedTotal).toBe(2)
 
-    // AccountRuntime calls reset() on page reload/debugger transport loss.
-    // This must never end an active Hunt Control session.
     runtime.reset(now + 3_000)
     const afterTransportReset = runtime.snapshot(now + 3_000)
     expect(afterTransportReset.sessionStartedAt).toBe(beforeReconnect.sessionStartedAt)
@@ -42,9 +40,6 @@ describe('HuntSessionRuntime', () => {
     expect(afterTransportReset.killsEstimatedTotal).toBe(1)
     expect(afterTransportReset.potionsUsedTotal).toBe(2)
 
-    // A fresh welcome for the same Hunt re-baselines volatile state without
-    // clearing counters or recounting existing Pokémon as captures. Different
-    // case/separator formatting is treated as the same canonical Hunt identity.
     runtime.ingest({ t: 'welcome', estado: {
       id: 77, huntSlug: 'OUTLAND-02', shiniesSeen: 11,
       pokemons: [{ id: 1, xp: 140, potencia: 2 }, { id: 2, xp: 0, potencia: 5, shiny: true }],
@@ -57,12 +52,9 @@ describe('HuntSessionRuntime', () => {
     expect(afterReconnect.killsEstimatedTotal).toBe(1)
     expect(afterReconnect.potionsUsedTotal).toBe(2)
 
-    // No Hunt field means incomplete/partial state, not an exit.
     runtime.ingest({ t: 'estado', estado: { pkMud: [{ id: 1, xp: 150 }] } }, now + 5_000)
     expect(runtime.snapshot(now + 5_000).huntSlug).toBeTruthy()
 
-    // Explicit empty Hunt is the real exit signal and is the point where the
-    // session must reset.
     runtime.ingest({ t: 'estado', estado: { huntSlug: '' } }, now + 6_000)
     const afterExit = runtime.snapshot(now + 6_000)
     expect(afterExit.huntSlug).toBe('')
@@ -71,7 +63,6 @@ describe('HuntSessionRuntime', () => {
     expect(afterExit.potionsUsedTotal).toBe(0)
     expect(afterExit.potionStock).toBe(0)
 
-    // Entering a new Hunt starts a clean session at the entry timestamp.
     runtime.ingest({ t: 'estado', estado: {
       huntSlug: 'forest-new', shiniesSeen: 11,
       pkMud: [{ id: 3, xp: 0, potencia: 3 }],
@@ -103,5 +94,19 @@ describe('HuntSessionRuntime', () => {
     expect(afterSwitch.huntSlug).toBe('route-b')
     expect(afterSwitch.sessionStartedAt).toBe(now + 2_000)
     expect(afterSwitch.capturesTotal).toBe(0)
+  })
+
+  it('recognizes nested shiny capture flags and explicit shiny encounter events without duplicate seen counts', () => {
+    const runtime = new HuntSessionRuntime()
+    const now = Date.now()
+
+    runtime.ingest({ t:'welcome', estado:{ id:9, huntSlug:'route-shiny', pokemons:[{ id:1, xp:0 }] } }, now)
+    runtime.ingest({ t:'batalha', ev:[{ k:'shinyEncontrado', encounterId:'enc-1', pokemon:{ variant:'shiny' } }] }, now + 1_000)
+    runtime.ingest({ t:'batalha', ev:[{ k:'shinyEncontrado', encounterId:'enc-1', pokemon:{ variant:'shiny' } }] }, now + 1_100)
+    runtime.ingest({ t:'estado', estado:{ huntSlug:'route-shiny', pkMud:[{ id:2, xp:0, potencia:3, flags:{ isShiny:true } }] } }, now + 2_000)
+
+    const snapshot = runtime.snapshot(now + 2_000)
+    expect(snapshot.shiniesSeen).toBe(1)
+    expect(snapshot.shiniesCaught).toBe(1)
   })
 })
