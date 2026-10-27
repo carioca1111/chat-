@@ -109,4 +109,38 @@ describe('HuntSessionRuntime', () => {
     expect(snapshot.shiniesSeen).toBe(1)
     expect(snapshot.shiniesCaught).toBe(1)
   })
+
+  it('adopts the first server Hunt without erasing migrated first-boot counters', () => {
+    const now = Date.now()
+    const startedAt = now - (34 * 60 + 37) * 60 * 1000
+    const runtime = new HuntSessionRuntime({
+      version: 1,
+      huntSlug: '',
+      accountId: '',
+      sessionStartedAt: startedAt,
+      capturesTotal: 723,
+      capturesByPotency: [537,143,37,5,1],
+      shiniesSeen: 0,
+      shiniesSeenBaseline: null,
+      shiniesCaught: 0,
+      killsEstimatedTotal: 49_236,
+      potionsUsedTotal: 0,
+      lastCaptureAt: now - 30_000,
+      updatedAt: now,
+      captureTimes: [],
+      killTimes: [],
+      potionUseEvents: [],
+      potionItems: []
+    })
+
+    runtime.ingest({ t:'welcome', estado:{ id:77, huntSlug:'outland-02', shiniesSeen:20, pokemons:[{ id:1, xp:100 }] } }, now + 1_000)
+    const restored = runtime.snapshot(now + 1_000)
+
+    expect(restored.huntSlug).toBe('outland-02')
+    expect(restored.sessionStartedAt).toBe(startedAt)
+    expect(restored.capturesTotal).toBe(723)
+    expect(restored.capturesByPotency).toEqual([537,143,37,5,1])
+    expect(restored.killsEstimatedTotal).toBe(49_236)
+    expect(restored.shiniesSeen).toBe(0)
+  })
 })
