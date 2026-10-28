@@ -402,19 +402,30 @@ export class AccountRuntime {
       if (requestId) account.socketUrls.delete(requestId)
       return
     }
-    if (method !== 'Network.webSocketFrameReceived' || !requestId) return
+    const receivedFrame = method === 'Network.webSocketFrameReceived'
+    const sentFrame = method === 'Network.webSocketFrameSent'
+    if ((!receivedFrame && !sentFrame) || !requestId) return
 
     const socketUrl = account.socketUrls.get(requestId)
     if (!socketUrl || !this.isPokeIdleSocket(socketUrl)) return
     const frame = payload.response
-    if (!frame || frame.opcode !== 1 || typeof frame.payloadData !== 'string') return
-    const raw = frame.payloadData
-    if (!raw.includes('"t"')) return
+    if (!frame || typeof frame.payloadData !== 'string') return
+    let raw = ''
+    if (frame.opcode === 1) raw = frame.payloadData
+    else if (frame.opcode === 2) {
+      try { raw = Buffer.from(frame.payloadData, 'base64').toString('utf8') } catch { return }
+    } else return
+    if (!raw.trim()) return
 
     try {
       const packet = JSON.parse(raw) as unknown
+      if (!packet || typeof packet !== 'object') return
       account.lastServerAt = Date.now()
-      const huntSessionChanged = account.huntSession.ingest(packet, account.lastServerAt)
+      const huntSessionChanged = account.huntSession.ingest(packet, account.lastServerAt, sentFrame ? 'sent' : 'received')
+      if (sentFrame) {
+        if (huntSessionChanged) this.onChanged()
+        return
+      }
       const auxiliaryChanged = account.serverState.ingestAuxiliary(packet, account.lastServerAt)
       if (!/"t"\s*:\s*"(?:welcome|estado)"/.test(raw)) {
         if (auxiliaryChanged || huntSessionChanged) this.onChanged()

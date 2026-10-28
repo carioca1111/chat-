@@ -12,6 +12,9 @@ interface TimedAmount { at: number; amount: number }
 interface SupplyUseReconcile { eventPending: number; statePending: number; eventAt: number; stateAt: number }
 interface SupplyUseEvent { itemId: string; name: string; amount: number; remaining?: number }
 type SustainCategory = 'potions' | 'revives'
+type SupplyEventSource = 'event' | 'sent'
+type HuntPacketTransport = 'received' | 'sent'
+interface SupplyMirrorSignal { source: SupplyEventSource; at: number; amount: number }
 
 export interface HuntSessionPersistedState {
   version: 1
@@ -267,11 +270,12 @@ const CURRENT_POTION_BY_HEAL = new Map<number, string>([
 ])
 
 function humanNumber(value: string): number | undefined {
-  const compact = value.trim().replace(/s/g, '')
+  const compact = value.trim().replace(/\s+/g, '')
   if (!compact) return undefined
-  const normalized = compact.includes('.') && !compact.includes(',')
-    ? compact.replace(/./g, '')
-    : compact.replace(/./g, '').replace(',', '.')
+  let normalized = compact
+  if (compact.includes('.') && compact.includes(',')) normalized = compact.replace(/\./g, '').replace(',', '.')
+  else if (compact.includes(',')) normalized = compact.replace(',', '.')
+  else if (/^[0-9]{1,3}(?:\.[0-9]{3})+$/.test(compact)) normalized = compact.replace(/\./g, '')
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : undefined
 }
@@ -440,15 +444,18 @@ function supplyUseFromEvent(event: JsonRecord, catalog: Map<string, string>): Su
   const name = inferredName || (rawName ? canonicalSustainName(rawName) : itemId ? catalog.get(itemId) || '' : '')
   if (!name || !sustainCategory(name)) return null
 
-  const semantic = normalizeKey([
+  const actionSemantic = normalizeKey([
     text(first(event.k, event.kind, event.type, event.event, event.evento)),
-    text(first(event.action, event.acao, event.operation, event.operacao)),
-    name
+    text(first(event.action, event.acao, event.operation, event.operacao, event.command, event.comando, event.cmd))
   ].filter(Boolean).join(' '))
+  const semantic = normalizeKey([actionSemantic, name].filter(Boolean).join(' '))
   if (/(drop|loot|ganh|receb|reward|premi|compr|vend|market|shop)/.test(semantic)) return null
   const explicitUsed = finite(first(event.used, event.usado, event.usados, event.consumed, event.consumido, event.consumidos, event.quantidadeUsada, event.qtdUsada))
-  const useSignal = /(use|used|uso|usou|usar|consum|potion|pocao|revive|reviver|heal|cura|recuper)/.test(semantic)
-  if (!useSignal && !(explicitUsed !== undefined && explicitUsed > 0)) return null
+  const quantitySnapshot = finite(first(event.qtd, event.quantidade, event.quantity, event.qty, event.count, event.amount, event.total, event.estoque, event.stock))
+  const strongUseSignal = /(use|used|uso|usou|usar|consum|heal|cura|recuper)/.test(actionSemantic)
+  const itemActionSignal = /(potion|pocao|revive|reviver)/.test(actionSemantic)
+  if (!strongUseSignal && !itemActionSignal && !(explicitUsed !== undefined && explicitUsed > 0)) return null
+  if (quantitySnapshot !== undefined && explicitUsed === undefined && !strongUseSignal) return null
   const amount = Math.max(1, Math.floor(explicitUsed ?? 1))
   const remainingRaw = finite(first(event.remaining, event.sobra, event.restante, event.quantityLeft, event.qtdRestante, event.estoque, event.stock))
   const remaining = remainingRaw !== undefined && remainingRaw >= 0 ? Math.floor(remainingRaw) : undefined
@@ -539,13 +546,18 @@ function inventoryRows(root: JsonRecord, catalog: Map<string, string>): Array<{ 
   }
 
   const scanForContainers = (value: unknown, depth = 0): void => {
-    if (!isRecord(value) || depth > 6) return
+    if (depth > 6) return
+    if (Array.isArray(value)) {
+      for (const child of value) if (isRecord(child) || Array.isArray(child)) scanForContainers(child, depth + 1)
+      return
+    }
+    if (!isRecord(value)) return
     for (const [key, child] of Object.entries(value)) {
       if (looksLikeInventoryKey(key)) {
         parseContainer(child, key)
         continue
       }
-      if (isRecord(child)) scanForContainers(child, depth + 1)
+      if (isRecord(child) || Array.isArray(child)) scanForContainers(child, depth + 1)
     }
   }
 
@@ -576,6 +588,7 @@ export class HuntSessionRuntime {
   private readonly consumables = new Map<string, ConsumableState>()
   private readonly itemCatalog = new Map<string, string>()
   private readonly usageReconcile = new Map<string, SupplyUseReconcile>()
+  private readonly recentSupplyMirrors = new Map<string, SupplyMirrorSignal>()
   private readonly shinySeenEvents = new Set<string>()
   private recentBattleShinyCaughtAt: number[] = []
   private captureTimes: number[] = []
@@ -601,12 +614,17 @@ export class HuntSessionRuntime {
     }
   }
 
-  ingest(packet: unknown, at = Date.now()): boolean {
+  ingest(packet: unknown, at = Date.now(), transport: HuntPacketTransport = 'received'): boolean {
+    if (Array.isArray(packet)) {
+      let changed = false
+      for (const entry of packet) if (this.ingest(entry, at, transport)) changed = true
+      return changed
+    }
     if (!isRecord(packet)) return false
     learnSustainCatalog(packet, this.itemCatalog)
     const type = String(packet.t || '')
     if (type === 'batalha') {
-      const changed = this.ingestBattleEvents(packet, at)
+      const changed = this.ingestBattleEvents(packet, at, transport === 'sent' ? 'sent' : 'event')
       if (changed) {
         this.updatedAt = at
         markSessionsDirty()
@@ -615,7 +633,8 @@ export class HuntSessionRuntime {
     }
     if (type !== 'welcome' && type !== 'estado') {
       if (!this.huntSlug) return false
-      const changed = this.ingestConsumableInventory(inventoryRows(packet, this.itemCatalog), false, at)
+      let changed = this.ingestGenericSupplyEvents(packet, at, transport === 'sent' ? 'sent' : 'event')
+      if (this.ingestConsumableInventory(inventoryRows(packet, this.itemCatalog), false, at)) changed = true
       if (changed) {
         this.updatedAt = at
         markSessionsDirty()
@@ -847,6 +866,7 @@ export class HuntSessionRuntime {
     this.xpState.clear()
     this.consumables.clear()
     this.usageReconcile.clear()
+    this.recentSupplyMirrors.clear()
     if (!preserveAccount) this.itemCatalog.clear()
     this.shinySeenEvents.clear()
     this.recentBattleShinyCaughtAt = []
@@ -870,38 +890,50 @@ export class HuntSessionRuntime {
     return null
   }
 
-  private registerSupplyUse(itemId: string, name: string, amount: number, at: number, source: 'event' | 'state', remaining?: number): boolean {
+  private registerSupplyUse(itemId: string, name: string, amount: number, at: number, source: SupplyEventSource | 'state', remaining?: number): boolean {
     if (!this.huntSlug || amount <= 0 || !sustainCategory(name)) return false
     const canonicalName = canonicalSustainName(name)
     const key = normalizePokeIdleItemName(canonicalName)
+    let effectiveAmount = amount
+    if (source !== 'state') {
+      const mirror = this.recentSupplyMirrors.get(key)
+      if (mirror && mirror.source !== source && at >= mirror.at && at - mirror.at <= 1_500) {
+        const mirrored = Math.min(effectiveAmount, mirror.amount)
+        effectiveAmount -= mirrored
+        if (mirrored >= mirror.amount) this.recentSupplyMirrors.delete(key)
+        else this.recentSupplyMirrors.set(key, { ...mirror, amount: mirror.amount - mirrored })
+      } else {
+        this.recentSupplyMirrors.set(key, { source, at, amount: effectiveAmount })
+      }
+    }
     const reconcile = this.usageReconcile.get(key) ?? { eventPending: 0, statePending: 0, eventAt: 0, stateAt: 0 }
     const ttl = 30_000
     if (reconcile.eventAt && at - reconcile.eventAt > ttl) reconcile.eventPending = 0
     if (reconcile.stateAt && at - reconcile.stateAt > ttl) reconcile.statePending = 0
 
     let matched = 0
-    if (source === 'event') {
-      matched = Math.min(amount, reconcile.statePending)
+    if (source !== 'state') {
+      matched = Math.min(effectiveAmount, reconcile.statePending)
       reconcile.statePending -= matched
-      const unmatched = amount - matched
+      const unmatched = effectiveAmount - matched
       reconcile.eventPending += unmatched
       reconcile.eventAt = at
     } else {
-      matched = Math.min(amount, reconcile.eventPending)
+      matched = Math.min(effectiveAmount, reconcile.eventPending)
       reconcile.eventPending -= matched
-      const unmatched = amount - matched
+      const unmatched = effectiveAmount - matched
       reconcile.statePending += unmatched
       reconcile.stateAt = at
     }
     this.usageReconcile.set(key, reconcile)
 
-    const counted = amount - matched
+    const counted = effectiveAmount - matched
     const found = this.findConsumable(itemId, canonicalName)
     const storageId = found?.[0] ?? (itemId || key)
     const previous = found?.[1] ?? { itemId: storageId, name: canonicalName, quantity: remaining ?? 0, used: 0 }
     let quantity = previous.quantity
     if (remaining !== undefined) quantity = remaining
-    else if (source === 'event' && counted > 0 && quantity > 0) quantity = Math.max(0, quantity - counted)
+    else if (source !== 'state' && counted > 0 && quantity > 0) quantity = Math.max(0, quantity - counted)
 
     if (counted <= 0 && quantity === previous.quantity && previous.name === canonicalName) return false
     const next = { itemId: storageId, name: canonicalName, quantity, used: previous.used + counted }
@@ -953,7 +985,24 @@ export class HuntSessionRuntime {
     return changed
   }
 
-  private ingestBattleEvents(packet: JsonRecord, at: number): boolean {
+  private ingestGenericSupplyEvents(value: unknown, at: number, source: SupplyEventSource, depth = 0): boolean {
+    if (!this.huntSlug || depth > 6) return false
+    if (Array.isArray(value)) {
+      let changed = false
+      for (const entry of value) if (this.ingestGenericSupplyEvents(entry, at, source, depth + 1)) changed = true
+      return changed
+    }
+    if (!isRecord(value)) return false
+    let changed = false
+    const supplyUse = supplyUseFromEvent(value, this.itemCatalog)
+    if (supplyUse && this.registerSupplyUse(supplyUse.itemId, supplyUse.name, supplyUse.amount, at, source, supplyUse.remaining)) changed = true
+    for (const child of Object.values(value)) {
+      if ((isRecord(child) || Array.isArray(child)) && this.ingestGenericSupplyEvents(child, at, source, depth + 1)) changed = true
+    }
+    return changed
+  }
+
+  private ingestBattleEvents(packet: JsonRecord, at: number, source: SupplyEventSource = 'event'): boolean {
     if (!this.huntSlug || !Array.isArray(packet.ev)) return false
     let seenAdded = 0
     let caughtAdded = 0
@@ -961,7 +1010,7 @@ export class HuntSessionRuntime {
     for (const raw of packet.ev) {
       if (!isRecord(raw)) continue
       const supplyUse = supplyUseFromEvent(raw, this.itemCatalog)
-      if (supplyUse && this.registerSupplyUse(supplyUse.itemId, supplyUse.name, supplyUse.amount, at, 'event', supplyUse.remaining)) supplyChanged = true
+      if (supplyUse && this.registerSupplyUse(supplyUse.itemId, supplyUse.name, supplyUse.amount, at, source, supplyUse.remaining)) supplyChanged = true
       const kind = normalizeKey(text(first(raw.k, raw.kind, raw.type, raw.event, raw.evento)))
       const shinyBall = kind === 'bola' && shinyFlag(raw)
 
@@ -1052,6 +1101,8 @@ export class HuntSessionRuntime {
     const cutoff = at - HOUR
     const shinyCaptureCutoff = at - 30_000
     const supplyReconcileCutoff = at - 30_000
+    const supplyMirrorCutoff = at - 2_000
+    for (const [key, value] of this.recentSupplyMirrors) if (value.at < supplyMirrorCutoff) this.recentSupplyMirrors.delete(key)
     for (const [key, value] of this.usageReconcile) {
       if (Math.max(value.eventAt, value.stateAt) < supplyReconcileCutoff) this.usageReconcile.delete(key)
     }
