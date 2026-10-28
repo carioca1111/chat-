@@ -1,5 +1,6 @@
 name: Apply supply protocol fix
 
+# retry-2: run from the latest branch head after release metadata updates
 on:
   push:
     branches:
