@@ -203,7 +203,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.3.13 Live Supply Protocol',
+    title: 'Gridium 2 — Alpha 1.3.14 Potion UI Fallback',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
