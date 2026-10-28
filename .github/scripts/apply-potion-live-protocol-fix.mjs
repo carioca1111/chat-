@@ -1,0 +1,91 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+
+const accountPath = 'gridium2/src/main/account-runtime.ts'
+const runtimePath = 'gridium2/src/main/hunt-session-runtime.ts'
+const testPath = 'gridium2/tests/potion-live-protocol.test.ts'
+
+let account = readFileSync(accountPath, 'utf8')
+const oldMonitor = `    if (method !== 'Network.webSocketFrameReceived' || !requestId) return\n\n    const socketUrl = account.socketUrls.get(requestId)\n    if (!socketUrl || !this.isPokeIdleSocket(socketUrl)) return\n    const frame = payload.response\n    if (!frame || frame.opcode !== 1 || typeof frame.payloadData !== 'string') return\n    const raw = frame.payloadData\n    if (!raw.includes('\\"t\\"')) return\n\n    try {\n      const packet = JSON.parse(raw) as unknown\n      account.lastServerAt = Date.now()\n      const huntSessionChanged = account.huntSession.ingest(packet, account.lastServerAt)\n      const auxiliaryChanged = account.serverState.ingestAuxiliary(packet, account.lastServerAt)\n`
+const newMonitor = `    const receivedFrame = method === 'Network.webSocketFrameReceived'\n    const sentFrame = method === 'Network.webSocketFrameSent'\n    if ((!receivedFrame && !sentFrame) || !requestId) return\n\n    const socketUrl = account.socketUrls.get(requestId)\n    if (!socketUrl || !this.isPokeIdleSocket(socketUrl)) return\n    const frame = payload.response\n    if (!frame || typeof frame.payloadData !== 'string') return\n    let raw = ''\n    if (frame.opcode === 1) raw = frame.payloadData\n    else if (frame.opcode === 2) {\n      try { raw = Buffer.from(frame.payloadData, 'base64').toString('utf8') } catch { return }\n    } else return\n    if (!raw.trim()) return\n\n    try {\n      const packet = JSON.parse(raw) as unknown\n      if (!packet || typeof packet !== 'object') return\n      account.lastServerAt = Date.now()\n      const huntSessionChanged = account.huntSession.ingest(packet, account.lastServerAt, sentFrame ? 'sent' : 'received')\n      if (sentFrame) {\n        if (huntSessionChanged) this.onChanged()\n        return\n      }\n      const auxiliaryChanged = account.serverState.ingestAuxiliary(packet, account.lastServerAt)\n`
+if (!account.includes(oldMonitor)) throw new Error('account monitor anchor not found')
+account = account.replace(oldMonitor, newMonitor)
+writeFileSync(accountPath, account)
+
+let runtime = readFileSync(runtimePath, 'utf8')
+runtime = runtime.replace(
+  `interface SupplyUseReconcile { eventPending: number; statePending: number; eventAt: number; stateAt: number }\ninterface SupplyUseEvent { itemId: string; name: string; amount: number; remaining?: number }\ntype SustainCategory = 'potions' | 'revives'`,
+  `interface SupplyUseReconcile { eventPending: number; statePending: number; eventAt: number; stateAt: number }\ninterface SupplyUseEvent { itemId: string; name: string; amount: number; remaining?: number }\ntype SustainCategory = 'potions' | 'revives'\ntype SupplyEventSource = 'event' | 'sent'\ntype HuntPacketTransport = 'received' | 'sent'\ninterface SupplyMirrorSignal { source: SupplyEventSource; at: number; amount: number }`
+)
+
+const oldHuman = `function humanNumber(value: string): number | undefined {\n  const compact = value.trim().replace(/s/g, '')\n  if (!compact) return undefined\n  const normalized = compact.includes('.') && !compact.includes(',')\n    ? compact.replace(/./g, '')\n    : compact.replace(/./g, '').replace(',', '.')\n  const parsed = Number(normalized)\n  return Number.isFinite(parsed) ? parsed : undefined\n}`
+const newHuman = `function humanNumber(value: string): number | undefined {\n  const compact = value.trim().replace(/\\s+/g, '')\n  if (!compact) return undefined\n  let normalized = compact\n  if (compact.includes('.') && compact.includes(',')) normalized = compact.replace(/\\./g, '').replace(',', '.')\n  else if (compact.includes(',')) normalized = compact.replace(',', '.')\n  else if (/^[0-9]{1,3}(?:\\.[0-9]{3})+$/.test(compact)) normalized = compact.replace(/\\./g, '')\n  const parsed = Number(normalized)\n  return Number.isFinite(parsed) ? parsed : undefined\n}`
+if (!runtime.includes(oldHuman)) throw new Error('humanNumber anchor not found')
+runtime = runtime.replace(oldHuman, newHuman)
+
+const oldSupplySignal = `  const semantic = normalizeKey([\n    text(first(event.k, event.kind, event.type, event.event, event.evento)),\n    text(first(event.action, event.acao, event.operation, event.operacao)),\n    name\n  ].filter(Boolean).join(' '))\n  if (/(drop|loot|ganh|receb|reward|premi|compr|vend|market|shop)/.test(semantic)) return null\n  const explicitUsed = finite(first(event.used, event.usado, event.usados, event.consumed, event.consumido, event.consumidos, event.quantidadeUsada, event.qtdUsada))\n  const useSignal = /(use|used|uso|usou|usar|consum|potion|pocao|revive|reviver|heal|cura|recuper)/.test(semantic)\n  if (!useSignal && !(explicitUsed !== undefined && explicitUsed > 0)) return null`
+const newSupplySignal = `  const actionSemantic = normalizeKey([\n    text(first(event.k, event.kind, event.type, event.event, event.evento)),\n    text(first(event.action, event.acao, event.operation, event.operacao, event.command, event.comando, event.cmd))\n  ].filter(Boolean).join(' '))\n  const semantic = normalizeKey([actionSemantic, name].filter(Boolean).join(' '))\n  if (/(drop|loot|ganh|receb|reward|premi|compr|vend|market|shop)/.test(semantic)) return null\n  const explicitUsed = finite(first(event.used, event.usado, event.usados, event.consumed, event.consumido, event.consumidos, event.quantidadeUsada, event.qtdUsada))\n  const quantitySnapshot = finite(first(event.qtd, event.quantidade, event.quantity, event.qty, event.count, event.amount, event.total, event.estoque, event.stock))\n  const strongUseSignal = /(use|used|uso|usou|usar|consum|heal|cura|recuper)/.test(actionSemantic)\n  const itemActionSignal = /(potion|pocao|revive|reviver)/.test(actionSemantic)\n  if (!strongUseSignal && !itemActionSignal && !(explicitUsed !== undefined && explicitUsed > 0)) return null\n  if (quantitySnapshot !== undefined && explicitUsed === undefined && !strongUseSignal) return null`
+if (!runtime.includes(oldSupplySignal)) throw new Error('supply signal anchor not found')
+runtime = runtime.replace(oldSupplySignal, newSupplySignal)
+
+const oldScanner = `  const scanForContainers = (value: unknown, depth = 0): void => {\n    if (!isRecord(value) || depth > 6) return\n    for (const [key, child] of Object.entries(value)) {\n      if (looksLikeInventoryKey(key)) {\n        parseContainer(child, key)\n        continue\n      }\n      if (isRecord(child)) scanForContainers(child, depth + 1)\n    }\n  }`
+const newScanner = `  const scanForContainers = (value: unknown, depth = 0): void => {\n    if (depth > 6) return\n    if (Array.isArray(value)) {\n      for (const child of value) if (isRecord(child) || Array.isArray(child)) scanForContainers(child, depth + 1)\n      return\n    }\n    if (!isRecord(value)) return\n    for (const [key, child] of Object.entries(value)) {\n      if (looksLikeInventoryKey(key)) {\n        parseContainer(child, key)\n        continue\n      }\n      if (isRecord(child) || Array.isArray(child)) scanForContainers(child, depth + 1)\n    }\n  }`
+if (!runtime.includes(oldScanner)) throw new Error('inventory scanner anchor not found')
+runtime = runtime.replace(oldScanner, newScanner)
+
+runtime = runtime.replace(
+  `  private readonly usageReconcile = new Map<string, SupplyUseReconcile>()\n  private readonly shinySeenEvents = new Set<string>()`,
+  `  private readonly usageReconcile = new Map<string, SupplyUseReconcile>()\n  private readonly recentSupplyMirrors = new Map<string, SupplyMirrorSignal>()\n  private readonly shinySeenEvents = new Set<string>()`
+)
+
+const oldIngestHead = `  ingest(packet: unknown, at = Date.now()): boolean {\n    if (!isRecord(packet)) return false\n    learnSustainCatalog(packet, this.itemCatalog)\n    const type = String(packet.t || '')\n    if (type === 'batalha') {\n      const changed = this.ingestBattleEvents(packet, at)`
+const newIngestHead = `  ingest(packet: unknown, at = Date.now(), transport: HuntPacketTransport = 'received'): boolean {\n    if (Array.isArray(packet)) {\n      let changed = false\n      for (const entry of packet) if (this.ingest(entry, at, transport)) changed = true\n      return changed\n    }\n    if (!isRecord(packet)) return false\n    learnSustainCatalog(packet, this.itemCatalog)\n    const type = String(packet.t || '')\n    if (type === 'batalha') {\n      const changed = this.ingestBattleEvents(packet, at, transport === 'sent' ? 'sent' : 'event')`
+if (!runtime.includes(oldIngestHead)) throw new Error('ingest head anchor not found')
+runtime = runtime.replace(oldIngestHead, newIngestHead)
+
+const oldNonState = `    if (type !== 'welcome' && type !== 'estado') {\n      if (!this.huntSlug) return false\n      const changed = this.ingestConsumableInventory(inventoryRows(packet, this.itemCatalog), false, at)\n      if (changed) {\n        this.updatedAt = at\n        markSessionsDirty()\n      }\n      return changed\n    }`
+const newNonState = `    if (type !== 'welcome' && type !== 'estado') {\n      if (!this.huntSlug) return false\n      let changed = this.ingestGenericSupplyEvents(packet, at, transport === 'sent' ? 'sent' : 'event')\n      if (this.ingestConsumableInventory(inventoryRows(packet, this.itemCatalog), false, at)) changed = true\n      if (changed) {\n        this.updatedAt = at\n        markSessionsDirty()\n      }\n      return changed\n    }`
+if (!runtime.includes(oldNonState)) throw new Error('non-state ingest anchor not found')
+runtime = runtime.replace(oldNonState, newNonState)
+
+runtime = runtime.replace(
+  `    this.usageReconcile.clear()\n    if (!preserveAccount) this.itemCatalog.clear()`,
+  `    this.usageReconcile.clear()\n    this.recentSupplyMirrors.clear()\n    if (!preserveAccount) this.itemCatalog.clear()`
+)
+
+const oldRegisterSignature = `  private registerSupplyUse(itemId: string, name: string, amount: number, at: number, source: 'event' | 'state', remaining?: number): boolean {`
+const newRegisterSignature = `  private registerSupplyUse(itemId: string, name: string, amount: number, at: number, source: SupplyEventSource | 'state', remaining?: number): boolean {`
+if (!runtime.includes(oldRegisterSignature)) throw new Error('register signature anchor not found')
+runtime = runtime.replace(oldRegisterSignature, newRegisterSignature)
+
+const reconcileAnchor = `    const key = normalizePokeIdleItemName(canonicalName)\n    const reconcile = this.usageReconcile.get(key) ?? { eventPending: 0, statePending: 0, eventAt: 0, stateAt: 0 }\n    const ttl = 30_000`
+const reconcileReplacement = `    const key = normalizePokeIdleItemName(canonicalName)\n    let effectiveAmount = amount\n    if (source !== 'state') {\n      const mirror = this.recentSupplyMirrors.get(key)\n      if (mirror && mirror.source !== source && at >= mirror.at && at - mirror.at <= 1_500) {\n        const mirrored = Math.min(effectiveAmount, mirror.amount)\n        effectiveAmount -= mirrored\n        if (mirrored >= mirror.amount) this.recentSupplyMirrors.delete(key)\n        else this.recentSupplyMirrors.set(key, { ...mirror, amount: mirror.amount - mirrored })\n      } else {\n        this.recentSupplyMirrors.set(key, { source, at, amount: effectiveAmount })\n      }\n    }\n    const reconcile = this.usageReconcile.get(key) ?? { eventPending: 0, statePending: 0, eventAt: 0, stateAt: 0 }\n    const ttl = 30_000`
+if (!runtime.includes(reconcileAnchor)) throw new Error('reconcile anchor not found')
+runtime = runtime.replace(reconcileAnchor, reconcileReplacement)
+
+runtime = runtime.replace(
+  `    let matched = 0\n    if (source === 'event') {\n      matched = Math.min(amount, reconcile.statePending)\n      reconcile.statePending -= matched\n      const unmatched = amount - matched\n      reconcile.eventPending += unmatched\n      reconcile.eventAt = at\n    } else {\n      matched = Math.min(amount, reconcile.eventPending)\n      reconcile.eventPending -= matched\n      const unmatched = amount - matched\n      reconcile.statePending += unmatched\n      reconcile.stateAt = at\n    }`,
+  `    let matched = 0\n    if (source !== 'state') {\n      matched = Math.min(effectiveAmount, reconcile.statePending)\n      reconcile.statePending -= matched\n      const unmatched = effectiveAmount - matched\n      reconcile.eventPending += unmatched\n      reconcile.eventAt = at\n    } else {\n      matched = Math.min(effectiveAmount, reconcile.eventPending)\n      reconcile.eventPending -= matched\n      const unmatched = effectiveAmount - matched\n      reconcile.statePending += unmatched\n      reconcile.stateAt = at\n    }`
+)
+runtime = runtime.replace(`    const counted = amount - matched`, `    const counted = effectiveAmount - matched`)
+runtime = runtime.replace(`    else if (source === 'event' && counted > 0 && quantity > 0) quantity = Math.max(0, quantity - counted)`, `    else if (source !== 'state' && counted > 0 && quantity > 0) quantity = Math.max(0, quantity - counted)`)
+
+const battleAnchor = `  private ingestBattleEvents(packet: JsonRecord, at: number): boolean {`
+const genericMethod = `  private ingestGenericSupplyEvents(value: unknown, at: number, source: SupplyEventSource, depth = 0): boolean {\n    if (!this.huntSlug || depth > 6) return false\n    if (Array.isArray(value)) {\n      let changed = false\n      for (const entry of value) if (this.ingestGenericSupplyEvents(entry, at, source, depth + 1)) changed = true\n      return changed\n    }\n    if (!isRecord(value)) return false\n    let changed = false\n    const supplyUse = supplyUseFromEvent(value, this.itemCatalog)\n    if (supplyUse && this.registerSupplyUse(supplyUse.itemId, supplyUse.name, supplyUse.amount, at, source, supplyUse.remaining)) changed = true\n    for (const child of Object.values(value)) {\n      if ((isRecord(child) || Array.isArray(child)) && this.ingestGenericSupplyEvents(child, at, source, depth + 1)) changed = true\n    }\n    return changed\n  }\n\n  private ingestBattleEvents(packet: JsonRecord, at: number, source: SupplyEventSource = 'event'): boolean {`
+if (!runtime.includes(battleAnchor)) throw new Error('battle method anchor not found')
+runtime = runtime.replace(battleAnchor, genericMethod)
+runtime = runtime.replace(
+  `if (supplyUse && this.registerSupplyUse(supplyUse.itemId, supplyUse.name, supplyUse.amount, at, 'event', supplyUse.remaining)) supplyChanged = true`,
+  `if (supplyUse && this.registerSupplyUse(supplyUse.itemId, supplyUse.name, supplyUse.amount, at, source, supplyUse.remaining)) supplyChanged = true`
+)
+
+runtime = runtime.replace(
+  `    const supplyReconcileCutoff = at - 30_000\n    for (const [key, value] of this.usageReconcile) {`,
+  `    const supplyReconcileCutoff = at - 30_000\n    const supplyMirrorCutoff = at - 2_000\n    for (const [key, value] of this.recentSupplyMirrors) if (value.at < supplyMirrorCutoff) this.recentSupplyMirrors.delete(key)\n    for (const [key, value] of this.usageReconcile) {`
+)
+
+writeFileSync(runtimePath, runtime)
+
+const test = `import { readFileSync } from 'node:fs'\nimport { describe, expect, it } from 'vitest'\nimport { HuntSessionRuntime } from '../src/main/hunt-session-runtime'\n\ndescribe('live potion/revive protocol', () => {\n  it('accepts typeless and array packets from the live socket', () => {\n    const runtime = new HuntSessionRuntime()\n    const now = Date.now()\n    runtime.ingest({ t:'welcome', estado:{ id:1, huntSlug:'outland-02', pokemons:[{ id:1, xp:0 }] } }, now)\n    runtime.ingest({ catalogoItens:[\n      { id:101, categoria:'itens de cura', efeito:'+60 HP', preco:50 },\n      { id:106, categoria:'itens de cura', efeito:'restaura 50 % da vida máxima', preco:2500 },\n      { id:201, categoria:'revive', efeito:'restaura 10% do HP', preco:600 }\n    ] }, now + 100)\n    runtime.ingest([{ payload:{ bolsa:{ 101:403738, 106:3, 201:22 } } }], now + 200)\n    const snapshot = runtime.snapshot(now + 200)\n    expect(snapshot.potionStock).toBe(403741)\n    expect(snapshot.potionItems).toEqual(expect.arrayContaining([\n      expect.objectContaining({ name:'Small Potion', quantity:403738 }),\n      expect.objectContaining({ name:'Golden Potion', quantity:3 }),\n      expect.objectContaining({ name:'Revive', quantity:22 })\n    ]))\n  })\n\n  it('counts a sent use once, ignores its mirrored server event, then reconciles the inventory delta', () => {\n    const runtime = new HuntSessionRuntime()\n    const now = Date.now()\n    runtime.ingest({ t:'welcome', catalogoItens:[\n      { id:101, nome:'Small Potion' }, { id:201, nome:'Revive' }\n    ], estado:{ id:1, huntSlug:'forest', pokemons:[{ id:1, xp:0 }], bolsa:{ 101:10, 201:4 } } }, now)\n\n    runtime.ingest({ t:'usarItem', itemId:101 }, now + 1_000, 'sent')\n    runtime.ingest({ t:'itemUsado', itemId:101 }, now + 1_100, 'received')\n    runtime.ingest({ bolsa:{ 101:9, 201:4 } }, now + 1_200, 'received')\n\n    runtime.ingest({ t:'revive', itemId:201 }, now + 2_000, 'sent')\n    runtime.ingest({ t:'reviveUsado', itemId:201 }, now + 2_100, 'received')\n    runtime.ingest({ bolsa:{ 101:9, 201:3 } }, now + 2_200, 'received')\n\n    const snapshot = runtime.snapshot(now + 2_200)\n    expect(snapshot.potionsUsedTotal).toBe(1)\n    expect(snapshot.potionItems.find((item) => item.name === 'Small Potion')).toEqual(expect.objectContaining({ quantity:9, used:1 }))\n    expect(snapshot.potionItems.find((item) => item.name === 'Revive')).toEqual(expect.objectContaining({ quantity:3, used:1 }))\n  })\n\n  it('does not discard typeless websocket frames and observes both directions plus binary JSON', () => {\n    const source = readFileSync(new URL('../src/main/account-runtime.ts', import.meta.url), 'utf8')\n    expect(source).toContain("method === 'Network.webSocketFrameReceived'")\n    expect(source).toContain("method === 'Network.webSocketFrameSent'")\n    expect(source).toContain('frame.opcode === 2')\n    expect(source).not.toContain("if (!raw.includes('\\\\\"t\\\\\"')) return")\n  })\n})\n`
+writeFileSync(testPath, test)
+
+console.log('Applied live potion/revive protocol fix.')
