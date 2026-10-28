@@ -258,12 +258,131 @@ function canonicalSustainName(name: string): string {
   return canonicalPokeIdleItem(splitCamel)?.name ?? splitCamel
 }
 
+const CURRENT_POTION_BY_HEAL = new Map<number, string>([
+  [60, 'Small Potion'],
+  [150, 'Great Potion'],
+  [400, 'Ultra Potion'],
+  [1000, 'Hyper Potion'],
+  [3000, 'Ultimate Potion']
+])
+
+function humanNumber(value: string): number | undefined {
+  const compact = value.trim().replace(/s/g, '')
+  if (!compact) return undefined
+  const normalized = compact.includes('.') && !compact.includes(',')
+    ? compact.replace(/./g, '')
+    : compact.replace(/./g, '').replace(',', '.')
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function inferSustainName(value: JsonRecord, fallbackName = '', contextHint = ''): string {
+  const candidates = [
+    fallbackName,
+    text(first(value.nome, value.name, value.itemNome, value.itemName, value.label, value.slug, value.key, value.code, value.tipo, value.type)),
+    text(first(value.category, value.categoria, value.group, value.grupo)),
+    text(first(value.effect, value.efeito, value.description, value.descricao, value.detail, value.detalhe, value.healText, value.curaTexto)),
+    text(first(value.icon, value.image, value.img, value.sprite, value.asset)),
+    contextHint
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    const canonical = canonicalPokeIdleItem(candidate)
+    if (canonical?.category === 'potions' || canonical?.category === 'revives') {
+      const genericRevive = canonical.name === 'Revive' && normalizePokeIdleItemName(candidate) === 'revive'
+      const maxReviveHint = candidates.some((entry) => normalizeKey(entry).includes('100'))
+        || finite(first(value.price, value.preco, value.cost, value.custo, value.valor, value.unitPrice, value.precoUnitario)) === 5000
+      if (!(genericRevive && maxReviveHint)) return canonical.name
+    }
+  }
+
+  const joined = candidates.join(' ')
+  const normalized = normalizePokeIdleItemName(joined.replace(/([a-z0-9])([A-Z])/g, '$1 $2'))
+  const compact = normalizeKey(joined)
+  const itemContext = /(item|iten|catalog|market|shop|loja|potion|pocao|revive|reviver|consum|bolsa|bag|invent)/.test(normalizeKey(contextHint + ' ' + joined))
+    || Object.prototype.hasOwnProperty.call(value, 'itemId')
+    || Object.prototype.hasOwnProperty.call(value, 'item_id')
+
+  // Current PokeIdle healing catalog. Normalize the effect text first so this
+  // also works when the server omits the display name and only sends effect/price.
+  if (itemContext) {
+    if (compact.includes('3000hp')) return 'Ultimate Potion'
+    if (compact.includes('1000hp')) return 'Hyper Potion'
+    if (compact.includes('400hp')) return 'Ultra Potion'
+    if (compact.includes('150hp')) return 'Great Potion'
+    if (compact.includes('60hp')) return 'Small Potion'
+    if ((compact.includes('50dohp') || compact.includes('50hpmax') || compact.includes('50porcent')) && !compact.includes('revive')) return 'Golden Potion'
+    if ((compact.includes('maxrevive') || compact.includes('revive')) && compact.includes('100')) return 'Max Revive'
+    if ((compact.includes('revive') || compact.includes('reviver')) && compact.includes('10')) return 'Revive'
+    const exactPrice = finite(first(value.price, value.preco, value.cost, value.custo, value.valor, value.unitPrice, value.precoUnitario))
+    const effectText = normalizeKey(text(first(value.effect, value.efeito, value.description, value.descricao, value.detail, value.detalhe)))
+    if (effectText.includes('hp') || effectText.includes('vida') || effectText.includes('cura') || effectText.includes('restaura')) {
+      if (exactPrice === 50) return 'Small Potion'
+      if (exactPrice === 150) return 'Great Potion'
+      if (exactPrice === 400) return 'Ultra Potion'
+      if (exactPrice === 800) return 'Hyper Potion'
+      if (exactPrice === 1500) return 'Ultimate Potion'
+      if (exactPrice === 2500) return 'Golden Potion'
+      if (exactPrice === 600) return 'Revive'
+      if (exactPrice === 5000) return 'Max Revive'
+    }
+  }
+
+  const aliases: Array<[RegExp, string]> = [
+    [/(?:potion|pocao)(?:1|60)(?:$|[^0-9])/, 'Small Potion'],
+    [/(?:potion|pocao)(?:2|150)(?:$|[^0-9])/, 'Great Potion'],
+    [/(?:potion|pocao)(?:3|400)(?:$|[^0-9])/, 'Ultra Potion'],
+    [/(?:potion|pocao)(?:4|1000)(?:$|[^0-9])/, 'Hyper Potion'],
+    [/(?:potion|pocao)(?:5|3000)(?:$|[^0-9])/, 'Ultimate Potion'],
+    [/(?:potion|pocao)(?:6)(?:$|[^0-9])/, 'Golden Potion'],
+    [/(?:maxrevive|revive2|reviver2)/, 'Max Revive'],
+    [/(?:revive1|reviver1)/, 'Revive']
+  ]
+  for (const [pattern, name] of aliases) if (pattern.test(compact)) return name
+
+  const absoluteRaw = first(
+    value.heal, value.healing, value.healAmount, value.healHp, value.hpRestore, value.restoreHp,
+    value.cura, value.curaHp, value.hpCura, value.vidaRestore, value.restoreAmount, value.curaQuantidade
+  )
+  const absolute = finite(absoluteRaw)
+  if (itemContext && absolute !== undefined) {
+    const mapped = CURRENT_POTION_BY_HEAL.get(Math.round(absolute))
+    if (mapped) return mapped
+  }
+
+  if (itemContext) {
+    const hpMatch = joined.match(/(?:[+][ ]*)?([0-9][0-9.,]*)[ ]*(?:hp|vida)(?:$|[^a-z])/i)
+    const hpAmount = hpMatch ? humanNumber(hpMatch[1]) : undefined
+    if (hpAmount !== undefined) {
+      const mapped = CURRENT_POTION_BY_HEAL.get(Math.round(hpAmount))
+      if (mapped) return mapped
+    }
+  }
+
+  let percent = finite(first(value.healPercent, value.hpPercent, value.restorePercent, value.curaPercent, value.percent, value.porcentagem))
+  if (percent === undefined) {
+    const match = joined.match(/([0-9]+(?:[.,][0-9]+)?)[ ]*%/)
+    if (match) percent = humanNumber(match[1])
+  }
+  const price = finite(first(value.price, value.preco, value.cost, value.custo, value.valor, value.unitPrice, value.precoUnitario))
+  const reviveSemantic = /(revive|reviver|reanima|ressusc)/.test(normalized)
+  const potionSemantic = /(potion|pocao|cura|heal)/.test(normalized)
+  if (percent !== undefined) {
+    const rounded = Math.round(percent)
+    if (rounded === 10 && (reviveSemantic || price === 600)) return 'Revive'
+    if (rounded === 100 && (reviveSemantic || price === 5000)) return 'Max Revive'
+    if (rounded === 50 && (potionSemantic || itemContext || price === 2500)) return 'Golden Potion'
+  }
+
+  return ''
+}
+
 function looksLikeInventoryKey(key: string): boolean {
   const normalized = normalizeKey(key)
   return /(item|iten|invent|bag|mochila|bolsa|consum|supply|supriment)/.test(normalized)
 }
 
-function learnSustainCatalog(value: unknown, target: Map<string, string>, depth = 0): number {
+function learnSustainCatalog(value: unknown, target: Map<string, string>, depth = 0, contextHint = ''): number {
   if (depth > 6) return 0
   let learned = 0
   const register = (idRaw: unknown, nameRaw: unknown): void => {
@@ -278,7 +397,7 @@ function learnSustainCatalog(value: unknown, target: Map<string, string>, depth 
   }
 
   if (Array.isArray(value)) {
-    for (const entry of value) learned += learnSustainCatalog(entry, target, depth + 1)
+    for (const entry of value) learned += learnSustainCatalog(entry, target, depth + 1, contextHint)
     return learned
   }
   if (!isRecord(value)) return learned
@@ -289,17 +408,17 @@ function learnSustainCatalog(value: unknown, target: Map<string, string>, depth 
         : undefined
   const directId = first(value.itemId, value.id, value.item_id, value.i, value.code, value.key, value.slug, nested?.itemId, nested?.id, nested?.item_id)
   const directName = first(value.nome, value.name, value.itemNome, value.itemName, value.label, value.slug, value.key, nested?.nome, nested?.name, nested?.label, nested?.slug, nested?.key)
-  register(directId, directName)
+  register(directId, inferSustainName(value, text(directName), contextHint) || directName)
 
   for (const [key, child] of Object.entries(value)) {
     if (typeof child === 'string') register(key, child)
     if (isRecord(child)) {
       const childId = first(child.itemId, child.id, child.item_id, child.i, /^\d+$/.test(key) ? key : undefined)
       const childName = first(child.nome, child.name, child.itemNome, child.itemName, child.label, child.slug, child.key)
-      register(childId, childName)
-      learned += learnSustainCatalog(child, target, depth + 1)
+      register(childId, inferSustainName(child, text(childName), key) || childName)
+      learned += learnSustainCatalog(child, target, depth + 1, key)
     } else if (Array.isArray(child)) {
-      learned += learnSustainCatalog(child, target, depth + 1)
+      learned += learnSustainCatalog(child, target, depth + 1, key)
     }
   }
   return learned
@@ -317,7 +436,8 @@ function supplyUseFromEvent(event: JsonRecord, catalog: Map<string, string>): Su
     nested?.nome, nested?.name, nested?.label, nested?.slug, nested?.key,
     itemId ? catalog.get(itemId) : undefined
   ))
-  const name = rawName ? canonicalSustainName(rawName) : itemId ? catalog.get(itemId) || '' : ''
+  const inferredName = inferSustainName(event, rawName, text(first(event.k, event.kind, event.type, event.event, event.evento)))
+  const name = inferredName || (rawName ? canonicalSustainName(rawName) : itemId ? catalog.get(itemId) || '' : '')
   if (!name || !sustainCategory(name)) return null
 
   const semantic = normalizeKey([
@@ -376,7 +496,8 @@ function inventoryRows(root: JsonRecord, catalog: Map<string, string>): Array<{ 
       fallbackName
     ))
     if (quantity === undefined || quantity < 0) return false
-    const name = resolvedName(resolvedId, rawName)
+    const inferredName = inferSustainName(value, rawName, fallbackName)
+    const name = resolvedName(resolvedId, inferredName || rawName)
     if (!name || !sustainCategory(name)) return false
     const itemId = resolvedId === undefined || resolvedId === null || String(resolvedId) === '' ? normalizePokeIdleItemName(name) : String(resolvedId)
     rows.set(itemId, { itemId, name, quantity: Math.floor(quantity) })
