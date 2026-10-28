@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/scripts/apply-potion-live-protocol-fix.mjs'
       - '.github/scripts/fix-live-protocol-patcher.mjs'
+      - '.github/scripts/fix-generated-live-protocol-test.mjs'
       - '.github/workflows/apply-potion-live-protocol-fix.yml'
   workflow_dispatch:
 
@@ -27,6 +28,8 @@ jobs:
         run: node .github/scripts/fix-live-protocol-patcher.mjs
       - name: Apply live protocol patch
         run: node .github/scripts/apply-potion-live-protocol-fix.mjs
+      - name: Fix generated regression test quoting
+        run: node .github/scripts/fix-generated-live-protocol-test.mjs
       - name: Install dependencies
         working-directory: gridium2
         run: npm install --no-audit --no-fund
