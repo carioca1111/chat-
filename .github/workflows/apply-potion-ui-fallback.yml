@@ -1,0 +1,49 @@
+name: Apply potion revive UI fallback
+
+on:
+  push:
+    branches:
+      - fix/potion-revive-ui-fallback
+    paths:
+      - '.github/scripts/apply-potion-ui-fallback.mjs'
+      - '.github/workflows/apply-potion-ui-fallback.yml'
+      - 'gridium2/src/main/pokeidle-ui-supply-scan.ts'
+      - 'gridium2/tests/potion-ui-fallback.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Apply UI fallback patch
+        run: node .github/scripts/apply-potion-ui-fallback.mjs
+      - name: Install dependencies
+        working-directory: gridium2
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: gridium2
+        run: npm run typecheck
+      - name: Focused tests
+        working-directory: gridium2
+        run: npx vitest run tests/potion-ui-fallback.test.ts tests/hunt-session-runtime.test.ts
+      - name: Full unit tests
+        working-directory: gridium2
+        run: npm test
+      - name: Commit and push patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gridium2/src/main/account-runtime.ts gridium2/src/main/hunt-session-runtime.ts
+          git diff --cached --check
+          git commit -m "fix: read potion and revive stock from PokeIdle UI"
+          git push origin HEAD:fix/potion-revive-ui-fallback
