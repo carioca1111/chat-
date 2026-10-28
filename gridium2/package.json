@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.13.12",
+  "version": "2.0.0-alpha.13.13",
   "private": true,
-  "description": "Gridium 2 Alpha 1.3.12 - current PokeIdle potion/revive effect catalog recognition",
+  "description": "Gridium 2 Alpha 1.3.13 - live potion/revive WebSocket protocol capture",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
