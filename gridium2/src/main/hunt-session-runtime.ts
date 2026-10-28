@@ -225,6 +225,8 @@ function shinyFlag(value: unknown, depth = 0): boolean {
 function shinySeenBattleEvent(event: JsonRecord): boolean {
   const kind = normalizeKey(text(first(event.k, event.kind, event.type, event.event, event.evento)))
   if (!kind) return false
+  // Authoritative PokeIdle roll: batalha.ev -> { k: 'bola', shiny: true, sucesso: boolean }.
+  if (kind === 'bola' && shinyFlag(event)) return true
   const shinyNamed = isShinyKey(kind)
   const encounterKind = /(vist|seen|encontr|spawn|aparec|wild)/.test(kind)
   return (shinyNamed && encounterKind) || (shinyFlag(event) && encounterKind)
@@ -365,6 +367,7 @@ export class HuntSessionRuntime {
   private readonly xpState = new Map<string, XpState>()
   private readonly consumables = new Map<string, ConsumableState>()
   private readonly shinySeenEvents = new Set<string>()
+  private recentBattleShinyCaughtAt: number[] = []
   private captureTimes: number[] = []
   private captureHead = 0
   private killTimes: number[] = []
@@ -657,6 +660,7 @@ export class HuntSessionRuntime {
     this.xpState.clear()
     this.consumables.clear()
     this.shinySeenEvents.clear()
+    this.recentBattleShinyCaughtAt = []
     this.captureTimes = []
     this.captureHead = 0
     this.killTimes = []
@@ -669,9 +673,25 @@ export class HuntSessionRuntime {
 
   private ingestBattleEvents(packet: JsonRecord, at: number): boolean {
     if (!this.huntSlug || !Array.isArray(packet.ev)) return false
-    let added = 0
+    let seenAdded = 0
+    let caughtAdded = 0
     for (const raw of packet.ev) {
-      if (!isRecord(raw) || !shinySeenBattleEvent(raw)) continue
+      if (!isRecord(raw)) continue
+      const kind = normalizeKey(text(first(raw.k, raw.kind, raw.type, raw.event, raw.evento)))
+      const shinyBall = kind === 'bola' && shinyFlag(raw)
+
+      if (shinyBall) {
+        // Each bola event is one server roll. Do not fingerprint it: two distinct shiny
+        // rolls can have byte-identical payloads and both must count.
+        seenAdded++
+        if (raw.sucesso === true || truthy(raw.sucesso)) {
+          caughtAdded++
+          this.recentBattleShinyCaughtAt.push(at)
+        }
+        continue
+      }
+
+      if (!shinySeenBattleEvent(raw)) continue
       const key = battleEventKey(raw)
       if (this.shinySeenEvents.has(key)) continue
       this.shinySeenEvents.add(key)
@@ -680,10 +700,13 @@ export class HuntSessionRuntime {
         if (!oldest) break
         this.shinySeenEvents.delete(oldest)
       }
-      added++
+      seenAdded++
     }
-    if (added <= 0) return false
-    this.shiniesSeen += added
+
+    if (seenAdded <= 0 && caughtAdded <= 0) return false
+    this.shiniesSeen += seenAdded
+    this.shiniesCaught += caughtAdded
+    if (this.recentBattleShinyCaughtAt.length > 32) this.recentBattleShinyCaughtAt.splice(0, this.recentBattleShinyCaughtAt.length - 32)
     this.updatedAt = at
     return true
   }
@@ -702,7 +725,14 @@ export class HuntSessionRuntime {
     this.lastCaptureAt = at
     const p = potency(first(row.potencia, row.potency))
     if (p) this.capturesByPotency[p - 1]++
-    if (shinyFlag(row)) this.shiniesCaught++
+    if (shinyFlag(row)) {
+      const cutoff = at - 30_000
+      while (this.recentBattleShinyCaughtAt.length && this.recentBattleShinyCaughtAt[0] < cutoff) this.recentBattleShinyCaughtAt.shift()
+      // The authoritative bola event already counted the capture. Consume its marker
+      // when the same Pokemon later appears in pkMud instead of counting twice.
+      if (this.recentBattleShinyCaughtAt.length) this.recentBattleShinyCaughtAt.shift()
+      else this.shiniesCaught++
+    }
   }
 
   private setXp(id: string, xp: number): void {
@@ -732,6 +762,8 @@ export class HuntSessionRuntime {
 
   private prune(at: number): void {
     const cutoff = at - HOUR
+    const shinyCaptureCutoff = at - 30_000
+    while (this.recentBattleShinyCaughtAt.length && this.recentBattleShinyCaughtAt[0] < shinyCaptureCutoff) this.recentBattleShinyCaughtAt.shift()
     while (this.captureHead < this.captureTimes.length && this.captureTimes[this.captureHead] < cutoff) this.captureHead++
     while (this.killHead < this.killTimes.length && this.killTimes[this.killHead] < cutoff) this.killHead++
     while (this.potionHead < this.potionUseEvents.length && this.potionUseEvents[this.potionHead].at < cutoff) {

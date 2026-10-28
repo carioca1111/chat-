@@ -90,4 +90,31 @@ describe('farm-only Gold analytics', () => {
     expect(persisted?.farmGoldTotal).toBe(50)
     expect(persisted?.farmGoldVersion).toBe(1)
   })
+
+  it('counts shiny seen/caught from the real PokeIdle bola event and persists it', () => {
+    const tracker = new FarmGoldAnalyticsTracker()
+    const now = Date.now()
+
+    tracker.ingestPacket({ t:'batalha', ev:[
+      { k:'bola', slot:0, ballId:3, shiny:true, sucesso:false },
+      { k:'fugiu', nome:'Charmander' }
+    ] }, now)
+    tracker.ingestPacket({ t:'batalha', ev:[
+      { k:'bola', slot:0, ballId:3, shiny:true, sucesso:true },
+      { k:'capturado', pokemon:{ speciesId:4, nome:'Charmander', shiny:true } }
+    ] }, now + 1_000)
+
+    let snapshot = tracker.snapshot(now + 1_000)
+    expect(snapshot.shiniesSeen).toBe(2)
+    expect(snapshot.shiniesCaught).toBe(1)
+
+    const persisted = tracker.persisted(now + 1_000) as unknown as Record<string, unknown>
+    expect(persisted.battleShiniesSeen).toBe(2)
+    expect(persisted.battleShiniesCaught).toBe(1)
+
+    const restored = new FarmGoldAnalyticsTracker({ initial: persisted as never })
+    snapshot = restored.snapshot(now + 2_000)
+    expect(snapshot.shiniesSeen).toBe(2)
+    expect(snapshot.shiniesCaught).toBe(1)
+  })
 })

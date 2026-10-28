@@ -193,4 +193,34 @@ describe('HuntSessionRuntime', () => {
     expect(snapshot.potionItems.find((item) => item.name === 'Revive')?.used).toBe(1)
     expect(snapshot.potionItems.find((item) => item.name === 'Max Revive')?.used).toBe(0)
   })
+
+  it('counts the real PokeIdle bola shiny roll and does not double-count pkMud', () => {
+    const runtime = new HuntSessionRuntime()
+    const now = Date.now()
+
+    runtime.ingest({ t:'welcome', estado:{ id:5, huntSlug:'forest', pokemons:[{ id:1, xp:0 }] } }, now)
+    runtime.ingest({ t:'batalha', ev:[
+      { k:'bola', slot:0, ballId:3, shiny:true, sucesso:false },
+      { k:'fugiu', nome:'Charmander' }
+    ] }, now + 1_000)
+
+    let snapshot = runtime.snapshot(now + 1_000)
+    expect(snapshot.shiniesSeen).toBe(1)
+    expect(snapshot.shiniesCaught).toBe(0)
+
+    runtime.ingest({ t:'batalha', ev:[
+      { k:'bola', slot:0, ballId:3, shiny:true, sucesso:true },
+      { k:'capturado', pokemon:{ id:2, speciesId:4, nome:'Charmander', shiny:true } }
+    ] }, now + 2_000)
+
+    snapshot = runtime.snapshot(now + 2_000)
+    expect(snapshot.shiniesSeen).toBe(2)
+    expect(snapshot.shiniesCaught).toBe(1)
+
+    runtime.ingest({ t:'estado', estado:{ huntSlug:'forest', pkMud:[{ id:2, xp:0, potencia:3, shiny:true }] } }, now + 2_100)
+    snapshot = runtime.snapshot(now + 2_100)
+    expect(snapshot.capturesTotal).toBe(1)
+    expect(snapshot.shiniesSeen).toBe(2)
+    expect(snapshot.shiniesCaught).toBe(1)
+  })
 })

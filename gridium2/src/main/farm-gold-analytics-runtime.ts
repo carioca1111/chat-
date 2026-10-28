@@ -8,6 +8,8 @@ type GoldHistory = { at: number; goldEarned: number }
 type PersistedWithFarmGold = PanelAnalyticsPersistedState & {
   farmGoldVersion?: 1
   farmGoldTotal?: number
+  battleShiniesSeen?: number
+  battleShiniesCaught?: number
   farmGoldMinute?: GoldHistory[]
   farmGoldHour?: GoldHistory[]
   farmGoldDay?: GoldHistory[]
@@ -30,6 +32,7 @@ const finite = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 const text = (value: unknown): string => typeof value === 'string' ? value.trim().toLowerCase() : ''
+const truthy = (value: unknown): boolean => value === true || value === 1 || value === '1' || value === 'true' || value === 'sim' || value === 'yes' || value === 'shiny'
 const isGoldCurrency = (value: unknown): boolean => ['gold', 'coin', 'coins', 'ouro'].includes(text(value))
 
 /**
@@ -43,6 +46,8 @@ export class FarmGoldAnalyticsTracker {
   private pendingMarketGold = 0
   private pendingMarketGoldAt = 0
   private farmGoldTotal = 0
+  private battleShiniesSeen = 0
+  private battleShiniesCaught = 0
   private readonly farmMinute = new Map<number, number>()
   private readonly farmHour = new Map<number, number>()
   private readonly farmDay = new Map<number, number>()
@@ -57,6 +62,7 @@ export class FarmGoldAnalyticsTracker {
       onPersist: options.onPersist
     })
     this.restoreFarmGold(options.initial)
+    this.restoreShinyCounters(options.initial)
   }
 
   reset(at = Date.now()): void {
@@ -65,6 +71,8 @@ export class FarmGoldAnalyticsTracker {
     this.pendingMarketGold = 0
     this.pendingMarketGoldAt = 0
     this.farmGoldTotal = 0
+    this.battleShiniesSeen = 0
+    this.battleShiniesCaught = 0
     this.farmMinute.clear()
     this.farmHour.clear()
     this.farmDay.clear()
@@ -80,8 +88,11 @@ export class FarmGoldAnalyticsTracker {
   }
 
   ingestPacket(packet: unknown, at = Date.now()): boolean {
+    const shinyChanged = this.observeShinyPacket(packet)
     this.observeMarketPacket(packet, at)
-    return this.inner.ingestPacket(packet, at)
+    const innerChanged = this.inner.ingestPacket(packet, at)
+    if (shinyChanged && !innerChanged) this.onPersist?.()
+    return innerChanged || shinyChanged
   }
 
   registerRmtSale(sale: PanelRmtSaleInput, at?: number): boolean
@@ -102,6 +113,8 @@ export class FarmGoldAnalyticsTracker {
     const minute = replaceGold(snapshot.historyMinute, this.farmMinute)
     return {
       ...snapshot,
+      shiniesSeen: Math.max(snapshot.shiniesSeen ?? 0, this.battleShiniesSeen),
+      shiniesCaught: Math.max(snapshot.shiniesCaught, this.battleShiniesCaught),
       goldEarnedTotal: this.farmGoldTotal,
       goldEarnedLastHour: minute
         .filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at)
@@ -121,10 +134,27 @@ export class FarmGoldAnalyticsTracker {
     persisted.historyDay = replaceGold(persisted.historyDay, this.farmDay)
     persisted.farmGoldVersion = 1
     persisted.farmGoldTotal = this.farmGoldTotal
+    persisted.battleShiniesSeen = this.battleShiniesSeen
+    persisted.battleShiniesCaught = this.battleShiniesCaught
     persisted.farmGoldMinute = mapHistory(this.farmMinute)
     persisted.farmGoldHour = mapHistory(this.farmHour)
     persisted.farmGoldDay = mapHistory(this.farmDay)
     return persisted
+  }
+
+  private observeShinyPacket(packet: unknown): boolean {
+    if (!isRecord(packet) || String(packet.t || '') !== 'batalha' || !Array.isArray(packet.ev)) return false
+    let seen = 0
+    let caught = 0
+    for (const rawEvent of packet.ev) {
+      if (!isRecord(rawEvent) || String(rawEvent.k || '') !== 'bola' || !truthy(rawEvent.shiny)) continue
+      seen++
+      if (rawEvent.sucesso === true || truthy(rawEvent.sucesso)) caught++
+    }
+    if (seen <= 0) return false
+    this.battleShiniesSeen += seen
+    this.battleShiniesCaught += caught
+    return true
   }
 
   private observeMarketPacket(packet: unknown, at: number): void {
@@ -204,6 +234,13 @@ export class FarmGoldAnalyticsTracker {
     const date = new Date(at)
     addGold(this.farmDay, new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(), farmGain)
     return farmGain
+  }
+
+  private restoreShinyCounters(initial?: Partial<PanelAnalyticsPersistedState> | null): void {
+    if (!initial || typeof initial !== 'object') return
+    const stored = initial as Partial<PersistedWithFarmGold>
+    this.battleShiniesSeen = Math.max(0, Math.floor(finite(stored.battleShiniesSeen) ?? 0))
+    this.battleShiniesCaught = Math.max(0, Math.floor(finite(stored.battleShiniesCaught) ?? 0))
   }
 
   private restoreFarmGold(initial?: Partial<PanelAnalyticsPersistedState> | null): void {
