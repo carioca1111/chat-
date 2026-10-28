@@ -8,16 +8,16 @@ describe('live potion/revive protocol', () => {
     const now = Date.now()
     runtime.ingest({ t:'welcome', estado:{ id:1, huntSlug:'outland-02', pokemons:[{ id:1, xp:0 }] } }, now)
     runtime.ingest({ catalogoItens:[
-      { id:101, categoria:'itens de cura', efeito:'+60 HP', preco:50 },
-      { id:106, categoria:'itens de cura', efeito:'restaura 50 % da vida máxima', preco:2500 },
-      { id:201, categoria:'revive', efeito:'restaura 10% do HP', preco:600 }
+      { id:101, categoria:'itens de cura', efeito:'+20 HP', preco:20 },
+      { id:105, categoria:'itens de cura', efeito:'+120 HP', preco:240 },
+      { id:201, categoria:'revive', efeito:'restaura 50% do HP', preco:100 }
     ] }, now + 100)
-    runtime.ingest([{ payload:{ bolsa:{ 101:403738, 106:3, 201:22 } } }], now + 200)
+    runtime.ingest([{ payload:{ bolsa:{ 101:403738, 105:3, 201:22 } } }], now + 200)
     const snapshot = runtime.snapshot(now + 200)
     expect(snapshot.potionStock).toBe(403741)
     expect(snapshot.potionItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ name:'Small Potion', quantity:403738 }),
-      expect.objectContaining({ name:'Golden Potion', quantity:3 }),
+      expect.objectContaining({ name:'Ultimate Potion', quantity:3 }),
       expect.objectContaining({ name:'Revive', quantity:22 })
     ]))
   })
