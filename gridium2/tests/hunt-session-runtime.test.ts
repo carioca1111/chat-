@@ -223,4 +223,86 @@ describe('HuntSessionRuntime', () => {
     expect(snapshot.shiniesSeen).toBe(2)
     expect(snapshot.shiniesCaught).toBe(1)
   })
+
+  it('resolves numeric bolsa item ids from a server catalog and tracks separate inventory packets', () => {
+    const runtime = new HuntSessionRuntime()
+    const now = Date.now()
+
+    runtime.ingest({
+      t: 'welcome',
+      catalogoItens: [
+        { id: 501, nome: 'Ultra Potion' },
+        { id: 601, nome: 'Revive' }
+      ],
+      estado: {
+        id: 90,
+        huntSlug: 'outland-02',
+        pokemons: [{ id: 1, xp: 0 }],
+        bolsa: { 501: 12, 601: 4 }
+      }
+    }, now)
+
+    let snapshot = runtime.snapshot(now)
+    expect(snapshot.potionStock).toBe(12)
+    expect(snapshot.potionItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: '501', name: 'Ultra Potion', quantity: 12, used: 0 }),
+      expect.objectContaining({ itemId: '601', name: 'Revive', quantity: 4, used: 0 })
+    ]))
+
+    runtime.ingest({ t: 'inventario', bolsa: { 501: 10, 601: 3 } }, now + 1_000)
+    snapshot = runtime.snapshot(now + 1_000)
+    expect(snapshot.potionStock).toBe(10)
+    expect(snapshot.potionsUsedTotal).toBe(2)
+    expect(snapshot.potionItems.find((item) => item.name === 'Ultra Potion')?.used).toBe(2)
+    expect(snapshot.potionItems.find((item) => item.name === 'Revive')?.quantity).toBe(3)
+    expect(snapshot.potionItems.find((item) => item.name === 'Revive')?.used).toBe(1)
+  })
+
+  it('counts confirmed potion/revive battle use and reconciles a later inventory delta without double count', () => {
+    const runtime = new HuntSessionRuntime()
+    const now = Date.now()
+
+    runtime.ingest({
+      t: 'welcome',
+      itemCatalog: [
+        { itemId: 501, name: 'Ultra Potion' },
+        { itemId: 601, name: 'Max Revive' }
+      ],
+      estado: {
+        id: 91,
+        huntSlug: 'forest',
+        pokemons: [{ id: 1, xp: 0 }],
+        inventory: { 501: 10, 601: 3 }
+      }
+    }, now)
+
+    runtime.ingest({ t: 'batalha', ev: [
+      { k: 'itemUsado', itemId: 501, used: 1 },
+      { k: 'reviveUsado', itemId: 601, used: 1 }
+    ] }, now + 1_000)
+
+    let snapshot = runtime.snapshot(now + 1_000)
+    expect(snapshot.potionStock).toBe(9)
+    expect(snapshot.potionsUsedTotal).toBe(1)
+    expect(snapshot.potionItems.find((item) => item.name === 'Max Revive')?.quantity).toBe(2)
+    expect(snapshot.potionItems.find((item) => item.name === 'Max Revive')?.used).toBe(1)
+
+    runtime.ingest({ t: 'estado', estado: { huntSlug: 'forest', inventory: { 501: 9, 601: 2 } } }, now + 1_500)
+    snapshot = runtime.snapshot(now + 1_500)
+    expect(snapshot.potionsUsedTotal).toBe(1)
+    expect(snapshot.potionItems.find((item) => item.name === 'Ultra Potion')?.used).toBe(1)
+    expect(snapshot.potionItems.find((item) => item.name === 'Max Revive')?.used).toBe(1)
+  })
+
+  it('reconciles state-first consumption with a later battle event', () => {
+    const runtime = new HuntSessionRuntime()
+    const now = Date.now()
+    runtime.ingest({ t:'welcome', catalogoItens:[{ id:501, nome:'Great Potion' }], estado:{ id:92, huntSlug:'forest', pokemons:[{ id:1, xp:0 }], bolsa:{ 501:5 } } }, now)
+    runtime.ingest({ t:'inventario', bolsa:{ 501:4 } }, now + 1_000)
+    runtime.ingest({ t:'batalha', ev:[{ k:'pocaoUsada', itemId:501, consumed:1 }] }, now + 1_500)
+    const snapshot = runtime.snapshot(now + 1_500)
+    expect(snapshot.potionStock).toBe(4)
+    expect(snapshot.potionsUsedTotal).toBe(1)
+    expect(snapshot.potionItems.find((item) => item.name === 'Great Potion')?.used).toBe(1)
+  })
 })
