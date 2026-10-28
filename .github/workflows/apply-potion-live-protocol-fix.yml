@@ -1,0 +1,47 @@
+name: Apply live potion revive protocol fix
+
+on:
+  push:
+    branches:
+      - fix/potion-revive-live-protocol
+    paths:
+      - '.github/scripts/apply-potion-live-protocol-fix.mjs'
+      - '.github/workflows/apply-potion-live-protocol-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Apply live protocol patch
+        run: node .github/scripts/apply-potion-live-protocol-fix.mjs
+      - name: Install dependencies
+        working-directory: gridium2
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: gridium2
+        run: npm run typecheck
+      - name: Focused tests
+        working-directory: gridium2
+        run: npx vitest run tests/hunt-session-runtime.test.ts tests/potion-live-protocol.test.ts
+      - name: Full unit tests
+        working-directory: gridium2
+        run: npm test
+      - name: Commit and push patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gridium2/src/main/account-runtime.ts gridium2/src/main/hunt-session-runtime.ts gridium2/tests/potion-live-protocol.test.ts
+          git diff --cached --check
+          git commit -m "fix: capture live potion and revive protocol"
+          git push origin HEAD:fix/potion-revive-live-protocol
