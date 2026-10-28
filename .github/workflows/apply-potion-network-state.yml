@@ -6,6 +6,7 @@ on:
       - fix/potion-revive-network-state
     paths:
       - '.github/scripts/apply-potion-network-state.mjs'
+      - '.github/scripts/update-current-supply-test.mjs'
       - '.github/workflows/apply-potion-network-state.yml'
       - 'gridium2/src/shared/pokeidle-item-catalog.ts'
       - 'gridium2/tests/potion-network-state.test.ts'
@@ -25,7 +26,9 @@ jobs:
         with:
           node-version: '22.13.0'
       - name: Apply network-state patch
-        run: node .github/scripts/apply-potion-network-state.mjs
+        run: |
+          node .github/scripts/apply-potion-network-state.mjs
+          node .github/scripts/update-current-supply-test.mjs
       - name: Install dependencies
         working-directory: gridium2
         run: npm install --no-audit --no-fund
@@ -43,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gridium2/src/main/account-runtime.ts gridium2/src/main/hunt-session-runtime.ts
+          git add gridium2/src/main/account-runtime.ts gridium2/src/main/hunt-session-runtime.ts gridium2/tests/hunt-session-runtime.test.ts
           git diff --cached --check
           git commit -m "fix: capture potion and revive state without open UI"
           git push origin HEAD:fix/potion-revive-network-state
