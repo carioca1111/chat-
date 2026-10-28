@@ -24,6 +24,8 @@ jobs:
         run: node .github/scripts/fix-potion-patch-script.mjs
       - name: Apply deterministic source patch
         run: node .github/scripts/apply-potion-effect-fix.mjs
+      - name: Harden generated effect regexes
+        run: node .github/scripts/fix-generated-potion-regex.mjs
       - name: Install dependencies
         working-directory: gridium2
         run: npm install --no-audit --no-fund
