@@ -1,0 +1,34 @@
+name: Apply authoritative shiny event fix
+
+on:
+  push:
+    branches:
+      - fix/shiny-ball-events
+    paths:
+      - '.github/workflows/apply-shiny-ball-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.event.head_commit.message == 'chore: apply authoritative shiny event fix' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+      - name: Apply deterministic source patch
+        run: node .github/scripts/apply-shiny-ball-fix.mjs
+      - name: Commit and push release candidate
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gridium2/src/main/hunt-session-runtime.ts gridium2/src/main/farm-gold-analytics-runtime.ts gridium2/tests/hunt-session-runtime.test.ts gridium2/tests/farm-gold-analytics.test.ts
+          git diff --cached --check
+          git commit -m "release: Gridium 2 Alpha 1.3.10 shiny counter fix"
+          git push origin HEAD:fix/shiny-ball-events
