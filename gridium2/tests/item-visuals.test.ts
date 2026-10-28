@@ -8,7 +8,7 @@ describe('PokeIdle item visuals', () => {
   })
 
   it('ships local visual data for supported item families', () => {
-    for (const name of ['Poké Ball','Great Ball','Super Ball','Ultra Ball','Small Potion','Great Potion','Ultra Potion','Hyper Potion','Ultimate Potion','Golden Potion','Revive','Max Revive']) {
+    for (const name of ['Poké Ball','Great Ball','Super Ball','Ultra Ball','Small Potion','Great Potion','Ultra Potion','Hyper Potion','Ultimate Potion','Revive','Max Revive']) {
       expect(itemSpriteUrl(name)).toMatch(/^data:image\/svg\+xml,/)
     }
   })
@@ -17,6 +17,7 @@ describe('PokeIdle item visuals', () => {
     expect(itemSpriteUrl('Beast Ball')).toBe('')
     expect(itemSpriteUrl('Master Ball')).toBe('')
     expect(itemSpriteUrl('Super Potion')).toBe('')
+    expect(itemSpriteUrl('Golden Potion')).toBe('')
     expect(itemSpriteUrl('Mystic Ticket')).toBe('')
   })
 })
