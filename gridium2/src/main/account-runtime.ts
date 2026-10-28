@@ -67,6 +67,7 @@ interface AccountSlot {
   debuggerOwned: boolean
   debuggerMessageHandler: ((event: Electron.Event, method: string, params: unknown) => void) | null
   debuggerDetachHandler: (() => void) | null
+  jsonResponseRequests: Set<string>
 }
 
 export class AccountRuntime {
@@ -301,7 +302,7 @@ export class AccountRuntime {
         onAnalyticsPersist: () => this.schedulePersistPanelAnalytics()
       }),
       lastServerAt: 0,
-      socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null
+      socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null, jsonResponseRequests: new Set()
     }
 
     this.accounts.set(id, account)
@@ -349,6 +350,7 @@ export class AccountRuntime {
       }
       const onDetach = (): void => {
         account.socketUrls.clear()
+        account.jsonResponseRequests.clear()
         account.serverState.reset()
         account.huntSession.reset()
         account.huntProfile = null
@@ -383,6 +385,7 @@ export class AccountRuntime {
     account.debuggerMessageHandler = null
     account.debuggerDetachHandler = null
     account.socketUrls.clear()
+    account.jsonResponseRequests.clear()
     if (account.debuggerOwned && debuggerApi.isAttached()) {
       try { debuggerApi.detach() } catch { /* teardown only */ }
     }
@@ -391,8 +394,40 @@ export class AccountRuntime {
 
   private handleDebuggerMessage(account: AccountSlot, method: string, params: unknown): void {
     if (!params || typeof params !== 'object') return
-    const payload = params as { requestId?: string; url?: string; response?: { opcode?: number; payloadData?: string } }
+    const payload = params as {
+      requestId?: string
+      url?: string
+      type?: string
+      request?: { url?: string; postData?: string }
+      response?: { opcode?: number; payloadData?: string; url?: string; mimeType?: string }
+    }
     const requestId = String(payload.requestId || '')
+
+    if (method === 'Network.requestWillBeSent') {
+      const requestUrl = payload.request?.url || ''
+      const postData = payload.request?.postData
+      if (requestUrl && this.isPokeIdleHttpUrl(requestUrl) && typeof postData === 'string' && postData.trim()) {
+        this.ingestNetworkJson(account, postData, Date.now(), 'sent')
+      }
+      return
+    }
+    if (method === 'Network.responseReceived') {
+      const responseUrl = payload.response?.url || ''
+      const mimeType = String(payload.response?.mimeType || '').toLowerCase()
+      const resourceType = String(payload.type || '')
+      if (requestId && responseUrl && this.isPokeIdleHttpUrl(responseUrl) && (resourceType === 'XHR' || resourceType === 'Fetch' || mimeType.includes('json'))) {
+        account.jsonResponseRequests.add(requestId)
+      }
+      return
+    }
+    if (method === 'Network.loadingFinished') {
+      if (requestId && account.jsonResponseRequests.delete(requestId)) void this.readNetworkJsonResponse(account, requestId)
+      return
+    }
+    if (method === 'Network.loadingFailed') {
+      if (requestId) account.jsonResponseRequests.delete(requestId)
+      return
+    }
 
     if (method === 'Network.webSocketCreated') {
       if (requestId && typeof payload.url === 'string') account.socketUrls.set(requestId, payload.url)
@@ -446,8 +481,59 @@ export class AccountRuntime {
     }
   }
 
+
+  private ingestNetworkJson(account: AccountSlot, raw: string, at: number, transport: 'sent' | 'received'): void {
+    const candidates = [raw.trim()]
+    try {
+      const params = new URLSearchParams(raw)
+      for (const value of params.values()) {
+        const trimmed = value.trim()
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) candidates.push(trimmed)
+      }
+    } catch { /* not form encoded */ }
+
+    for (const candidate of candidates) {
+      if (!candidate) continue
+      try {
+        const packet = JSON.parse(candidate) as unknown
+        if (!packet || typeof packet !== 'object') continue
+        account.lastServerAt = Math.max(account.lastServerAt, at)
+        const huntChanged = account.huntSession.ingest(packet, at, transport)
+        const auxiliaryChanged = transport === 'received' ? account.serverState.ingestAuxiliary(packet, at) : false
+        if ((huntChanged || auxiliaryChanged) && !this.disposed) this.onChanged()
+        return
+      } catch { /* try the next candidate */ }
+    }
+  }
+
+  private async readNetworkJsonResponse(account: AccountSlot, requestId: string): Promise<void> {
+    const wc = account.view.webContents
+    if (this.disposed || wc.isDestroyed() || !wc.debugger.isAttached()) return
+    try {
+      const result = await wc.debugger.sendCommand('Network.getResponseBody', { requestId }) as { body?: string; base64Encoded?: boolean }
+      if (typeof result.body !== 'string' || !result.body.trim()) return
+      const raw = result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body
+      this.ingestNetworkJson(account, raw, Date.now(), 'received')
+    } catch {
+      // Some cached/streamed responses no longer expose a body. WebSocket monitoring remains active.
+    }
+  }
+
+  private isPokeIdleHost(hostname: string): boolean {
+    const host = hostname.toLowerCase()
+    return host === 'pokeidle.io' || host.endsWith('.pokeidle.io')
+  }
+
+  private isPokeIdleHttpUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url)
+      return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && this.isPokeIdleHost(parsed.hostname)
+    } catch { return false }
+  }
+
   private resetServerState(account: AccountSlot): void {
     account.socketUrls.clear()
+    account.jsonResponseRequests.clear()
     const changed = account.serverState.reset() || account.huntProfile !== null || account.huntProtocolStatus !== 'waiting'
     account.huntSession.reset()
     account.lastServerAt = 0
@@ -459,7 +545,7 @@ export class AccountRuntime {
   private isPokeIdleSocket(url: string): boolean {
     try {
       const parsed = new URL(url)
-      return parsed.protocol === 'wss:' && (parsed.hostname === 'pokeidle.io' || parsed.hostname === 'www.pokeidle.io')
+      return (parsed.protocol === 'wss:' || parsed.protocol === 'ws:') && this.isPokeIdleHost(parsed.hostname)
     } catch { return false }
   }
 

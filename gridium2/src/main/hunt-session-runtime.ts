@@ -262,11 +262,11 @@ function canonicalSustainName(name: string): string {
 }
 
 const CURRENT_POTION_BY_HEAL = new Map<number, string>([
-  [60, 'Small Potion'],
-  [150, 'Great Potion'],
-  [400, 'Ultra Potion'],
-  [1000, 'Hyper Potion'],
-  [3000, 'Ultimate Potion']
+  [20, 'Small Potion'],
+  [40, 'Great Potion'],
+  [80, 'Ultra Potion'],
+  [100, 'Hyper Potion'],
+  [120, 'Ultimate Potion']
 ])
 
 function humanNumber(value: string): number | undefined {
@@ -310,35 +310,34 @@ function inferSustainName(value: JsonRecord, fallbackName = '', contextHint = ''
   // Current PokeIdle healing catalog. Normalize the effect text first so this
   // also works when the server omits the display name and only sends effect/price.
   if (itemContext) {
-    if (compact.includes('3000hp')) return 'Ultimate Potion'
-    if (compact.includes('1000hp')) return 'Hyper Potion'
-    if (compact.includes('400hp')) return 'Ultra Potion'
-    if (compact.includes('150hp')) return 'Great Potion'
-    if (compact.includes('60hp')) return 'Small Potion'
-    if ((compact.includes('50dohp') || compact.includes('50hpmax') || compact.includes('50porcent')) && !compact.includes('revive')) return 'Golden Potion'
     if ((compact.includes('maxrevive') || compact.includes('revive')) && compact.includes('100')) return 'Max Revive'
-    if ((compact.includes('revive') || compact.includes('reviver')) && compact.includes('10')) return 'Revive'
+    if ((compact.includes('revive') || compact.includes('reviver')) && compact.includes('50')) return 'Revive'
+    if (compact.includes('120hp')) return 'Ultimate Potion'
+    if (compact.includes('100hp')) return 'Hyper Potion'
+    if (compact.includes('80hp')) return 'Ultra Potion'
+    if (compact.includes('40hp')) return 'Great Potion'
+    if (compact.includes('20hp')) return 'Small Potion'
     const exactPrice = finite(first(value.price, value.preco, value.cost, value.custo, value.valor, value.unitPrice, value.precoUnitario))
     const effectText = normalizeKey(text(first(value.effect, value.efeito, value.description, value.descricao, value.detail, value.detalhe)))
-    if (effectText.includes('hp') || effectText.includes('vida') || effectText.includes('cura') || effectText.includes('restaura')) {
-      if (exactPrice === 50) return 'Small Potion'
-      if (exactPrice === 150) return 'Great Potion'
-      if (exactPrice === 400) return 'Ultra Potion'
-      if (exactPrice === 800) return 'Hyper Potion'
-      if (exactPrice === 1500) return 'Ultimate Potion'
-      if (exactPrice === 2500) return 'Golden Potion'
-      if (exactPrice === 600) return 'Revive'
-      if (exactPrice === 5000) return 'Max Revive'
+    const reviveContext = compact.includes('revive') || compact.includes('reviver') || compact.includes('reanima')
+    if (reviveContext) {
+      if (exactPrice === 350) return 'Max Revive'
+      if (exactPrice === 100) return 'Revive'
+    } else if (effectText.includes('hp') || effectText.includes('vida') || effectText.includes('cura') || effectText.includes('restaura')) {
+      if (exactPrice === 20) return 'Small Potion'
+      if (exactPrice === 50) return 'Great Potion'
+      if (exactPrice === 125) return 'Ultra Potion'
+      if (exactPrice === 175) return 'Hyper Potion'
+      if (exactPrice === 240) return 'Ultimate Potion'
     }
   }
 
   const aliases: Array<[RegExp, string]> = [
-    [/(?:potion|pocao)(?:1|60)(?:$|[^0-9])/, 'Small Potion'],
-    [/(?:potion|pocao)(?:2|150)(?:$|[^0-9])/, 'Great Potion'],
-    [/(?:potion|pocao)(?:3|400)(?:$|[^0-9])/, 'Ultra Potion'],
-    [/(?:potion|pocao)(?:4|1000)(?:$|[^0-9])/, 'Hyper Potion'],
-    [/(?:potion|pocao)(?:5|3000)(?:$|[^0-9])/, 'Ultimate Potion'],
-    [/(?:potion|pocao)(?:6)(?:$|[^0-9])/, 'Golden Potion'],
+    [/(?:smallpotion|potion1|pocao1)(?:$|[^0-9])/, 'Small Potion'],
+    [/(?:greatpotion|potion2|pocao2)(?:$|[^0-9])/, 'Great Potion'],
+    [/(?:ultrapotion|potion3|pocao3)(?:$|[^0-9])/, 'Ultra Potion'],
+    [/(?:hyperpotion|potion4|pocao4)(?:$|[^0-9])/, 'Hyper Potion'],
+    [/(?:ultimatepotion|potion5|pocao5)(?:$|[^0-9])/, 'Ultimate Potion'],
     [/(?:maxrevive|revive2|reviver2)/, 'Max Revive'],
     [/(?:revive1|reviver1)/, 'Revive']
   ]
@@ -373,9 +372,8 @@ function inferSustainName(value: JsonRecord, fallbackName = '', contextHint = ''
   const potionSemantic = /(potion|pocao|cura|heal)/.test(normalized)
   if (percent !== undefined) {
     const rounded = Math.round(percent)
-    if (rounded === 10 && (reviveSemantic || price === 600)) return 'Revive'
-    if (rounded === 100 && (reviveSemantic || price === 5000)) return 'Max Revive'
-    if (rounded === 50 && (potionSemantic || itemContext || price === 2500)) return 'Golden Potion'
+    if (rounded === 50 && (reviveSemantic || price === 100)) return 'Revive'
+    if (rounded === 100 && (reviveSemantic || price === 350)) return 'Max Revive'
   }
 
   return ''
