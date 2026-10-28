@@ -28,6 +28,8 @@ jobs:
         run: node .github/scripts/fix-generated-potion-regex.mjs
       - name: Add direct current potion effect map
         run: node .github/scripts/add-direct-potion-effect-map.mjs
+      - name: Prioritize Max Revive effect
+        run: node .github/scripts/fix-max-revive-inference.mjs
       - name: Install dependencies
         working-directory: gridium2
         run: npm install --no-audit --no-fund
