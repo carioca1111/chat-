@@ -6,6 +6,7 @@ on:
       - fix/potion-revive-live-protocol
     paths:
       - '.github/scripts/apply-potion-live-protocol-fix.mjs'
+      - '.github/scripts/fix-live-protocol-patcher.mjs'
       - '.github/workflows/apply-potion-live-protocol-fix.yml'
   workflow_dispatch:
 
@@ -22,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.13.0'
+      - name: Harden patch anchors
+        run: node .github/scripts/fix-live-protocol-patcher.mjs
       - name: Apply live protocol patch
         run: node .github/scripts/apply-potion-live-protocol-fix.mjs
       - name: Install dependencies
