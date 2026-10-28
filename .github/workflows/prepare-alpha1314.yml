@@ -1,0 +1,44 @@
+name: Prepare Alpha 1.3.14
+
+on:
+  push:
+    branches:
+      - fix/potion-revive-ui-fallback
+    paths:
+      - '.github/scripts/prepare-alpha1314.mjs'
+      - '.github/workflows/prepare-alpha1314.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Prepare Alpha 1.3.14
+        run: node .github/scripts/prepare-alpha1314.mjs
+      - name: Verify release strings
+        shell: bash
+        run: |
+          grep -q '2.0.0-alpha.13.14' gridium2/package.json
+          grep -q 'Gridium-2-Alpha-1.3.14-Setup' gridium2/electron-builder.yml
+          grep -q 'ALPHA 1.3.14' gridium2/src/renderer/src/App.tsx
+          grep -q 'Alpha 1.3.14 Potion UI Fallback' gridium2/src/renderer/index.html
+          grep -q 'Alpha 1.3.14 Potion UI Fallback' gridium2/src/main/index.ts
+          grep -q 'fix/potion-revive-ui-fallback' .github/workflows/build-gridium2-alpha08-panel.yml
+      - name: Commit release revision
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gridium2/package.json gridium2/electron-builder.yml gridium2/src/renderer/src/App.tsx gridium2/src/renderer/index.html gridium2/src/main/index.ts .github/workflows/build-gridium2-alpha08-panel.yml
+          git diff --cached --check
+          git commit -m "release: Gridium 2 Alpha 1.3.14 potion revive UI fallback"
+          git push origin HEAD:fix/potion-revive-ui-fallback
