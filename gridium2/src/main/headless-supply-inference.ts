@@ -225,7 +225,6 @@ export class HeadlessSupplyInference {
       const effectName = inferFromDirectEffect(value, categoryHint)
       if (effectName) {
         this.learn(itemId, effectName, result)
-        if (!known) result.uses.push({ itemId, name: effectName, amount: 1, remaining: remainingOf(value), source: transport === 'sent' ? 'sent' : 'event' })
       } else if (!known) {
         this.pending.push({ itemId, at, source: transport === 'sent' ? 'sent' : 'event', categoryHint, remaining: remainingOf(value) })
       }
@@ -289,6 +288,9 @@ export class HeadlessSupplyInference {
     const pending = candidates[0]
     if (!pending) return
     this.learn(pending.itemId, name, result)
+    const knownStock = this.rawStock.get(pending.itemId)
+    if (pending.remaining !== undefined) this.rawStock.set(pending.itemId, pending.remaining)
+    else if (knownStock !== undefined && knownStock > 0) this.rawStock.set(pending.itemId, knownStock - 1)
     result.uses.push({ itemId: pending.itemId, name, amount: 1, remaining: pending.remaining, source: pending.source })
     const index = this.pending.indexOf(pending)
     if (index >= 0) this.pending.splice(index, 1)

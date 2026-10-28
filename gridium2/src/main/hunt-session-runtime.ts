@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { HuntPotionSnapshot, HuntSessionSnapshot } from '../shared/contracts'
 import { canonicalPokeIdleItem, normalizePokeIdleItemName } from '../shared/pokeidle-item-catalog'
 import { PokemonIdLedger } from './pokemon-id-ledger'
+import { HeadlessSupplyInference, type HeadlessSupplyInferenceResult } from './headless-supply-inference'
 
 type JsonRecord = Record<string, unknown>
 interface XpState { xp: number }
@@ -12,7 +13,7 @@ interface TimedAmount { at: number; amount: number }
 interface SupplyUseReconcile { eventPending: number; statePending: number; eventAt: number; stateAt: number }
 interface SupplyUseEvent { itemId: string; name: string; amount: number; remaining?: number }
 type SustainCategory = 'potions' | 'revives'
-type SupplyEventSource = 'event' | 'sent' | 'ui'
+type SupplyEventSource = 'event' | 'sent'
 type HuntPacketTransport = 'received' | 'sent'
 interface SupplyMirrorSignal { source: SupplyEventSource; at: number; amount: number }
 
@@ -587,6 +588,7 @@ export class HuntSessionRuntime {
   private readonly xpState = new Map<string, XpState>()
   private readonly consumables = new Map<string, ConsumableState>()
   private readonly itemCatalog = new Map<string, string>()
+  private readonly headlessSupply = new HeadlessSupplyInference()
   private readonly usageReconcile = new Map<string, SupplyUseReconcile>()
   private readonly recentSupplyMirrors = new Map<string, SupplyMirrorSignal>()
   private readonly shinySeenEvents = new Set<string>()
@@ -621,10 +623,11 @@ export class HuntSessionRuntime {
       return changed
     }
     if (!isRecord(packet)) return false
-    learnSustainCatalog(packet, this.itemCatalog)
     const type = String(packet.t || '')
     if (type === 'batalha') {
-      const changed = this.ingestBattleEvents(packet, at, transport === 'sent' ? 'sent' : 'event')
+      learnSustainCatalog(packet, this.itemCatalog)
+      let changed = this.applyHeadlessSupply(this.headlessSupply.ingest(packet, at, transport), at)
+      if (this.ingestBattleEvents(packet, at, transport === 'sent' ? 'sent' : 'event')) changed = true
       if (changed) {
         this.updatedAt = at
         markSessionsDirty()
@@ -632,9 +635,10 @@ export class HuntSessionRuntime {
       return changed
     }
     if (type !== 'welcome' && type !== 'estado') {
-      if (!this.huntSlug) return false
-      let changed = this.ingestGenericSupplyEvents(packet, at, transport === 'sent' ? 'sent' : 'event')
-      if (this.ingestConsumableInventory(inventoryRows(packet, this.itemCatalog), false, at)) changed = true
+      learnSustainCatalog(packet, this.itemCatalog)
+      let changed = this.applyHeadlessSupply(this.headlessSupply.ingest(packet, at, transport), at)
+      if (this.huntSlug && this.ingestGenericSupplyEvents(packet, at, transport === 'sent' ? 'sent' : 'event')) changed = true
+      if (this.huntSlug && this.ingestConsumableInventory(inventoryRows(packet, this.itemCatalog), false, at)) changed = true
       if (changed) {
         this.updatedAt = at
         markSessionsDirty()
@@ -682,7 +686,9 @@ export class HuntSessionRuntime {
       if (Array.isArray(value)) for (const row of value) if (isRecord(row)) rows.push(row)
     }
 
+    learnSustainCatalog(packet, this.itemCatalog)
     let changed = sessionTransition
+    if (this.applyHeadlessSupply(this.headlessSupply.ingest(packet, at, transport), at)) changed = true
     if (fullState) {
       this.xpState.clear()
       if (this.huntSlug) for (const row of rows) this.baselinePokemon(row)
@@ -735,20 +741,20 @@ export class HuntSessionRuntime {
   }
 
 
-  ingestUiConsumables(inventory: Array<{ itemId: string; name: string; quantity: number }>, at = Date.now()): boolean {
-    if (!Array.isArray(inventory) || inventory.length === 0) return false
-    const rows = inventory
-      .filter((row) => row && typeof row.itemId === 'string' && typeof row.name === 'string' && Number.isFinite(row.quantity) && row.quantity >= 0)
-      .map((row) => ({ itemId: row.itemId, name: canonicalSustainName(row.name), quantity: Math.floor(row.quantity) }))
-      .filter((row) => Boolean(sustainCategory(row.name)))
-    if (!rows.length) return false
-    const changed = this.ingestConsumableInventory(rows, false, at, 'ui')
-    if (changed) {
-      this.updatedAt = at
-      markSessionsDirty()
+  private applyHeadlessSupply(result: HeadlessSupplyInferenceResult, at: number): boolean {
+    let changed = false
+    for (const entry of result.learned) {
+      if (this.itemCatalog.get(entry.itemId) !== entry.name) this.itemCatalog.set(entry.itemId, entry.name)
+    }
+    for (const use of result.uses) {
+      if (this.registerSupplyUse(use.itemId, use.name, use.amount, at, use.source, use.remaining)) changed = true
+    }
+    for (const stock of result.stock) {
+      if (this.ingestConsumableInventory([stock], false, at, 'state')) changed = true
     }
     return changed
   }
+
 
   snapshot(at = Date.now()): HuntSessionSnapshot {
     this.prune(at)
@@ -883,6 +889,7 @@ export class HuntSessionRuntime {
     this.consumables.clear()
     this.usageReconcile.clear()
     this.recentSupplyMirrors.clear()
+    this.headlessSupply.reset(preserveAccount)
     if (!preserveAccount) this.itemCatalog.clear()
     this.shinySeenEvents.clear()
     this.recentBattleShinyCaughtAt = []

@@ -1,8 +1,8 @@
 {
   "name": "gridium-2",
-  "version": "2.0.0-alpha.13.14",
+  "version": "2.0.0-alpha.13.15",
   "private": true,
-  "description": "Gridium 2 Alpha 1.3.14 - PokeIdle UI potion/revive stock fallback",
+  "description": "Gridium 2 Alpha 1.3.15 - headless potion/revive protocol inference",
   "main": "./out/main/index.js",
   "author": "Gridium",
   "license": "UNLICENSED",
