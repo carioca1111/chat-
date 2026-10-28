@@ -2,6 +2,9 @@ import fs from 'node:fs'
 
 const path = 'gridium2/tests/hunt-session-runtime.test.ts'
 let source = fs.readFileSync(path, 'utf8')
+const currentMarker = "recognizes the five live potions and both revives from effect-only catalog definitions"
+if (source.includes(currentMarker)) process.exit(0)
+
 const from = `  it('recognizes the six current potions and both revives from effect-only catalog definitions', () => {
     const runtime = new HuntSessionRuntime()
     const now = Date.now()
