@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ github.event.head_commit.message == 'chore: apply authoritative shiny event fix' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +19,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.13.0
+          node-version: '22.13.0'
       - name: Apply deterministic source patch
         run: node .github/scripts/apply-shiny-ball-fix.mjs
       - name: Commit and push release candidate
