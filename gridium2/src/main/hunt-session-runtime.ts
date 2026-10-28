@@ -12,7 +12,7 @@ interface TimedAmount { at: number; amount: number }
 interface SupplyUseReconcile { eventPending: number; statePending: number; eventAt: number; stateAt: number }
 interface SupplyUseEvent { itemId: string; name: string; amount: number; remaining?: number }
 type SustainCategory = 'potions' | 'revives'
-type SupplyEventSource = 'event' | 'sent'
+type SupplyEventSource = 'event' | 'sent' | 'ui'
 type HuntPacketTransport = 'received' | 'sent'
 interface SupplyMirrorSignal { source: SupplyEventSource; at: number; amount: number }
 
@@ -734,6 +734,22 @@ export class HuntSessionRuntime {
     return changed
   }
 
+
+  ingestUiConsumables(inventory: Array<{ itemId: string; name: string; quantity: number }>, at = Date.now()): boolean {
+    if (!Array.isArray(inventory) || inventory.length === 0) return false
+    const rows = inventory
+      .filter((row) => row && typeof row.itemId === 'string' && typeof row.name === 'string' && Number.isFinite(row.quantity) && row.quantity >= 0)
+      .map((row) => ({ itemId: row.itemId, name: canonicalSustainName(row.name), quantity: Math.floor(row.quantity) }))
+      .filter((row) => Boolean(sustainCategory(row.name)))
+    if (!rows.length) return false
+    const changed = this.ingestConsumableInventory(rows, false, at, 'ui')
+    if (changed) {
+      this.updatedAt = at
+      markSessionsDirty()
+    }
+    return changed
+  }
+
   snapshot(at = Date.now()): HuntSessionSnapshot {
     this.prune(at)
     const consumableSnapshot = this.getConsumableSnapshot()
@@ -947,7 +963,7 @@ export class HuntSessionRuntime {
     return true
   }
 
-  private ingestConsumableInventory(inventory: Array<{ itemId: string; name: string; quantity: number }>, fullState: boolean, at: number): boolean {
+  private ingestConsumableInventory(inventory: Array<{ itemId: string; name: string; quantity: number }>, fullState: boolean, at: number, source: SupplyEventSource | 'state' = 'state'): boolean {
     if (!inventory.length) return false
     let changed = false
     if (fullState) {
@@ -971,7 +987,7 @@ export class HuntSessionRuntime {
       const previousId = found?.[0]
       if (previous && row.quantity < previous.quantity) {
         const used = previous.quantity - row.quantity
-        if (this.registerSupplyUse(row.itemId, row.name, used, at, 'state', row.quantity)) changed = true
+        if (this.registerSupplyUse(row.itemId, row.name, used, at, source, row.quantity)) changed = true
         if (previousId && previousId !== row.itemId) this.consumables.delete(previousId)
         continue
       }

@@ -25,6 +25,7 @@ import type { PanelAnalyticsPersistedState } from './panel-analytics-runtime'
 import { ECO_VISUAL_CSS, resolveVisualMode } from './performance-policy'
 import { DEFAULT_POWER_AUTOMATION, resolveAccountPowerState } from './power-policy'
 import { PokeIdleServerState } from './pokeidle-server-state'
+import { POKEIDLE_UI_SUPPLY_SCAN_SCRIPT, type UiSupplyRow } from './pokeidle-ui-supply-scan'
 import { DEFAULT_ACCOUNT_ZOOM, normalizeAccountZoom } from './zoom'
 
 const GAME_URL = 'https://pokeidle.io/app'
@@ -67,6 +68,8 @@ interface AccountSlot {
   debuggerOwned: boolean
   debuggerMessageHandler: ((event: Electron.Event, method: string, params: unknown) => void) | null
   debuggerDetachHandler: (() => void) | null
+  supplyUiTimer: ReturnType<typeof setInterval> | null
+  supplyUiScanRunning: boolean
 }
 
 export class AccountRuntime {
@@ -263,6 +266,7 @@ export class AccountRuntime {
     for (const auth of this.authWindows) if (!auth.isDestroyed()) auth.close()
     this.authWindows.clear()
     for (const account of this.accounts.values()) {
+      this.stopSupplyUiMonitor(account)
       this.detachServerMonitor(account)
       if (account.attached) {
         try { this.window.contentView.removeChildView(account.view) } catch { /* window teardown */ }
@@ -301,7 +305,8 @@ export class AccountRuntime {
         onAnalyticsPersist: () => this.schedulePersistPanelAnalytics()
       }),
       lastServerAt: 0,
-      socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null
+      socketUrls: new Map(), debuggerOwned: false, debuggerMessageHandler: null, debuggerDetachHandler: null,
+      supplyUiTimer: null, supplyUiScanRunning: false
     }
 
     this.accounts.set(id, account)
@@ -314,6 +319,7 @@ export class AccountRuntime {
     view.webContents.on('did-create-window', (childWindow) => this.trackAuthWindow(account, childWindow))
 
     view.webContents.on('did-start-loading', () => {
+      this.stopSupplyUiMonitor(account)
       this.clearInjectedVisualStyle(account)
       this.resetServerState(account)
       this.patchAccount(account, { status: 'loading' })
@@ -321,12 +327,14 @@ export class AccountRuntime {
     view.webContents.on('did-stop-loading', () => {
       if (!view.webContents.isDestroyed()) view.webContents.setZoomFactor(account.zoomPercent / 100)
       this.patchAccount(account, { status: 'ready' })
+      this.startSupplyUiMonitor(account)
       this.requestVisualMode(account, account.desiredVisualMode)
       this.requestPowerState(account, account.desiredPowerState)
     })
     view.webContents.on('did-fail-load', (_event, code) => { if (code !== -3) this.patchAccount(account, { status: 'offline' }) })
     view.webContents.on('page-title-updated', (_event, title) => this.patchAccount(account, { title }))
     view.webContents.on('render-process-gone', () => {
+      this.stopSupplyUiMonitor(account)
       this.resetServerState(account)
       this.patchAccount(account, { status: 'crashed' })
     })
@@ -443,6 +451,43 @@ export class AccountRuntime {
       if (result.changed || statusChanged || auxiliaryChanged || huntSessionChanged) this.onChanged()
     } catch {
       // Raw payloads are deliberately never logged or persisted.
+    }
+  }
+
+
+  private startSupplyUiMonitor(account: AccountSlot): void {
+    this.stopSupplyUiMonitor(account)
+    if (this.disposed || account.view.webContents.isDestroyed()) return
+    const scan = (): void => { void this.scanSupplyUi(account) }
+    account.supplyUiTimer = setInterval(scan, 1_500)
+    setTimeout(scan, 250)
+  }
+
+  private stopSupplyUiMonitor(account: AccountSlot): void {
+    if (account.supplyUiTimer) clearInterval(account.supplyUiTimer)
+    account.supplyUiTimer = null
+    account.supplyUiScanRunning = false
+  }
+
+  private async scanSupplyUi(account: AccountSlot): Promise<void> {
+    const wc = account.view.webContents
+    if (this.disposed || wc.isDestroyed() || account.supplyUiScanRunning || account.status !== 'ready' || account.desiredPowerState === 'suspended') return
+    account.supplyUiScanRunning = true
+    try {
+      const rawRows = await wc.executeJavaScript(POKEIDLE_UI_SUPPLY_SCAN_SCRIPT, false) as unknown
+      if (!Array.isArray(rawRows)) return
+      const rows: UiSupplyRow[] = []
+      for (const raw of rawRows.slice(0, 8)) {
+        if (!raw || typeof raw !== 'object') continue
+        const row = raw as Partial<UiSupplyRow>
+        if (typeof row.itemId !== 'string' || typeof row.name !== 'string' || typeof row.quantity !== 'number' || !Number.isFinite(row.quantity) || row.quantity < 0) continue
+        rows.push({ itemId: row.itemId.slice(0, 80), name: row.name.slice(0, 80), quantity: Math.floor(row.quantity) })
+      }
+      if (rows.length && account.huntSession.ingestUiConsumables(rows, Date.now()) && !this.disposed) this.onChanged()
+    } catch {
+      // The automation controls may not exist on every PokeIdle screen. This fallback is best-effort only.
+    } finally {
+      account.supplyUiScanRunning = false
     }
   }
 
