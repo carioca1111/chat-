@@ -1,4 +1,4 @@
-name: Build Gridium 2 Headless Supply Inference
+name: Build Gridium 2 Multi Account Monitor Recovery
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - fix/potion-effect-catalog
       - fix/potion-revive-live-protocol
       - fix/potion-revive-ui-fallback
+      - fix/multi-account-server-monitor
     paths:
       - 'gridium2/**'
       - '.github/workflows/build-gridium2-alpha08-panel.yml'
@@ -57,7 +58,7 @@ jobs:
         run: |
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
-          "installer=Gridium-2-Alpha-1.3.15-Setup.exe" >> $env:GITHUB_OUTPUT
+          "installer=Gridium-2-Alpha-1.3.16-Setup.exe" >> $env:GITHUB_OUTPUT
       - name: Verify installer and create update manifest
         shell: pwsh
         run: |
@@ -69,9 +70,9 @@ jobs:
           Write-Host "SHA256: $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Gridium-2-Alpha-1.3.15-Headless-Supply-Windows
+          name: Gridium-2-Alpha-1.3.16-Multi-Account-Monitor-Windows
           path: |
-            gridium2/release/Gridium-2-Alpha-1.3.15-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.16-Setup.exe
             gridium2/release/gridium2-update.json
           if-no-files-found: error
           retention-days: 90
@@ -81,22 +82,20 @@ jobs:
         with:
           tag_name: gridium2-v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Gridium 2 Alpha 1.3.15 · Headless Potion/Revive Inference
+          name: Gridium 2 Alpha 1.3.16 · Multi-Account Server Monitor Recovery
           body: |
-            Gridium 2 Alpha 1.3.15 remove a dependência de leitura da UI para poções e revives.
+            Gridium 2 Alpha 1.3.16 corrige contas 2/3/4 presas em "AGUARDANDO SERVIDOR".
 
-            - remove o scanner de DOM introduzido na Alpha 1.3.14
-            - continua funcionando com painéis do PokeIdle fechados e sem manter controles visíveis
-            - aprende IDs de consumíveis pelo efeito real no HP do pokemon
-            - mapeia 60 HP = Small Potion, 150 = Great Potion, 400 = Ultra Potion, 1000 = Hyper Potion e 3000 = Ultimate Potion
-            - reconhece Golden Potion pela restauração de 50% quando o efeito não está truncado pelo HP máximo
-            - reconhece Revive por retorno aproximado a 10% do HP máximo e Max Revive por retorno ao HP cheio
-            - depois de aprender o ID, reaproveita o protocolo bruto para recuperar estoque mesmo sem nome de exibição
-            - evita inferência quando a cura bate no teto de HP e o tipo da poção fica ambíguo
-            - mantém o parser WebSocket anterior como fonte principal e usa a inferência apenas para preencher IDs sem nome
-            - preserva shiny, Hunt, mobile sync, painel e otimizações anteriores
+            - ativa o monitor CDP/Network das quatro contas antes de carregar qualquer página do PokeIdle
+            - elimina a corrida em que contas rápidas abriam o WebSocket antes de Network.enable terminar
+            - adiciona watchdog por conta: se o estado do servidor não chegar, o monitor é reanexado e a conexão é recriada com reload limitado
+            - no máximo duas tentativas automáticas por conta, evitando loops de reload
+            - detach/reload do monitor não é tratado como saída da Hunt e não zera a sessão persistida
+            - quando welcome/estado chega, o watchdog é cancelado imediatamente
+            - diagnósticos agora expõem monitorReady e número de tentativas de recuperação por conta
+            - preserva Hunt Control, shiny, poções/revives headless, mobile sync e otimizações anteriores
             - typecheck, testes unitários, soak com GC e regressão Electron executados no Windows antes da publicação
           prerelease: false
           files: |
-            gridium2/release/Gridium-2-Alpha-1.3.15-Setup.exe
+            gridium2/release/Gridium-2-Alpha-1.3.16-Setup.exe
             gridium2/release/gridium2-update.json
