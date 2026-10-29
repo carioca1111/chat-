@@ -203,7 +203,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.3.15 Headless Supply',
+    title: 'Gridium 2 — Alpha 1.3.18 · 1.3.15 Base Hotfix',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

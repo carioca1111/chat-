@@ -101,7 +101,11 @@ export class AccountRuntime {
   }
 
   async boot(): Promise<void> {
-    await Promise.all([...this.accounts.values()].map((account) => this.loadAccount(account)))
+    const accounts = [...this.accounts.values()]
+    // Alpha 1.3.15 base hotfix: CDP Network must be enabled before PokeIdle
+    // can create its WebSocket. Chromium does not replay webSocketCreated later.
+    await Promise.all(accounts.map((account) => this.attachServerMonitor(account)))
+    await Promise.all(accounts.map((account) => this.loadAccount(account)))
   }
 
   snapshots(): AccountSnapshot[] {
@@ -305,7 +309,6 @@ export class AccountRuntime {
     }
 
     this.accounts.set(id, account)
-    void this.attachServerMonitor(account)
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (!this.isAllowedPopupUrl(url)) return { action: 'deny' }
@@ -315,7 +318,10 @@ export class AccountRuntime {
 
     view.webContents.on('did-start-loading', () => {
       this.clearInjectedVisualStyle(account)
-      this.resetServerState(account)
+      // Preserve known WebSocket request IDs across normal PokeIdle loads. Closing
+      // an in-game modal/navigation can start a load while the same socket survives;
+      // clearing the map here makes Gridium ignore subsequent frames forever.
+      this.resetServerState(account, true)
       this.patchAccount(account, { status: 'loading' })
     })
     view.webContents.on('did-stop-loading', () => {
@@ -448,8 +454,8 @@ export class AccountRuntime {
 
 
 
-  private resetServerState(account: AccountSlot): void {
-    account.socketUrls.clear()
+  private resetServerState(account: AccountSlot, preserveSocketMap = false): void {
+    if (!preserveSocketMap) account.socketUrls.clear()
     const changed = account.serverState.reset() || account.huntProfile !== null || account.huntProtocolStatus !== 'waiting'
     account.huntSession.reset()
     account.lastServerAt = 0
