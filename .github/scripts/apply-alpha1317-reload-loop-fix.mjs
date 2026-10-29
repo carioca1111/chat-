@@ -38,6 +38,10 @@ patch('gridium2/package.json', [
   ['"version": "2.0.0-alpha.13.16"', '"version": "2.0.0-alpha.13.17"'],
   ['Gridium 2 Alpha 1.3.16 - four-account server monitor recovery', 'Gridium 2 Alpha 1.3.17 - secondary-account reload-loop hotfix']
 ])
+patch('gridium2/package-lock.json', [
+  ['"version": "2.0.0-alpha.13.15"', '"version": "2.0.0-alpha.13.17"'],
+  ['"version": "2.0.0-alpha.13.15"', '"version": "2.0.0-alpha.13.17"']
+])
 patch('gridium2/electron-builder.yml', [
   ['Gridium-2-Alpha-1.3.16-Setup.${ext}', 'Gridium-2-Alpha-1.3.17-Setup.${ext}']
 ])
