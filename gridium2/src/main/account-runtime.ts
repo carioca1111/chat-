@@ -313,7 +313,11 @@ export class AccountRuntime {
     })
     view.webContents.on('did-create-window', (childWindow) => this.trackAuthWindow(account, childWindow))
 
-    view.webContents.on('did-start-loading', () => {
+    // Secondary frames and same-document navigation can start loading while the
+    // game's existing socket stays alive. Forgetting its requestId here would
+    // silently discard every subsequent frame until the next real reconnect.
+    view.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+      if (!isMainFrame || isInPlace) return
       this.clearInjectedVisualStyle(account)
       this.resetServerState(account)
       this.patchAccount(account, { status: 'loading' })
