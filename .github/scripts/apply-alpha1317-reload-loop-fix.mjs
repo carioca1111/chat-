@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
 function patch(path, replacements) {
-  let text = readFileSync(path, 'utf8')
+  let text = readFileSync(path, 'utf8').replace(/\r\n/g, '\n')
   for (const [from, to] of replacements) {
     if (!text.includes(from)) throw new Error(`Missing ${JSON.stringify(from)} in ${path}`)
     text = text.replace(from, to)
