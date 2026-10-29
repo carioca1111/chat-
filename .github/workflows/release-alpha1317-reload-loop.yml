@@ -6,6 +6,7 @@ on:
       - fix/alpha1317-secondary-account-reload-loop
     paths:
       - '.github/workflows/release-alpha1317-reload-loop.yml'
+      - '.github/scripts/apply-alpha1317-reload-loop-fix.mjs'
   workflow_dispatch:
 
 permissions:
