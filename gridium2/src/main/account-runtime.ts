@@ -326,7 +326,11 @@ export class AccountRuntime {
 
     view.webContents.on('did-start-loading', () => {
       this.clearInjectedVisualStyle(account)
-      this.resetServerState(account)
+      // A new load supersedes any watchdog armed for the previous document.
+      // Keep the known WebSocket request IDs: Chromium does not replay
+      // Network.webSocketCreated for sockets that survive an in-app navigation.
+      this.cancelServerMonitorRecovery(account)
+      this.resetServerState(account, true)
       this.patchAccount(account, { status: 'loading' })
     })
     view.webContents.on('did-stop-loading', () => {
@@ -528,8 +532,8 @@ export class AccountRuntime {
 
 
 
-  private resetServerState(account: AccountSlot): void {
-    account.socketUrls.clear()
+  private resetServerState(account: AccountSlot, preserveSocketMap = false): void {
+    if (!preserveSocketMap) account.socketUrls.clear()
     const changed = account.serverState.reset() || account.huntProfile !== null || account.huntProtocolStatus !== 'waiting'
     // Navigation/reload is not a Hunt exit. HuntSessionRuntime decides continuity
     // from the next authoritative welcome/estado packet and persists it independently.
