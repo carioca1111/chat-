@@ -134,8 +134,6 @@ LUA
 
 echo "[db] config path: $SERVER/config.lua"
 
-# Keep Render healthy with a tiny native listener. Do not pay the Node runtime
-# cost until TFS has fully loaded the legacy map.
 start_boot_listener
 
 cd "$SERVER"
@@ -143,11 +141,10 @@ chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
 : > /tmp/tfs.log
 
-echo "[tfs] allocator: native OTServ pool (minimal boot profile)"
-# No jemalloc preload, stdbuf, or tail process during the memory-critical map
-# load. The native OTServ pools handle the millions of small map objects; logs
-# remain in /tmp/tfs.log and are polled directly by this shell.
-runuser -u otserver -- ./theforgottenserver > /tmp/tfs.log 2>&1 &
+echo "[tfs] allocator: native OTServ pool (low-memory boot profile)"
+# Keep only stdbuf so startup milestones are flushed immediately to the file.
+# No jemalloc preload and no tail process during the memory-critical map load.
+runuser -u otserver -- stdbuf -oL -eL ./theforgottenserver > /tmp/tfs.log 2>&1 &
 TFS_PID=$!
 DB_PAUSED_FOR_MAP=0
 MAP_LOGGED=0
