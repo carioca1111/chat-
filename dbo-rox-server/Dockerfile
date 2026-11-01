@@ -23,6 +23,14 @@ RUN dpkg --add-architecture i386 && \
     libsqlite3-dev:i386 && \
     rm -rf /var/lib/apt/lists/*
 
+# Debian's i386 MariaDB dev package exposes MariaDB-compatible headers/libs as
+# mariadb/mysql.h and libmariadb.so. TFS 0.4 predates that packaging and checks
+# specifically for mysql/mysql.h and -lmysqlclient, so provide build aliases.
+RUN rm -rf /usr/include/mysql && \
+    ln -s /usr/include/mariadb /usr/include/mysql && \
+    test -f /usr/lib/i386-linux-gnu/libmariadb.so && \
+    ln -sf /usr/lib/i386-linux-gnu/libmariadb.so /usr/lib/i386-linux-gnu/libmysqlclient.so
+
 # TFS 0.4 predates modern Boost releases and checks for the old Boost TR1
 # wrapper headers. Debian 12 still ships the GCC TR1 headers, so expose small
 # compatibility wrappers instead of modifying the DBO Rox gameplay source.
