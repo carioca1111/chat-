@@ -27,8 +27,8 @@ jobs:
           import { createWriteStream } from 'node:fs';
 
           const packages = {
-            server: 'https://www.mediafire.com/file/46j6dywwv8mtv4j/DboRox.rar/file',
-            database: 'https://www.mediafire.com/file/641diq6mvgq87xz/Database_Dborox.rar/file'
+            client: 'https://www.mediafire.com/file/ykfc9vo7fiq2flt/Dbo_Rox_Client.rar/file',
+            server: 'https://www.mediafire.com/file/46j6dywwv8mtv4j/DboRox.rar/file'
           };
 
           function decodeHtml(v) {
@@ -59,37 +59,38 @@ jobs:
       - name: Extract archives
         shell: pwsh
         run: |
+          7z x inspect/client.rar -oinspect/client -y
           7z x inspect/server.rar -oinspect/server -y
-          7z x inspect/database.rar -oinspect/database -y
 
-      - name: Inventory executables and runtime files
+      - name: Inspect client assets and version hints
         shell: pwsh
         run: |
-          $patterns = @('*.exe','*.dll','config.lua','*.sql','*.otbm','*.s3db','*.sqlite','*.bat','*.cmd')
-          $rows = @()
-          foreach ($root in @('inspect/server','inspect/database')) {
-            foreach ($p in $patterns) {
-              Get-ChildItem -Path $root -Recurse -File -Filter $p -ErrorAction SilentlyContinue | ForEach-Object {
-                $rows += [pscustomobject]@{
-                  Path = $_.FullName.Replace((Get-Location).Path + '\','')
-                  Bytes = $_.Length
-                  Extension = $_.Extension
-                }
-              }
+          $out = @()
+          $out += '=== DAT / SPR / OTFI ==='
+          Get-ChildItem inspect/client -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -match '^\.(dat|spr|otfi)$' } | ForEach-Object {
+            $rel = $_.FullName.Replace((Get-Location).Path + '\','')
+            $out += "$rel`t$($_.Length)"
+          }
+          $out += ''
+          $out += '=== THINGS DIRECTORIES ==='
+          Get-ChildItem inspect/client -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '[\\/]things([\\/]|$)' } | ForEach-Object {
+            $out += $_.FullName.Replace((Get-Location).Path + '\','')
+          }
+          $out += ''
+          $out += '=== VERSION HINTS IN TEXT FILES ==='
+          Get-ChildItem inspect/client -Recurse -File -Include *.lua,*.otmod,*.txt,*.cfg,*.ini -ErrorAction SilentlyContinue | ForEach-Object {
+            $hits = Select-String -Path $_.FullName -Pattern '854|860|8\.54|8\.60|setClientVersion|setProtocolVersion|setClientVersionOverride|things/' -ErrorAction SilentlyContinue
+            foreach ($h in $hits) {
+              $rel = $_.FullName.Replace((Get-Location).Path + '\','')
+              $out += "$rel:$($h.LineNumber): $($h.Line.Trim())"
             }
           }
-          $rows | Sort-Object Path | Format-Table -AutoSize | Out-String -Width 240 | Tee-Object -FilePath inspect/inventory.txt
-          Write-Host '--- likely server executables ---'
-          Get-ChildItem inspect/server -Recurse -File -Filter *.exe | Sort-Object Length -Descending | Select-Object FullName,Length | Format-Table -AutoSize
-          Write-Host '--- config.lua SQL settings ---'
-          $cfg = Get-ChildItem inspect/server -Recurse -File -Filter config.lua | Select-Object -First 1
-          if ($cfg) {
-            Select-String -Path $cfg.FullName -Pattern 'sqlType|sqlHost|sqlUser|sqlPass|sqlDatabase|loginPort|gamePort|ip\s*=' | ForEach-Object { $_.Line }
-          }
+          $out | Set-Content -Encoding UTF8 inspect/client-version.txt
+          $out | ForEach-Object { Write-Host $_ }
 
       - name: Upload inspection inventory
         uses: actions/upload-artifact@v4
         with:
-          name: dbo-rox-windows-inspection
-          path: inspect/inventory.txt
+          name: dbo-rox-client-version-inspection
+          path: inspect/client-version.txt
           retention-days: 7
