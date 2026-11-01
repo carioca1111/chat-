@@ -96,19 +96,30 @@ async function patchLegacySource(sourceDir) {
   const connectionPath = path.join(sourceDir, 'connection.cpp');
   if (!fs.existsSync(connectionPath)) throw new Error('connection.cpp not found in DBO Rox source');
   let connection = await fsp.readFile(connectionPath, 'utf8');
-  const replacements = [
+  const timeoutReplacements = [
     ['boost::posix_time::seconds(Connection::readTimeout)', 'boost::posix_time::seconds(static_cast<long>(Connection::readTimeout))'],
     ['boost::posix_time::seconds(Connection::writeTimeout)', 'boost::posix_time::seconds(static_cast<long>(Connection::writeTimeout))'],
   ];
-  let changed = 0;
-  for (const [from, to] of replacements) {
+  let timeoutChanged = 0;
+  for (const [from, to] of timeoutReplacements) {
     if (connection.includes(from)) {
       connection = connection.replaceAll(from, to);
-      changed++;
+      timeoutChanged++;
     }
   }
   await fsp.writeFile(connectionPath, connection);
-  console.log(`[compat] patched ${changed} modern-Boost timeout expressions in connection.cpp`);
+  console.log(`[compat] patched ${timeoutChanged} modern-Boost timeout expressions in connection.cpp`);
+
+  const protocolGamePath = path.join(sourceDir, 'protocolgame.cpp');
+  if (!fs.existsSync(protocolGamePath)) throw new Error('protocolgame.cpp not found in DBO Rox source');
+  let protocolGame = await fsp.readFile(protocolGamePath, 'utf8');
+  const oldDebugStream = '<< " sent unknown byte: " << hex << std::endl;';
+  const newDebugStream = '<< " sent unknown byte: " << hex.str() << std::endl;';
+  if (protocolGame.includes(oldDebugStream)) {
+    protocolGame = protocolGame.replace(oldDebugStream, newDebugStream);
+    console.log('[compat] patched legacy stringstream debug output in protocolgame.cpp');
+  }
+  await fsp.writeFile(protocolGamePath, protocolGame);
 }
 
 for (const [name, url] of Object.entries(PACKAGES)) {
