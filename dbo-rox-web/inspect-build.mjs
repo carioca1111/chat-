@@ -17,6 +17,12 @@ async function walk(dir) {
   return out;
 }
 
+function section(text, needle, length = 12000) {
+  const i = text.indexOf(needle);
+  if (i < 0) return '';
+  return text.slice(i, i + length);
+}
+
 for (const name of ['server', 'source', 'database']) {
   const dir = path.join(WORK, name);
   const files = await walk(dir);
@@ -24,21 +30,38 @@ for (const name of ['server', 'source', 'database']) {
   console.log(`\n[inspect:${name}] ${rel.length} files`);
   for (const f of rel.slice(0, 120)) console.log(`[inspect:${name}] ${f}`);
 
+  if (name === 'server') {
+    const cfg = files.find(f => path.basename(f).toLowerCase() === 'config.lua');
+    if (cfg) {
+      console.log('\n[inspect:server:config.lua]');
+      console.log((await fsp.readFile(cfg, 'utf8').catch(() => '')).slice(0, 16000));
+    }
+    const maps = rel.filter(f => /\.(otbm|xml)$/i.test(f) && /map/i.test(f));
+    console.log('[inspect:server:map-candidates]', maps.slice(0, 30).join(' | '));
+  }
+
   if (name === 'database') {
-    const sql = files.find(f => /\.(sql|sqlite|s3db|db)$/i.test(f));
-    if (sql && /\.sql$/i.test(sql)) {
+    const sql = files.find(f => /\.sql$/i.test(f));
+    if (sql) {
       const text = await fsp.readFile(sql, 'utf8').catch(() => '');
-      console.log('[inspect:database:head]');
-      console.log(text.slice(0, 5000));
+      console.log('[inspect:database:accounts]');
+      console.log(section(text, 'CREATE TABLE `accounts`', 9000));
+      console.log('[inspect:database:players]');
+      console.log(section(text, 'CREATE TABLE `players`', 18000));
+      console.log('[inspect:database:accounts-data]');
+      console.log(section(text, 'INSERT INTO `accounts`', 6000));
+      console.log('[inspect:database:players-data]');
+      console.log(section(text, 'INSERT INTO `players`', 12000));
     }
   }
 
   if (name === 'source') {
-    const interesting = files.filter(f => /(?:CMakeLists\.txt|configure\.ac|configure|Makefile|database.*\.(cpp|h)|protocolgame.*\.(cpp|h)|protocollogin.*\.(cpp|h))$/i.test(f));
-    for (const file of interesting.slice(0, 15)) {
+    const interesting = files.filter(f => /(?:configure\.ac|protocolgame\.cpp|protocollogin\.cpp|iologindata\.cpp)$/i.test(f));
+    for (const file of interesting) {
       const text = await fsp.readFile(file, 'utf8').catch(() => '');
       console.log(`\n[inspect:source:file] ${path.relative(dir, file).replaceAll('\\', '/')}`);
-      console.log(text.slice(0, 4000));
+      if (/configure\.ac$/i.test(file)) console.log(text.slice(0, 16000));
+      else console.log(text.slice(0, 10000));
     }
   }
 }
