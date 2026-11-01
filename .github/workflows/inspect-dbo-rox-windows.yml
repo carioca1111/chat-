@@ -1,0 +1,95 @@
+name: Inspect DBO Rox Windows package
+
+on:
+  push:
+    branches: [dbo-dev-bridge-alpha01]
+    paths:
+      - '.github/workflows/inspect-dbo-rox-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Resolve and download original DBO Rox packages
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path inspect | Out-Null
+          @'
+          import fs from 'node:fs';
+          import { pipeline } from 'node:stream/promises';
+          import { createWriteStream } from 'node:fs';
+
+          const packages = {
+            server: 'https://www.mediafire.com/file/46j6dywwv8mtv4j/DboRox.rar/file',
+            database: 'https://www.mediafire.com/file/641diq6mvgq87xz/Database_Dborox.rar/file'
+          };
+
+          function decodeHtml(v) {
+            return v.replaceAll('&amp;', '&').replaceAll('&#x2F;', '/').replaceAll('&#47;', '/');
+          }
+
+          async function download(pageUrl, out) {
+            const page = await fetch(pageUrl, { redirect: 'follow', headers: { 'user-agent': 'Mozilla/5.0 Chrome/156' }});
+            if (!page.ok) throw new Error(`MediaFire page ${page.status}`);
+            const html = await page.text();
+            const matches = [
+              html.match(/href=["'](https:\/\/download[^"']+)["'][^>]*>\s*Download/i),
+              html.match(/aria-label=["']Download file["'][^>]*href=["']([^"']+)/i),
+              html.match(/href=["'](https:\/\/download[^"']+mediafire\.com[^"']+)["']/i),
+            ].filter(Boolean);
+            if (!matches.length) throw new Error(`Direct URL not found for ${pageUrl}`);
+            const direct = decodeHtml(matches[0][1]);
+            const res = await fetch(direct, { redirect: 'follow', headers: { 'user-agent': 'Mozilla/5.0 Chrome/156' }});
+            if (!res.ok || !res.body) throw new Error(`Download failed ${res.status}`);
+            await pipeline(res.body, createWriteStream(out));
+            console.log(`${out}: ${fs.statSync(out).size} bytes`);
+          }
+
+          for (const [name, url] of Object.entries(packages)) await download(url, `inspect/${name}.rar`);
+          '@ | Set-Content -Encoding UTF8 inspect/download.mjs
+          node inspect/download.mjs
+
+      - name: Extract archives
+        shell: pwsh
+        run: |
+          7z x inspect/server.rar -oinspect/server -y
+          7z x inspect/database.rar -oinspect/database -y
+
+      - name: Inventory executables and runtime files
+        shell: pwsh
+        run: |
+          $patterns = @('*.exe','*.dll','config.lua','*.sql','*.otbm','*.s3db','*.sqlite','*.bat','*.cmd')
+          $rows = @()
+          foreach ($root in @('inspect/server','inspect/database')) {
+            foreach ($p in $patterns) {
+              Get-ChildItem -Path $root -Recurse -File -Filter $p -ErrorAction SilentlyContinue | ForEach-Object {
+                $rows += [pscustomobject]@{
+                  Path = $_.FullName.Replace((Get-Location).Path + '\','')
+                  Bytes = $_.Length
+                  Extension = $_.Extension
+                }
+              }
+            }
+          }
+          $rows | Sort-Object Path | Format-Table -AutoSize | Out-String -Width 240 | Tee-Object -FilePath inspect/inventory.txt
+          Write-Host '--- likely server executables ---'
+          Get-ChildItem inspect/server -Recurse -File -Filter *.exe | Sort-Object Length -Descending | Select-Object FullName,Length | Format-Table -AutoSize
+          Write-Host '--- config.lua SQL settings ---'
+          $cfg = Get-ChildItem inspect/server -Recurse -File -Filter config.lua | Select-Object -First 1
+          if ($cfg) {
+            Select-String -Path $cfg.FullName -Pattern 'sqlType|sqlHost|sqlUser|sqlPass|sqlDatabase|loginPort|gamePort|ip\s*=' | ForEach-Object { $_.Line }
+          }
+
+      - name: Upload inspection inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbo-rox-windows-inspection
+          path: inspect/inventory.txt
+          retention-days: 7
