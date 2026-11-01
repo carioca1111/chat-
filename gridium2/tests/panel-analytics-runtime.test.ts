@@ -61,3 +61,25 @@ describe('PanelAnalyticsTracker', () => {
     expect(tracker.snapshot(3_602_000).capturesLastHour).toBe(1)
   })
 })
+
+it('counts catalogued tokens across state and bolsa packets without counting starting stock or duplicate balances', () => {
+  const tracker = new PanelAnalyticsTracker()
+  tracker.learnCatalog({ catalogoItens: [{ id: 73, nome: 'Boss Token' }] })
+  tracker.ingestState({}, true)
+  const stock = (q: number) => tracker.ingestPacket({ t: 'inventario', bolsa: { 73: q } })
+  stock(10)
+  stock(11)
+  tracker.ingestState({ bolsa: { 73: 11 } }, false)
+  stock(4)
+  stock(6)
+  expect(tracker.snapshot().rareItems).toEqual([{ itemId: '73', name: 'Boss Token', quantity: 3 }])
+  expect(new PanelAnalyticsTracker({ initial: tracker.persisted() }).snapshot().rareItemsTotal).toBe(3)
+})
+
+it('counts a scalar Boss Token balance once when the bag reports the same balance', () => {
+  const tracker = new PanelAnalyticsTracker()
+  tracker.ingestState({ bossTokens: 8 }, true)
+  tracker.ingestState({ bossTokens: 9 }, false)
+  tracker.ingestPacket({ t: 'inventario', bolsa: { 'boss-token': 9 } })
+  expect(tracker.snapshot().rareItemsTotal).toBe(1)
+})

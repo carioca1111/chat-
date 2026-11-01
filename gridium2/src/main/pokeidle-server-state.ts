@@ -214,6 +214,7 @@ export class PokeIdleServerState {
       this.serverNick = undefined
     }
 
+    this.analyticsTracker.learnCatalog(packet)
     const analyticsChanged = this.analyticsTracker.ingestState(estado, fullState, at)
 
     if (nextServerAccountId) this.serverAccountId = nextServerAccountId

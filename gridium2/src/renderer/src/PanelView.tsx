@@ -7,7 +7,6 @@ import type {
   PanelEventSnapshot,
   PanelGranularity,
   PanelHistoryBucket,
-  PanelRareItemSnapshot
 } from '../../shared/contracts'
 import './panel-history.css'
 
@@ -53,7 +52,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const [granularity, setGranularity] = useState<PanelGranularity>('hour')
   const online = accounts.filter((account) => account.status === 'ready').length
   const accountBars = accounts.map((account) => ({ account, value: account.panelAnalytics?.capturesLastHour ?? 0 }))
-  const rare = combineRare(analytics)
+  const rare = useMemo(() => combineRare(analytics), [revisions])
   const events = combineEvents(accounts)
   const xpSeries = useMemo(() => buildSeries(analytics, granularity, 'pokemonXp'), [revisions, granularity])
   const captureSeries = useMemo(() => buildSeries(analytics, granularity, 'captures'), [revisions, granularity])
@@ -86,6 +85,16 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <PanelMetric icon="◆" label="ITENS RAROS" value={fmt(total.rareItemsTotal)} sub="histórico salvo" tone="gold" />
       <PanelMetric icon="$" label="GOLD GANHO" value={compact(total.goldEarnedTotal)} sub={`${compact(total.goldEarnedLastHour)} na última hora`} tone="green" />
     </section>
+
+    <section class="poke-card rare-counts">
+      <h2>ITENS RAROS RECEBIDOS</h2>
+      <p>Unidades recebidas desde o início do registro · aumentos de estoque observados</p>
+      <table><thead><tr><th>Item</th>{accounts.map(a => <th key={a.id}>Conta {a.id}</th>)}<th>Total</th></tr></thead>
+      <tbody>{rare.map(item => <tr key={item.name}><th scope="row">{item.name}</th>{item.accounts.map((quantity, i) => <td key={i}>{fmt(quantity)}</td>)}<td>{fmt(item.quantity)}</td></tr>)}</tbody>
+      <tfoot><tr><th>Total de raros</th>{analytics.map((row, i) => <td key={i}>{fmt(row.rareItemsTotal)}</td>)}<td>{fmt(total.rareItemsTotal)}</td></tr></tfoot></table>
+    </section>
+
+
 
     <section class="panel-account-grid">
       {accounts.map((account) => <AccountPanel account={account} key={account.id} />)}
@@ -122,9 +131,6 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       </ChartCard>
       <ChartCard title="SHINYS VISTOS × PEGOS" subtitle={total.shiniesSeen === null ? 'Vistos aguardando evento explícito do servidor' : `${ratio(total.shiniesCaught, total.shiniesSeen)}% de conversão`}>
         <ColumnChart labels={['Vistos','Pegos']} values={[total.shiniesSeen ?? 0,total.shiniesCaught]} classes={['seen','caught']} unknown={[total.shiniesSeen === null,false]} />
-      </ChartCard>
-      <ChartCard title="ITENS RAROS RECEBIDOS" subtitle="Aumentos confirmados no inventário">
-        {rare.length ? <ColumnChart labels={rare.map((item) => short(item.name))} values={rare.map((item) => item.quantity)} classes={rare.map((_,index) => `rare r${index}`)} /> : <EmptyChart text="Nenhum item raro confirmado" />}
       </ChartCard>
       <ChartCard title="ATIVIDADE RECENTE" subtitle="Capturas, drops e Market persistidos" wide>
         <div class="panel-events">{events.length ? events.slice(0,12).map((event) => <div class="panel-event" key={`${event.accountId}-${event.at}-${event.label}`}>
@@ -306,13 +312,19 @@ function combineHistory(groups: PanelHistoryBucket[][]): PanelHistoryBucket[] {
   return [...map.values()].sort((a,b) => a.at - b.at)
 }
 
-function combineRare(rows: PanelAnalyticsSnapshot[]): PanelRareItemSnapshot[] {
-  const map = new Map<string, PanelRareItemSnapshot>()
-  for (const row of rows) for (const item of row.rareItems) {
-    const previous = map.get(item.itemId)
-    map.set(item.itemId, { ...item, quantity: item.quantity + (previous?.quantity ?? 0) })
-  }
-  return [...map.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)).slice(0,6)
+function combineRare(rows: PanelAnalyticsSnapshot[]) {
+  const counts = new Map<string, { name: string; accounts: number[]; quantity: number }>()
+  const empty = (name: string) => ({ name, accounts: rows.map(() => 0), quantity: 0 })
+  counts.set('Boss Token', empty('Boss Token'))
+  rows.forEach((row, index) => {
+    for (const item of row.rareItems) {
+      const entry = counts.get(item.name) ?? empty(item.name)
+      entry.accounts[index] += item.quantity
+      entry.quantity += item.quantity
+      counts.set(item.name, entry)
+    }
+  })
+  return [...counts.values()].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name))
 }
 
 function combineEvents(accounts: AccountSnapshot[]): Array<PanelEventSnapshot & { accountId:number }> {

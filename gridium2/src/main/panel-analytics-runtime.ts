@@ -3,7 +3,7 @@ import type { PanelAnalyticsSnapshot, PanelEventSnapshot, PanelHistoryBucket, Pa
 
 type JsonRecord = Record<string, unknown>
 
-const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bag', 'consumables', 'consumiveis']
+const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bolsa', 'bag', 'consumables', 'consumiveis']
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
@@ -101,7 +101,7 @@ function inventoryRows(estado: JsonRecord): InventoryRow[] {
       return
     }
     if (!isRecord(value)) return
-    const quantity = finite(first(value.qtd, value.quantidade, value.qty, value.count, value.amount, value.total, value.estoque))
+    const quantity = finite(first(value.qtd, value.quantidade, value.qty, value.quantity, value.count, value.amount, value.total, value.estoque))
     if (quantity === undefined || quantity < 0) return
     const name = text(first(value.nome, value.name, value.itemNome, value.label)) || fallbackName || `Item #${id}`
     rows.set(id, { id, name, quantity: Math.floor(quantity) })
@@ -148,7 +148,12 @@ function safeTuple(value: unknown, size: 5|8): number[] {
 
 export function isRareItemName(name: string): boolean {
   const normalized = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (isBossToken(name)) return true
   return /(boss\s*token|\btm\b|rare|raro|stone|pedra|fossil|ticket|shard|fragment|caixa|box|especial|special|egg|ovo)/i.test(normalized)
+}
+
+function isBossToken(name: string): boolean {
+  return /^(?:boss\s*tokens?|tokens?\s*(?:(?:do|de)\s*)?boss)$/i.test(name.replace(/[_-]/g, ' ').trim())
 }
 
 export class PanelAnalyticsTracker {
@@ -156,6 +161,9 @@ export class PanelAnalyticsTracker {
   private readonly knownPokemonIds = new PokemonIdLedger()
   private readonly pokemonXpState = new Map<string, PokemonXpState>()
   private readonly inventory = new Map<string, InventoryRow>()
+  private readonly catalog = new Map<string, string>()
+  private inventoryReady = false
+  private bossBalance: number | undefined
   private readonly rareItems = new Map<string, PanelRareItemSnapshot>()
   private readonly historyMinute = new Map<number, PanelHistoryBucket>()
   private readonly historyHour = new Map<number, PanelHistoryBucket>()
@@ -190,6 +198,9 @@ export class PanelAnalyticsTracker {
     this.knownPokemonIds.clear()
     this.pokemonXpState.clear()
     this.inventory.clear()
+    this.bossBalance = undefined
+    this.catalog.clear()
+    this.inventoryReady = false
     this.rareItems.clear()
     this.historyMinute.clear()
     this.historyHour.clear()
@@ -236,7 +247,9 @@ export class PanelAnalyticsTracker {
       for (const row of rows) this.baselinePokemon(row)
       this.prunePokemonCaches()
       this.inventory.clear()
-      for (const row of inventoryRows(estado)) this.inventory.set(row.id, row)
+      this.inventoryReady = false
+      this.bossBalance = undefined
+      this.observeInventory(estado, at)
       if (changed) this.touch(true)
       return changed
     }
@@ -257,12 +270,37 @@ export class PanelAnalyticsTracker {
     }
 
     this.prunePokemonCaches()
-    for (const row of inventoryRows(estado)) {
+    if (this.observeInventory(estado, at)) changed = true
+    if (changed) this.touch(true)
+    return changed
+  }
+
+  private observeInventory(estado: JsonRecord, at: number): boolean {
+    const hasInventory = INVENTORY_KEYS.some(key => Array.isArray(estado[key]) || isRecord(estado[key]))
+    const tokens = finite(estado.bossTokens)
+    if (!hasInventory && tokens === undefined) return false
+    let changed = false
+    const rows = inventoryRows(estado)
+    if (tokens !== undefined && Number.isSafeInteger(tokens) && tokens >= 0) {
+      rows.push({ id: 'bossTokens', name: 'Boss Token', quantity: tokens })
+    }
+    let sawTokens = false
+    for (const row of rows) {
       const previous = this.inventory.get(row.id)
+      if (row.name.startsWith('Item #')) row.name = this.catalog.get(row.id) || previous?.name || row.name
+      const token = isBossToken(row.name)
+      if (token) {
+        if (sawTokens) continue
+        sawTokens = true
+        row.name = 'Boss Token'
+      }
       this.inventory.set(row.id, row)
-      const previousQuantity = previous?.quantity ?? 0
-      if (row.quantity <= previousQuantity) continue
-      const gained = row.quantity - previousQuantity
+      const previousQuantity = token ? this.bossBalance : previous?.quantity
+      if (token) this.bossBalance = row.quantity
+      if (!this.inventoryReady && previousQuantity === undefined) continue
+      const baseline = previousQuantity ?? 0
+      if (row.quantity <= baseline) continue
+      const gained = row.quantity - baseline
       if (!isRareItemName(row.name)) continue
       const current = this.rareItems.get(row.id)
       this.rareItems.set(row.id, { itemId: row.id, name: row.name, quantity: (current?.quantity ?? 0) + gained })
@@ -270,12 +308,29 @@ export class PanelAnalyticsTracker {
       changed = true
     }
 
-    if (changed) this.touch(true)
+    if (hasInventory) this.inventoryReady = true
     return changed
   }
 
+  learnCatalog(packet: JsonRecord): void {
+    const catalog = packet.catalogoItens ?? packet.itemCatalog
+    if (!Array.isArray(catalog) && !isRecord(catalog)) return
+    for (const [key, entry] of Object.entries(catalog)) {
+      const id = isRecord(entry) ? first(entry.itemId, entry.id, Array.isArray(catalog) ? undefined : key) : key
+      const name = isRecord(entry) ? text(first(entry.nome, entry.name, entry.label)) : text(entry)
+      if (id != null && name) this.catalog.set(String(id), name)
+    }
+  }
+
   ingestPacket(packet: unknown, at = Date.now()): boolean {
-    if (!isRecord(packet) || String(packet.t || '') !== 'batalha' || !Array.isArray(packet.ev)) return false
+    if (!isRecord(packet)) return false
+    if (packet.t !== 'welcome' && packet.t !== 'estado') this.learnCatalog(packet)
+    if (packet.t === 'inventario' || packet.t === 'inventory') {
+      const changed = this.observeInventory(isRecord(packet.estado) ? packet.estado : packet, at)
+      if (changed) this.touch(true)
+      return changed
+    }
+    if (String(packet.t || '') !== 'batalha' || !Array.isArray(packet.ev)) return false
     let changed = false
     for (const rawEvent of packet.ev) {
       if (!isRecord(rawEvent)) continue
@@ -350,7 +405,7 @@ export class PanelAnalyticsTracker {
       note35Plus: this.noteBands.slice(4).reduce((sum, value) => sum + value, 0),
       shiniesSeen: this.shiniesSeen,
       shiniesCaught: this.shiniesCaught,
-      rareItems: [...this.rareItems.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)).slice(0, 12),
+      rareItems: [...this.rareItems.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)),
       rareItemsTotal: [...this.rareItems.values()].reduce((sum, item) => sum + item.quantity, 0),
       lastCaptureAt: this.lastCaptureAt,
       pokemonXpTotal: this.pokemonXpTotal,

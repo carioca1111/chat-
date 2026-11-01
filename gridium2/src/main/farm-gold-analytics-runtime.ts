@@ -79,6 +79,8 @@ export class FarmGoldAnalyticsTracker {
     this.inner.reset(at)
   }
 
+  learnCatalog(packet: JsonRecord): void { this.inner.learnCatalog(packet) }
+
   ingestState(estado: JsonRecord, fullState: boolean, at = Date.now()): boolean {
     const farmChanged = this.ingestFarmGoldState(estado, fullState, at) > 0
     this.prune(at)
