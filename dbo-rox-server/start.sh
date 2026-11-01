@@ -31,7 +31,6 @@ if ! mariadb -uroot -Nse "SELECT 1 FROM dborox.accounts LIMIT 1" >/dev/null 2>&1
   mariadb -uroot dborox < "$DB_SQL"
 fi
 
-# Local-only database user. MariaDB is bound to loopback and is not exposed by Render.
 mariadb -uroot <<SQL
 CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1';
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost';
@@ -40,8 +39,6 @@ GRANT ALL PRIVILEGES ON dborox.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 
-# Disposable development Guest. Reuse the original sample rows so all custom
-# DBO Rox vocation/outfit columns remain intact.
 mariadb -uroot dborox <<'SQL'
 UPDATE accounts
 SET name='guest', password=SHA1('guest'), premdays=65535
@@ -53,8 +50,6 @@ SQL
 
 echo "[db] Guest ready"
 
-# TFS 0.4 loads config.lua from its working directory. Append explicit values
-# so these final Lua assignments override any legacy SQL settings earlier in the file.
 cat >> "$SERVER/config.lua" <<'LUA'
 
 -- Render development database override (must stay last)
@@ -72,23 +67,29 @@ tail -n 8 "$SERVER/config.lua"
 cd "$SERVER"
 chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
+: > /tmp/tfs.log
 runuser -u otserver -- stdbuf -oL -eL ./theforgottenserver > /tmp/tfs.log 2>&1 &
 TFS_PID=$!
 
-for i in $(seq 1 90); do
+tail -n +1 -F /tmp/tfs.log &
+TAIL_PID=$!
+cleanup_tail() { kill "$TAIL_PID" >/dev/null 2>&1 || true; }
+trap cleanup_tail EXIT
+
+for i in $(seq 1 120); do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] server exited during startup"
-    cat /tmp/tfs.log
     exit 1
   fi
   if (echo >/dev/tcp/127.0.0.1/7172) >/dev/null 2>&1; then
     echo "[tfs] game port 7172 ready"
+    cleanup_tail
+    trap - EXIT
     break
   fi
   sleep 1
-  if [ "$i" -eq 90 ]; then
+  if [ "$i" -eq 120 ]; then
     echo "[tfs] timeout waiting for port 7172"
-    cat /tmp/tfs.log
     exit 1
   fi
 done
