@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import archiver from 'archiver';
 import { createExtractorFromData } from 'node-unrar-js';
@@ -8,6 +9,7 @@ import { createExtractorFromData } from 'node-unrar-js';
 const ROOT = path.resolve(process.cwd());
 const WORK = path.join(ROOT, '.vendor-work');
 const DIST = path.join(ROOT, 'dist');
+const RUNTIME = path.join(WORK, 'redemption-web');
 
 const PACKAGES = {
   client: 'https://www.mediafire.com/file/ykfc9vo7fiq2flt/Dbo_Rox_Client.rar/file',
@@ -102,9 +104,7 @@ async function findClientRoot(extracted) {
   const initFiles = files.filter(f => path.basename(f).toLowerCase() === 'init.lua');
   for (const init of initFiles) {
     const dir = path.dirname(init);
-    const data = path.join(dir, 'data');
-    const modules = path.join(dir, 'modules');
-    if (fs.existsSync(data) && fs.existsSync(modules)) return dir;
+    if (fs.existsSync(path.join(dir, 'data')) && fs.existsSync(path.join(dir, 'modules'))) return dir;
   }
   throw new Error(`No OTClient root (init.lua + data + modules) found in ${extracted}`);
 }
@@ -113,15 +113,76 @@ async function copyDir(src, dest) {
   await fsp.cp(src, dest, { recursive: true, force: true });
 }
 
-async function ensure860Assets(clientRoot, staging) {
-  const all = await walk(clientRoot);
-  const dat = all.find(f => path.basename(f).toLowerCase() === 'tibia.dat');
-  const spr = all.find(f => path.basename(f).toLowerCase() === 'tibia.spr');
-  if (!dat || !spr) throw new Error('DBO Rox client archive does not contain Tibia.dat/Tibia.spr');
+async function cloneWebRuntime() {
+  console.log('[runtime] cloning OTClient Redemption browser runtime');
+  execFileSync('git', ['clone', '--depth', '1', '--branch', 'browser', 'https://github.com/OTArchive/otclient.git', RUNTIME], {
+    stdio: 'inherit',
+  });
+  return execFileSync('git', ['-C', RUNTIME, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+}
+
+async function findDbo860Assets(clientRoot) {
+  const files = await walk(clientRoot);
+  const dirs = new Map();
+  for (const file of files) {
+    const base = path.basename(file).toLowerCase();
+    if (!['tibia.dat', 'tibia.spr', 'tibia.otfi'].includes(base)) continue;
+    const dir = path.dirname(file);
+    const set = dirs.get(dir) || {};
+    set[base] = file;
+    dirs.set(dir, set);
+  }
+
+  const candidates = [...dirs.entries()]
+    .filter(([, set]) => set['tibia.dat'] && set['tibia.spr'])
+    .map(([dir, set]) => {
+      const normalized = dir.replaceAll('\\', '/').toLowerCase();
+      let score = 0;
+      if (normalized.includes('/860/')) score += 100;
+      if (normalized.endsWith('/860')) score += 100;
+      if (normalized.includes('/things/')) score += 30;
+      if (normalized.includes('/data/')) score += 10;
+      return { dir, set, score };
+    })
+    .sort((a, b) => b.score - a.score || a.dir.length - b.dir.length);
+
+  if (!candidates.length) throw new Error('DBO Rox client archive does not contain a Tibia.dat/Tibia.spr pair');
+  const chosen = candidates[0];
+  let otfi = chosen.set['tibia.otfi'];
+  if (!otfi) otfi = files.find(f => path.basename(f).toLowerCase() === 'tibia.otfi');
+  return { dat: chosen.set['tibia.dat'], spr: chosen.set['tibia.spr'], otfi, sourceDir: chosen.dir };
+}
+
+async function installDboAssets(clientRoot, staging) {
+  const assets = await findDbo860Assets(clientRoot);
   const things = path.join(staging, 'data', 'things', '860');
+  await fsp.rm(things, { recursive: true, force: true });
   await fsp.mkdir(things, { recursive: true });
-  if (!fs.existsSync(path.join(things, 'Tibia.dat'))) await fsp.copyFile(dat, path.join(things, 'Tibia.dat'));
-  if (!fs.existsSync(path.join(things, 'Tibia.spr'))) await fsp.copyFile(spr, path.join(things, 'Tibia.spr'));
+  await fsp.copyFile(assets.dat, path.join(things, 'Tibia.dat'));
+  await fsp.copyFile(assets.spr, path.join(things, 'Tibia.spr'));
+
+  if (assets.otfi) {
+    await fsp.copyFile(assets.otfi, path.join(things, 'Tibia.otfi'));
+  } else {
+    await fsp.writeFile(path.join(things, 'Tibia.otfi'), [
+      'DatSpr',
+      '  extended: false',
+      '  transparency: false',
+      '  frame-durations: false',
+      '  frame-groups: false',
+      '  metadata-file: Tibia.dat',
+      '  sprites-file: Tibia.spr',
+      '',
+    ].join('\n'));
+  }
+
+  console.log('[assets] DBO Rox 8.60 DAT/SPR selected from:', assets.sourceDir);
+  return {
+    sourceDir: path.relative(clientRoot, assets.sourceDir).replaceAll('\\', '/'),
+    hasOriginalOtfi: Boolean(assets.otfi),
+    datBytes: (await fsp.stat(assets.dat)).size,
+    sprBytes: (await fsp.stat(assets.spr)).size,
+  };
 }
 
 async function zipDirectory(srcDir, outFile) {
@@ -142,6 +203,7 @@ const manifest = {
   base: 'DBO Rox V2 8.60',
   protocol: 860,
   provenance: 'TibiaKing / original community MediaFire links',
+  clientRuntime: 'OTClient Redemption browser-compatible runtime',
   packages: {},
 };
 
@@ -155,30 +217,44 @@ for (const [name, url] of Object.entries(PACKAGES)) {
   manifest.packages[name] = { source: url, bytes: download.bytes, extractedFiles: count };
 }
 
-const clientRoot = await findClientRoot(path.join(WORK, 'client'));
+const dboClientRoot = await findClientRoot(path.join(WORK, 'client'));
+manifest.runtimeCommit = await cloneWebRuntime();
+
 const staging = path.join(WORK, 'game-data');
 await fsp.mkdir(staging, { recursive: true });
 
+// Use the known browser-compatible Redemption Lua/data/modules as the runtime.
+// The old DBO Rox OTClient fork remains our source of Dragon Ball assets/content,
+// but its legacy client modules are intentionally not booted in WebAssembly.
 for (const name of ['init.lua', 'data', 'modules', 'mods']) {
-  const src = path.join(clientRoot, name);
-  if (!fs.existsSync(src)) continue;
+  const src = path.join(RUNTIME, name);
+  if (!fs.existsSync(src)) throw new Error(`Redemption runtime missing ${name}`);
   const dest = path.join(staging, name);
   const stat = await fsp.stat(src);
   if (stat.isDirectory()) await copyDir(src, dest);
   else await fsp.copyFile(src, dest);
 }
-await ensure860Assets(clientRoot, staging);
 
-// Marker used by our deployment page; the original client files remain otherwise untouched.
+manifest.dboAssets = await installDboAssets(dboClientRoot, staging);
+
+// Brand the compatible runtime without changing its module-loading contract.
+const initPath = path.join(staging, 'init.lua');
+let initLua = await fsp.readFile(initPath, 'utf8');
+initLua = initLua.replace('g_app.setName("OTClient - Redemption");', 'g_app.setName("DBO Rox Web");');
+await fsp.writeFile(initPath, initLua);
+
 await fsp.writeFile(path.join(staging, 'DBO_ROX_BASE.txt'), [
   'DBO Rox V2 8.60',
-  'Imported at build time from the community download links.',
-  'Target: OTClient Redemption Web / protocol 8.60.',
+  'Dragon Ball DAT/SPR assets: original DBO Rox client package.',
+  'Browser runtime: OTClient Redemption browser branch.',
+  'Reason: the legacy DBO Rox client fork is not WebAssembly-compatible as-is.',
+  'Server/source/database remain the original DBO Rox packages.',
   '',
 ].join('\n'));
 
-const zipPath = path.join(DIST, 'dbo-rox-game-data.zip');
+const zipPath = path.join(DIST, 'dbo-rox-game-data-webcompat.zip');
 await zipDirectory(staging, zipPath);
+manifest.gameDataZip = path.basename(zipPath);
 manifest.gameDataZipBytes = (await fsp.stat(zipPath)).size;
 
 for (const name of ['server', 'source', 'database']) {
@@ -188,4 +264,5 @@ for (const name of ['server', 'source', 'database']) {
 }
 
 await fsp.writeFile(path.join(DIST, 'manifest.json'), JSON.stringify(manifest, null, 2));
-console.log('[build] DBO Rox original client bundle prepared:', manifest.gameDataZipBytes, 'bytes');
+console.log('[build] DBO Rox Web-compatible bundle prepared:', manifest.gameDataZipBytes, 'bytes');
+console.log('[build] Redemption runtime commit:', manifest.runtimeCommit);
