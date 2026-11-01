@@ -1,40 +1,906 @@
-(()=>{'use strict';
-const SKEY='starforge-alpha-0.6',OLD='starforge-alpha-0.1',el=id=>document.getElementById(id),cv=el('spaceCanvas'),x=cv.getContext('2d',{alpha:false}),pc=el('panelContent'),mine=el('mineButton');
-const R={iron:['Iron Ore',3],nickel:['Nickel',7],cobalt:['Cobalt',13],titanium:['Titanium',28],crystal:['Crystal',65]},SE=[['sol','Sol Belt',0,1,'Órbita segura · minérios básicos'],['red','Red Veil',1400,1.7,'Nebulosa hostil · mais Titanium'],['void','Void Reach',5200,2.8,'Fronteira profunda · Crystal abundante']];
-const SVG={ship:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 92"><g stroke="#07101a" stroke-width="5" stroke-linejoin="round"><path fill="#273241" d="M50 7 66 35 86 45 73 68 60 61 57 82 43 82 40 61 27 68 14 45 34 35Z"/><path fill="#364455" d="M50 14 59 39 50 55 41 39Z"/><path fill="#5ee9ff" d="M50 21 55 39 50 47 45 39Z"/><path fill="#45ddff" d="M18 45h16v6H18zm48 0h16v6H66z"/></g></svg>`,thrust:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#fff"/><stop offset=".3" stop-color="#4de7ff"/><stop offset="1" stop-color="#4de7ff" stop-opacity="0"/></linearGradient></defs><path fill="url(#g)" d="M40 76 50 125 60 76Z"/><g stroke="#07101a" stroke-width="5" stroke-linejoin="round"><path fill="#273241" d="M50 7 66 35 86 45 73 68 60 61 57 82 43 82 40 61 27 68 14 45 34 35Z"/><path fill="#364455" d="M50 14 59 39 50 55 41 39Z"/><path fill="#5ee9ff" d="M50 21 55 39 50 47 45 39Z"/><path fill="#45ddff" d="M18 45h16v6H18zm48 0h16v6H66z"/></g></svg>`,rock:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 112"><path fill="#303846" stroke="#121820" stroke-width="6" d="M21 14 48 5 79 9 105 28 114 56 103 85 78 105 44 107 14 91 5 61 9 35Z"/><path fill="#424b59" d="m21 14 30 9 20-14 22 22-18 20-28-6-18 18-20-28Z"/><g fill="#171d25"><ellipse cx="81" cy="35" rx="12" ry="9"/><ellipse cx="37" cy="74" rx="11" ry="9"/><ellipse cx="84" cy="78" rx="8" ry="6"/></g></svg>`,crystal:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 104"><path fill="#303946" stroke="#111820" stroke-width="6" d="M18 12 48 5 78 11 103 31 107 61 91 88 61 99 28 92 7 69 6 39Z"/><path fill="#404b59" d="m18 12 30 9 17-10 24 21-14 19-24-2-18 18-24-17 5-19Z"/><path d="M24 75 38 57 51 61 62 43 78 48 93 27" fill="none" stroke="#3ee9ff" stroke-width="5"/><g fill="#4de7ff"><path d="m76 25 10-14 7 18-9 9Z"/><path d="m31 73 8-12 7 14-8 9Z"/><path d="m66 70 9-14 8 18-10 8Z"/></g></svg>`,frag:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 46"><path fill="#3a4452" stroke="#141b24" stroke-width="4" d="m7 11 19-7 16 12-4 20-18 6L5 30Z"/><path fill="#505b69" d="m10 13 16-5 7 10-12 10-12-4Z"/></svg>`,hit:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><path fill="#4de7ff" stroke="#dffcff" stroke-width="3" d="m40 5 7 22 20-9-12 19 20 8-22 5 7 21-16-15-12 19 1-23-23 3 19-13-17-15 22 6Z"/><circle cx="40" cy="41" r="8" fill="#fff"/></svg>`};
-let A={},tab='cargo',toastT=0,audio=null,last=performance.now();
-const D=()=>({credits:260,gems:35,inventory:{iron:0,nickel:0,cobalt:0,titanium:0,crystal:0},cargo:0,shipLevel:1,laserLevel:1,cargoLevel:1,efficiencyLevel:1,sector:'sol',mining:false,cycleProgress:0,shield:100,sound:true,lastSeen:Date.now()});
-function load(){try{let q=localStorage.getItem(SKEY)||localStorage.getItem(OLD);if(!q)return D();let p=JSON.parse(q),d=D();return {...d,...p,inventory:{...d.inventory,...(p.inventory||{})},shield:Number.isFinite(p.shield)?p.shield:100}}catch{return D()}}let s=load();
-const W={w:innerWidth,h:innerHeight,d:1,t:0,shake:0,stars:[],parts:[],frags:[],rocks:[],target:null,resp:0,danger:'ROTA SEGURA',laser:false,pt:0,ship:{x:0,y:0,vx:0,vy:0,a:-Math.PI/2,ex:0,ey:0,et:0,hit:0,rec:0}};
-const cap=()=>100+(s.cargoLevel-1)*40,rate=()=>1+(s.laserLevel-1)*.35,eff=()=>1+(s.efficiencyLevel-1)*.05,sec=()=>SE.find(v=>v[0]===s.sector)||SE[0],cost=t=>Math.round((t==='laser'?150:t==='cargo'?200:300)*1.62**((t==='laser'?s.laserLevel:t==='cargo'?s.cargoLevel:s.efficiencyLevel)-1)),fmt=n=>Math.floor(n).toLocaleString('pt-BR'),cl=(v,a,b)=>Math.max(a,Math.min(b,v)),rd=(a,b)=>a+Math.random()*(b-a),ds=(a,b,c,d)=>Math.hypot(a-c,b-d);
-function save(){s.lastSeen=Date.now();localStorage.setItem(SKEY,JSON.stringify(s))}
-function pick(){let w=sec()[0]==='red'?{iron:43,nickel:25,cobalt:15,titanium:14,crystal:3}:sec()[0]==='void'?{iron:24,nickel:22,cobalt:20,titanium:24,crystal:10}:{iron:62,nickel:23,cobalt:10,titanium:4,crystal:1},r=Math.random()*100,c=0;for(let k in w){c+=w[k];if(r<=c)return k}return'iron'}
-function ore(n){let room=cap()-s.cargo;if(room<=0)return;s.cycleProgress+=Math.min(room,Math.max(0,n));while(s.cycleProgress>=1&&s.cargo<cap()){let k=pick();s.inventory[k]++;s.cargo++;s.cycleProgress--}if(s.cargo>=cap()){s.mining=false;W.laser=false;toast('Carga cheia. Venda ou aumente a capacidade.')}}
-function offline(){let e=Math.max(0,Date.now()-(s.lastSeen||Date.now()))/1000;if(!s.mining||e<5)return;let b=s.cargo;ore(Math.min(e,14400)*rate()*sec()[3]*.28);let g=Math.max(0,Math.floor(s.cargo-b));if(g)setTimeout(()=>toast(`Mineração offline: +${g} unidades`),400)}
-function assets(){return Promise.all(Object.entries(SVG).map(([k,v])=>new Promise(r=>{let i=new Image;i.onload=()=>{A[k]=i;r()};i.onerror=r;i.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(v)})))}
-function resize(){W.d=Math.min(2,devicePixelRatio||1);W.w=Math.max(320,innerWidth);W.h=Math.max(320,innerHeight);cv.width=W.w*W.d;cv.height=W.h*W.d;cv.style.width=W.w+'px';cv.style.height=W.h+'px';x.setTransform(W.d,0,0,W.d,0,0);if(!W.stars.length)W.stars=Array.from({length:Math.round(cl(W.w*W.h/9000,55,150))},()=>({x:Math.random()*W.w,y:Math.random()*W.h,z:rd(.25,1),p:rd(0,7)}));if(!W.ship.x){W.ship.x=W.w*.72;W.ship.y=W.h*.52}if(!W.target)spawnTarget(1);if(!W.rocks.length)for(let i=0;i<5;i++)spawnRock(1)}
-function spawnTarget(init=0){let q=sec()[0]==='void'?.45:sec()[0]==='red'?.22:.08;W.target={x:init?W.w*.33:-120,y:rd(W.h*.25,W.h*.68),vx:init?rd(-2,2):rd(22,34),vy:rd(-4,4),r:cl(W.w*.065,58,92),rot:rd(0,6.28),sp:rd(-.12,.12),hp:100,cr:Math.random()<q,en:!init}}
-function spawnRock(init=0){let r=Math.random()>.72?rd(26,42):rd(14,25),right=Math.random()>.45;W.rocks.push({x:init?Math.random()*W.w:right?W.w+r+20:-r-20,y:rd(80,W.h-90),r,vx:(right?-1:1)*rd(12,34)*(1+sec()[3]*.08),vy:rd(-8,8),rot:rd(0,6.28),sp:rd(-.4,.4)})}
-function burst(px,py,n,col){for(let i=0;i<n;i++){let a=Math.random()*6.28,v=rd(30,180);W.parts.push({x:px,y:py,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:rd(.25,.85),sz:rd(1,4),c:col})}}
-function smash(){let t=W.target;if(!t)return;for(let i=0,n=Math.floor(rd(4,8));i<n;i++){let a=Math.random()*6.28,v=rd(45,135);W.frags.push({x:t.x,y:t.y,vx:Math.cos(a)*v+t.vx,vy:Math.sin(a)*v+t.vy,r:rd(7,16),rot:rd(0,6.28),sp:rd(-2.4,2.4),l:rd(6,10),bad:Math.random()>.18})}burst(t.x,t.y,34,t.cr?'#4de7ff':'#c8d0dd');W.shake=8;snd('break');W.target=null;W.resp=1.1}
-function danger(){let sh=W.ship,hit=null,best=1e9;for(let h of [...W.frags.filter(f=>f.bad),...W.rocks]){let dx=h.x-sh.x,dy=h.y-sh.y,d=Math.hypot(dx,dy),rvx=h.vx-sh.vx,rvy=h.vy-sh.vy;if(dx*rvx+dy*rvy<0&&d<best&&d<190+h.r){best=d;hit=h}}if(hit&&sh.et<=0){let dx=hit.x-sh.x,dy=hit.y-sh.y,l=Math.max(1,Math.hypot(dx,dy)),side=Math.random()>.5?1:-1;sh.ex=-dy/l*92*side;sh.ey=dx/l*92*side;sh.et=rd(.55,.9);W.danger='DESVIO AUTOMÁTICO'}if(!hit&&sh.et<=0)W.danger='ROTA SEGURA'}
-function collide(){let sh=W.ship;if(sh.hit>0)return;for(let h of [...W.frags,...W.rocks])if(ds(sh.x,sh.y,h.x,h.y)<23+h.r*.78){s.shield=cl(s.shield-(h.r>28?24:rd(8,15)),0,100);sh.hit=.65;h.vx*=-1.15;h.vy*=-1.15;burst(sh.x,sh.y,15,'#ff89a2');W.shake=10;W.danger='IMPACTO NO ESCUDO';snd('hit');if(s.shield<=0){s.mining=false;W.laser=false;sh.rec=3.2;toast('Escudo colapsou. Recuo automático.')}break}}
-function ship(dt){let q=W.ship;q.hit=Math.max(0,q.hit-dt);q.et=Math.max(0,q.et-dt);if(q.rec>0){q.rec-=dt;if(q.rec<=0){s.shield=38;toast('Escudo reiniciado em 38%.')}}else if(s.shield<100&&q.hit<=0)s.shield=cl(s.shield+dt*4.5,0,100);danger();let tx=W.w*.72,ty=W.h*.53;if(s.mining&&W.target&&q.rec<=0){tx=cl(W.target.x+W.target.r+cl(W.w*.105,92,150),80,W.w-80);ty=W.target.y}if(q.et>0){tx+=q.ex;ty+=q.ey}let dx=tx-q.x,dy=ty-q.y,d=Math.hypot(dx,dy),v=Math.min(q.et>0?190:130,d*2.4),tvx=d>1?dx/d*v:0,tvy=d>1?dy/d*v:0,k=1-Math.exp(-dt*4.8);q.vx+=(tvx-q.vx)*k;q.vy+=(tvy-q.vy)*k;q.x=cl(q.x+q.vx*dt,35,W.w-35);q.y=cl(q.y+q.vy*dt,72,W.h-45);let fx=W.target?W.target.x:q.x-1,fy=W.target?W.target.y:q.y,da=((Math.atan2(fy-q.y,fx-q.x)+Math.PI/2-q.a+Math.PI)%(Math.PI*2))-Math.PI;q.a+=da*Math.min(1,dt*5);W.laser=!!(s.mining&&W.target&&ds(q.x,q.y,tx,ty)<34&&q.et<=.08&&q.rec<=0&&s.cargo<cap())}
-function update(dt){W.t+=dt;W.shake=Math.max(0,W.shake-dt*22);for(let z of W.stars){z.x-=dt*(3+z.z*9);z.p+=dt*(1+z.z);if(z.x<-2){z.x=W.w+2;z.y=Math.random()*W.h}}if(W.target){let t=W.target;t.rot+=t.sp*dt;t.x+=t.vx*dt;t.y+=t.vy*dt;if(t.en&&t.x>=W.w*.32){t.en=false;t.vx=rd(-3,3)}if(t.y<120||t.y>W.h-100)t.vy*=-1;if(W.laser){t.hp-=(8+rate()*5)*sec()[3]*dt;ore(rate()*sec()[3]*dt);W.pt-=dt;if(W.pt<=0){W.pt=.035;burst(t.x,t.y,2,Math.random()>.5?'#4de7ff':'#ffd36f')}if(t.hp<=0)smash()}}else if((W.resp-=dt)<=0)spawnTarget();for(let a of W.rocks){a.x+=a.vx*dt;a.y+=a.vy*dt;a.rot+=a.sp*dt}W.rocks=W.rocks.filter(a=>a.x>-100&&a.x<W.w+100&&a.y>-100&&a.y<W.h+100);while(W.rocks.length<5)spawnRock();for(let f of W.frags){f.x+=f.vx*dt;f.y+=f.vy*dt;f.rot+=f.sp*dt;f.l-=dt}W.frags=W.frags.filter(f=>f.l>0&&f.x>-100&&f.x<W.w+100&&f.y>-100&&f.y<W.h+100);for(let p of W.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.98;p.vy*=.98;p.l-=dt}W.parts=W.parts.filter(p=>p.l>0);ship(dt);collide()}
-function img(im,px,py,w,h,a,al=1){if(!im)return;x.save();x.globalAlpha=al;x.translate(px,py);x.rotate(a);x.drawImage(im,-w/2,-h/2,w,h);x.restore()}
-function bg(){let g=x.createRadialGradient(W.w*.27,W.h*.34,0,W.w*.27,W.h*.34,W.w*.7),t=sec()[0]==='red'?'rgba(120,30,70,.18)':sec()[0]==='void'?'rgba(63,40,140,.22)':'rgba(18,74,120,.20)';g.addColorStop(0,t);g.addColorStop(.48,'#050b16');g.addColorStop(1,'#02040a');x.fillStyle=g;x.fillRect(0,0,W.w,W.h);for(let z of W.stars){x.globalAlpha=cl(.2+z.z*.65+Math.sin(z.p)*.08,.12,.9);x.fillStyle=z.z>.72?'#bdeeff':'#fff';let q=.55+z.z*1.25;x.fillRect(z.x,z.y,q,q)}x.globalAlpha=1}
-function rock(a,target=0){img(target?(a.cr?A.crystal:A.rock):A.rock,a.x,a.y,a.r*2.15,a.r*2.15,a.rot,target?1:.72);if(target){let p=cl(a.hp/100,0,1);x.save();x.strokeStyle='rgba(77,231,255,.18)';x.lineWidth=2;x.beginPath();x.arc(a.x,a.y,a.r*.92,0,6.28);x.stroke();x.strokeStyle=a.cr?'#4de7ff':'#90a8c7';x.beginPath();x.arc(a.x,a.y,a.r*.92,-Math.PI/2,-Math.PI/2+6.28*p);x.stroke();x.restore()}}
-function laser(){if(!W.laser||!W.target)return;let q=W.ship,t=W.target,dx=t.x-q.x,dy=t.y-q.y,d=Math.max(1,Math.hypot(dx,dy)),u=dx/d,v=dy/d,sx=q.x+u*28,sy=q.y+v*28,ex=t.x-u*t.r*.68,ey=t.y-v*t.r*.68,p=.55+Math.sin(W.t*28)*.3;x.save();x.lineCap='round';x.strokeStyle=`rgba(77,231,255,${.22+p*.2})`;x.lineWidth=9;x.shadowBlur=18;x.shadowColor='#4de7ff';x.beginPath();x.moveTo(sx,sy);x.lineTo(ex,ey);x.stroke();x.strokeStyle='#dfffff';x.lineWidth=2.1+p*1.2;x.beginPath();x.moveTo(sx,sy);x.lineTo(ex,ey);x.stroke();x.restore();img(A.hit,ex,ey,34+p*5,34+p*5,W.t*2.4,.82)}
-function draw(){x.setTransform(W.d,0,0,W.d,0,0);bg();x.save();if(W.shake)x.translate(rd(-W.shake,W.shake),rd(-W.shake,W.shake));W.rocks.forEach(a=>rock(a));if(W.target)rock(W.target,1);for(let f of W.frags)img(A.frag,f.x,f.y,f.r*2.3,f.r*2.3,f.rot,.95);laser();for(let p of W.parts){x.save();x.globalAlpha=cl(p.l/.55,0,1);x.fillStyle=p.c;x.shadowBlur=10;x.shadowColor=p.c;x.beginPath();x.arc(p.x,p.y,p.sz,0,6.28);x.fill();x.restore()}let q=W.ship,im=Math.hypot(q.vx,q.vy)>28?A.thrust:A.ship,b=cl(W.w*.055,54,76),r=im?im.height/im.width:1;if(s.shield<100){x.save();x.strokeStyle='rgba(77,231,255,.2)';x.shadowBlur=16;x.shadowColor='#4de7ff';x.beginPath();x.arc(q.x,q.y,34,0,6.28);x.stroke();x.restore()}img(im,q.x,q.y,b,b*r,q.a);x.restore()}
-function hud(){let c=cap(),p=cl(s.cargo/c*100,0,100);el('credits').textContent=fmt(s.credits);el('gems').textContent=fmt(s.gems);el('sectorName').textContent=sec()[1];el('rateValue').textContent=(rate()*sec()[3]).toFixed(2);el('operationText').textContent=W.laser?'LASER EM OPERAÇÃO':s.mining?'APROXIMANDO DO ALVO':'AGUARDANDO ORDEM';el('shieldBar').style.width=cl(s.shield,0,100)+'%';el('shieldText').textContent=Math.round(s.shield)+'%';el('cargoBar').style.width=p+'%';el('cargoText').textContent=`${Math.floor(s.cargo)} / ${c}`;let d=el('dangerText');d.textContent=W.danger;d.className='danger-text'+(W.danger.includes('IMPACTO')?' hit':W.danger.includes('DESVIO')?' warn':'');mine.textContent=s.mining?'PAUSAR MINERAÇÃO':'INICIAR MINERAÇÃO';mine.classList.toggle('active',s.mining);el('soundButton').textContent=s.sound?'🔊':'🔇'}
-function panel(){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(tab==='cargo')pc.innerHTML=`<div class="panel-title"><h2>Carga</h2><span>${Math.floor(s.cargo)} / ${cap()}</span></div><div class="resource-list">${Object.entries(R).map(([k,r])=>`<div class="resource-row"><span>${r[0]}</span><strong>${Math.floor(s.inventory[k]||0)}</strong><em>${r[1]} C</em></div>`).join('')}</div><button class="panel-action" data-action="sell">Vender carga por Credits</button>`;else if(tab==='ship')pc.innerHTML=`<div class="panel-title"><h2>Rusty Miner I</h2><span>Nível ${s.shipLevel}</span></div><div class="stats-grid"><div class="stat-card"><span>LASER</span><b>${rate().toFixed(2)}/s</b></div><div class="stat-card"><span>CARGO</span><b>${cap()}</b></div><div class="stat-card"><span>REFINO</span><b>${Math.round(eff()*100)}%</b></div></div><div class="upgrade-list">${[['laser','Laser','+0,35 minério/s'],['cargo','Cargueiro','+40 capacidade'],['efficiency','Refino','+5% valor']].map(a=>`<button class="upgrade" data-upgrade="${a[0]}"><span>${a[1]}</span><small>${a[2]}</small><b>${fmt(cost(a[0]))} C</b></button>`).join('')}</div>`;else pc.innerHTML=`<div class="panel-title"><h2>Market P2P</h2><span>SIMULADO</span></div><p class="market-note">Nenhum depósito ou saque real está ativo nesta Alpha.</p><div class="market-card"><div><strong>50 Titanium</strong><span>Ordem de compra</span></div><b>120 Gems</b><button data-action="ms">Vender</button></div><div class="market-card"><div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div><b>85 Gems</b><button data-action="mb">Comprar</button></div><div class="fee-note">Taxa simulada do Market: <b>10%</b>.</div>`}
-function sectors(){el('sectorList').innerHTML=SE.map(v=>{let u=s.credits>=v[2]||v[0]==='sol'||s.sector===v[0];return`<button class="sector-option" data-sector="${v[0]}" ${u?'':'disabled'}><span><strong>${v[1]}</strong><small>${v[4]}</small></span><b>${u?'x'+v[3].toFixed(1):fmt(v[2])+' C'}</b></button>`}).join('')}
-function sell(){if(s.cargo<=0)return toast('Sua carga está vazia.');let t=0;for(let k in s.inventory)t+=R[k][1]*s.inventory[k];t=Math.round(t*eff()*sec()[3]);s.credits+=t;for(let k in s.inventory)s.inventory[k]=0;s.cargo=0;snd('cash');toast(`Carga vendida por ${fmt(t)} Credits.`);save();panel()}
-function up(t){let c=cost(t);if(s.credits<c)return toast('Credits insuficientes.');s.credits-=c;if(t==='laser')s.laserLevel++;if(t==='cargo')s.cargoLevel++;if(t==='efficiency')s.efficiencyLevel++;s.shipLevel=Math.max(1,Math.floor((s.laserLevel+s.cargoLevel+s.efficiencyLevel)/3));snd('up');toast('Upgrade instalado.');save();panel()}
-function ms(){if(s.inventory.titanium<50)return toast('Você precisa de 50 Titanium.');s.inventory.titanium-=50;s.cargo=Math.max(0,s.cargo-50);s.gems+=108;snd('cash');toast('Ordem concluída: +108 Gems após 10% de taxa.');save();panel()}function mb(){if(s.gems<85)return toast('Gems insuficientes. Este saldo é simulado.');s.gems-=85;s.laserLevel+=2;snd('up');toast('Mining Core Mk-I instalado: Laser +2 níveis.');save();panel()}
-function toast(m){let q=el('toast');q.textContent=m;q.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>q.classList.remove('show'),2400)}
-function ac(){if(!s.sound)return null;if(!audio){let C=window.AudioContext||window.webkitAudioContext;if(!C)return null;audio=new C}if(audio.state==='suspended')audio.resume();return audio}function tone(f,d,g=.03,t='sine',sl=0){let a=ac();if(!a)return;let o=a.createOscillator(),n=a.createGain(),z=a.currentTime;o.type=t;o.frequency.setValueAtTime(f,z);if(sl)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+sl),z+d);n.gain.setValueAtTime(g,z);n.gain.exponentialRampToValueAtTime(.0001,z+d);o.connect(n);n.connect(a.destination);o.start(z);o.stop(z+d)}function snd(k){if(!s.sound)return;if(k==='start'){tone(180,.08,.03,'sawtooth',120);setTimeout(()=>tone(330,.09,.02,'sine',90),55)}if(k==='break'){tone(90,.18,.05,'sawtooth',-35);tone(460,.12,.02,'triangle',-180)}if(k==='hit')tone(72,.16,.05,'square',-25);if(k==='cash')tone(520,.08,.02,'sine',140);if(k==='up')tone(260,.1,.025,'triangle',180)}
-function loop(n){let dt=Math.min(.05,Math.max(.001,(n-last)/1000));last=n;update(dt);draw();hud();requestAnimationFrame(loop)}
-mine.onclick=()=>{ac();if(!s.mining&&s.cargo>=cap())return toast('Carga cheia.');if(!s.mining&&W.ship.rec>0)return toast('A nave ainda está recuperando o escudo.');s.mining=!s.mining;snd('start');save()};el('soundButton').onclick=()=>{s.sound=!s.sound;if(s.sound){ac();tone(420,.06,.02,'sine',80)}save();hud()};document.querySelector('.tabs').onclick=e=>{let b=e.target.closest('[data-tab]');if(b){tab=b.dataset.tab;panel()}};pc.onclick=e=>{let u=e.target.closest('[data-upgrade]');if(u)return up(u.dataset.upgrade);let a=e.target.closest('[data-action]')?.dataset.action;if(a==='sell')sell();if(a==='ms')ms();if(a==='mb')mb()};el('sectorButton').onclick=()=>{sectors();el('sectorModal').hidden=false};el('closeSector').onclick=()=>el('sectorModal').hidden=true;el('sectorModal').onclick=e=>{let b=e.target.closest('[data-sector]');if(b&&!b.disabled){s.sector=b.dataset.sector;el('sectorModal').hidden=true;W.target=null;W.resp=.15;save();toast('Rota definida: '+sec()[1]);panel()}else if(e.target===el('sectorModal'))el('sectorModal').hidden=true};addEventListener('resize',resize,{passive:true});addEventListener('beforeunload',save);document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});
-offline();resize();panel();sectors();hud();assets().then(()=>requestAnimationFrame(loop));
+(() => {
+  'use strict';
+
+  const SAVE_KEY = 'starforge-alpha-0.6';
+  const OLD_SAVE_KEY = 'starforge-alpha-0.1';
+  const el = id => document.getElementById(id);
+  const canvas = el('spaceCanvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const panelContent = el('panelContent');
+  const mineButton = el('mineButton');
+
+  const RESOURCES = {
+    iron: ['Iron Ore', 3],
+    nickel: ['Nickel', 7],
+    cobalt: ['Cobalt', 13],
+    titanium: ['Titanium', 28],
+    crystal: ['Crystal', 65],
+  };
+
+  const SECTORS = [
+    ['sol', 'Sol Belt', 0, 1, 'Órbita segura · minérios básicos'],
+    ['red', 'Red Veil', 1400, 1.7, 'Nebulosa hostil · mais Titanium'],
+    ['void', 'Void Reach', 5200, 2.8, 'Fronteira profunda · Crystal abundante'],
+  ];
+
+  const SPRITES = {
+    ship: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 92"><g stroke="#07101a" stroke-width="5" stroke-linejoin="round"><path fill="#273241" d="M50 7 66 35 86 45 73 68 60 61 57 82 43 82 40 61 27 68 14 45 34 35Z"/><path fill="#364455" d="M50 14 59 39 50 55 41 39Z"/><path fill="#5ee9ff" d="M50 21 55 39 50 47 45 39Z"/><path fill="#45ddff" d="M18 45h16v6H18zm48 0h16v6H66z"/></g></svg>`,
+    thrust: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#fff"/><stop offset=".3" stop-color="#4de7ff"/><stop offset="1" stop-color="#4de7ff" stop-opacity="0"/></linearGradient></defs><path fill="url(#g)" d="M40 76 50 125 60 76Z"/><g stroke="#07101a" stroke-width="5" stroke-linejoin="round"><path fill="#273241" d="M50 7 66 35 86 45 73 68 60 61 57 82 43 82 40 61 27 68 14 45 34 35Z"/><path fill="#364455" d="M50 14 59 39 50 55 41 39Z"/><path fill="#5ee9ff" d="M50 21 55 39 50 47 45 39Z"/><path fill="#45ddff" d="M18 45h16v6H18zm48 0h16v6H66z"/></g></svg>`,
+    rock: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 112"><path fill="#303846" stroke="#121820" stroke-width="6" d="M21 14 48 5 79 9 105 28 114 56 103 85 78 105 44 107 14 91 5 61 9 35Z"/><path fill="#424b59" d="m21 14 30 9 20-14 22 22-18 20-28-6-18 18-20-28Z"/><g fill="#171d25"><ellipse cx="81" cy="35" rx="12" ry="9"/><ellipse cx="37" cy="74" rx="11" ry="9"/><ellipse cx="84" cy="78" rx="8" ry="6"/></g></svg>`,
+    crystal: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 104"><path fill="#303946" stroke="#111820" stroke-width="6" d="M18 12 48 5 78 11 103 31 107 61 91 88 61 99 28 92 7 69 6 39Z"/><path fill="#404b59" d="m18 12 30 9 17-10 24 21-14 19-24-2-18 18-24-17 5-19Z"/><path d="M24 75 38 57 51 61 62 43 78 48 93 27" fill="none" stroke="#3ee9ff" stroke-width="5"/><g fill="#4de7ff"><path d="m76 25 10-14 7 18-9 9Z"/><path d="m31 73 8-12 7 14-8 9Z"/><path d="m66 70 9-14 8 18-10 8Z"/></g></svg>`,
+    frag: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 46"><path fill="#3a4452" stroke="#141b24" stroke-width="4" d="m7 11 19-7 16 12-4 20-18 6L5 30Z"/><path fill="#505b69" d="m10 13 16-5 7 10-12 10-12-4Z"/></svg>`,
+    hit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><path fill="#4de7ff" stroke="#dffcff" stroke-width="3" d="m40 5 7 22 20-9-12 19 20 8-22 5 7 21-16-15-12 19 1-23-23 3 19-13-17-15 22 6Z"/><circle cx="40" cy="41" r="8" fill="#fff"/></svg>`,
+  };
+
+  let assetsMap = {};
+  let activeTab = 'cargo';
+  let toastTimer = 0;
+  let audioContext = null;
+  let lastFrame = performance.now();
+  let nextEntityId = 1;
+
+  const defaultState = () => ({
+    credits: 260,
+    gems: 35,
+    inventory: { iron: 0, nickel: 0, cobalt: 0, titanium: 0, crystal: 0 },
+    cargo: 0,
+    shipLevel: 1,
+    laserLevel: 1,
+    cargoLevel: 1,
+    efficiencyLevel: 1,
+    sector: 'sol',
+    mining: false,
+    cycleProgress: 0,
+    shield: 100,
+    sound: true,
+    lastSeen: Date.now(),
+  });
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const d = defaultState();
+      return {
+        ...d,
+        ...parsed,
+        inventory: { ...d.inventory, ...(parsed.inventory || {}) },
+        shield: Number.isFinite(parsed.shield) ? parsed.shield : 100,
+      };
+    } catch {
+      return defaultState();
+    }
+  }
+
+  let state = loadState();
+
+  const world = {
+    w: innerWidth,
+    h: innerHeight,
+    dpr: 1,
+    time: 0,
+    shake: 0,
+    stars: [],
+    particles: [],
+    fragments: [],
+    rocks: [],
+    target: null,
+    targetRespawn: 0,
+    dangerText: 'ROTA SEGURA',
+    laser: false,
+    particleTimer: 0,
+    ship: {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      angle: -Math.PI / 2,
+      avoidX: 0,
+      avoidY: 0,
+      dodgeStrength: 0,
+      dodgeHold: 0,
+      threatId: 0,
+      dodgeSide: 0,
+      hitTimer: 0,
+      recoveryTimer: 0,
+    },
+  };
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const random = (a, b) => a + Math.random() * (b - a);
+  const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  const format = n => Math.floor(n).toLocaleString('pt-BR');
+  const cargoCapacity = () => 100 + (state.cargoLevel - 1) * 40;
+  const miningRate = () => 1 + (state.laserLevel - 1) * 0.35;
+  const efficiency = () => 1 + (state.efficiencyLevel - 1) * 0.05;
+  const sector = () => SECTORS.find(s => s[0] === state.sector) || SECTORS[0];
+
+  function upgradeCost(type) {
+    const level = type === 'laser' ? state.laserLevel : type === 'cargo' ? state.cargoLevel : state.efficiencyLevel;
+    const base = type === 'laser' ? 150 : type === 'cargo' ? 200 : 300;
+    return Math.round(base * 1.62 ** (level - 1));
+  }
+
+  function saveState() {
+    state.lastSeen = Date.now();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  }
+
+  function weightedResource() {
+    const id = sector()[0];
+    const weights = id === 'red'
+      ? { iron: 43, nickel: 25, cobalt: 15, titanium: 14, crystal: 3 }
+      : id === 'void'
+        ? { iron: 24, nickel: 22, cobalt: 20, titanium: 24, crystal: 10 }
+        : { iron: 62, nickel: 23, cobalt: 10, titanium: 4, crystal: 1 };
+
+    const roll = Math.random() * 100;
+    let sum = 0;
+    for (const key in weights) {
+      sum += weights[key];
+      if (roll <= sum) return key;
+    }
+    return 'iron';
+  }
+
+  function addOre(amount) {
+    const room = cargoCapacity() - state.cargo;
+    if (room <= 0) return;
+    state.cycleProgress += Math.min(room, Math.max(0, amount));
+
+    while (state.cycleProgress >= 1 && state.cargo < cargoCapacity()) {
+      const key = weightedResource();
+      state.inventory[key] += 1;
+      state.cargo += 1;
+      state.cycleProgress -= 1;
+    }
+
+    if (state.cargo >= cargoCapacity()) {
+      state.mining = false;
+      world.laser = false;
+      toast('Carga cheia. Venda ou aumente a capacidade.');
+    }
+  }
+
+  function applyOfflineProgress() {
+    const elapsed = Math.max(0, Date.now() - (state.lastSeen || Date.now())) / 1000;
+    if (!state.mining || elapsed < 5) return;
+    const before = state.cargo;
+    addOre(Math.min(elapsed, 14400) * miningRate() * sector()[3] * 0.28);
+    const gained = Math.max(0, Math.floor(state.cargo - before));
+    if (gained) setTimeout(() => toast(`Mineração offline: +${gained} unidades`), 400);
+  }
+
+  function loadAssets() {
+    return Promise.all(Object.entries(SPRITES).map(([key, svg]) => new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => { assetsMap[key] = img; resolve(); };
+      img.onerror = resolve;
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    })));
+  }
+
+  function resize() {
+    world.dpr = Math.min(2, devicePixelRatio || 1);
+    world.w = Math.max(320, innerWidth);
+    world.h = Math.max(320, innerHeight);
+    canvas.width = world.w * world.dpr;
+    canvas.height = world.h * world.dpr;
+    canvas.style.width = world.w + 'px';
+    canvas.style.height = world.h + 'px';
+    ctx.setTransform(world.dpr, 0, 0, world.dpr, 0, 0);
+
+    if (!world.stars.length) {
+      world.stars = Array.from({ length: Math.round(clamp(world.w * world.h / 9000, 55, 150)) }, () => ({
+        x: Math.random() * world.w,
+        y: Math.random() * world.h,
+        z: random(0.25, 1),
+        phase: random(0, 7),
+      }));
+    }
+
+    if (!world.ship.x) {
+      world.ship.x = world.w * 0.72;
+      world.ship.y = world.h * 0.52;
+    }
+    if (!world.target) spawnTarget(true);
+    if (!world.rocks.length) for (let i = 0; i < 5; i++) spawnRock(true);
+  }
+
+  function spawnTarget(initial = false) {
+    const crystalChance = sector()[0] === 'void' ? 0.45 : sector()[0] === 'red' ? 0.22 : 0.08;
+    world.target = {
+      id: nextEntityId++,
+      x: initial ? world.w * 0.33 : -120,
+      y: random(world.h * 0.25, world.h * 0.68),
+      vx: initial ? random(-2, 2) : random(22, 34),
+      vy: random(-4, 4),
+      r: clamp(world.w * 0.065, 58, 92),
+      rot: random(0, Math.PI * 2),
+      spin: random(-0.12, 0.12),
+      hp: 100,
+      crystal: Math.random() < crystalChance,
+      entering: !initial,
+    };
+  }
+
+  function spawnRock(initial = false) {
+    const r = Math.random() > 0.72 ? random(26, 42) : random(14, 25);
+    const fromRight = Math.random() > 0.45;
+    world.rocks.push({
+      id: nextEntityId++,
+      x: initial ? Math.random() * world.w : fromRight ? world.w + r + 20 : -r - 20,
+      y: random(80, world.h - 90),
+      r,
+      vx: (fromRight ? -1 : 1) * random(12, 34) * (1 + sector()[3] * 0.08),
+      vy: random(-8, 8),
+      rot: random(0, Math.PI * 2),
+      spin: random(-0.4, 0.4),
+    });
+  }
+
+  function burst(px, py, count, color) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = random(30, 180);
+      world.particles.push({
+        x: px,
+        y: py,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        life: random(0.25, 0.85),
+        size: random(1, 4),
+        color,
+      });
+    }
+  }
+
+  function smashTarget() {
+    const t = world.target;
+    if (!t) return;
+
+    const count = Math.floor(random(4, 8));
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = random(45, 135);
+      world.fragments.push({
+        id: nextEntityId++,
+        x: t.x,
+        y: t.y,
+        vx: Math.cos(a) * speed + t.vx,
+        vy: Math.sin(a) * speed + t.vy,
+        r: random(7, 16),
+        rot: random(0, Math.PI * 2),
+        spin: random(-2.4, 2.4),
+        life: random(6, 10),
+        dangerous: Math.random() > 0.18,
+      });
+    }
+
+    burst(t.x, t.y, 34, t.crystal ? '#4de7ff' : '#c8d0dd');
+    world.shake = 8;
+    sound('break');
+    world.target = null;
+    world.targetRespawn = 1.1;
+  }
+
+  function predictThreat(hazard) {
+    const sh = world.ship;
+    const dx = hazard.x - sh.x;
+    const dy = hazard.y - sh.y;
+    const rvx = hazard.vx - sh.vx;
+    const rvy = hazard.vy - sh.vy;
+    const speedSq = rvx * rvx + rvy * rvy;
+
+    if (speedSq < 9) return null;
+
+    const timeToClosest = -(dx * rvx + dy * rvy) / speedSq;
+    if (timeToClosest <= 0.02 || timeToClosest > 1.8) return null;
+
+    const closestX = dx + rvx * timeToClosest;
+    const closestY = dy + rvy * timeToClosest;
+    const missDistance = Math.hypot(closestX, closestY);
+    const safeRadius = 38 + hazard.r * 1.25;
+    const currentDistance = Math.hypot(dx, dy);
+
+    if (missDistance >= safeRadius || currentDistance > 360 + hazard.r) return null;
+
+    const urgency = (1 - timeToClosest / 1.8) * (0.35 + 0.65 * (1 - missDistance / safeRadius));
+    return {
+      hazard,
+      rvx,
+      rvy,
+      closestX,
+      closestY,
+      missDistance,
+      urgency,
+    };
+  }
+
+  function updateAvoidance(dt) {
+    const sh = world.ship;
+    const hazards = [...world.fragments.filter(f => f.dangerous), ...world.rocks];
+    let best = null;
+
+    for (const hazard of hazards) {
+      const threat = predictThreat(hazard);
+      if (!threat) continue;
+      if (!best || threat.urgency > best.urgency) best = threat;
+    }
+
+    let targetX = 0;
+    let targetY = 0;
+
+    if (best) {
+      const h = best.hazard;
+      const relSpeed = Math.max(1, Math.hypot(best.rvx, best.rvy));
+      const perpX = -best.rvy / relSpeed;
+      const perpY = best.rvx / relSpeed;
+
+      if (sh.threatId !== h.id || sh.dodgeSide === 0) {
+        const sideDot = perpX * best.closestX + perpY * best.closestY;
+        sh.dodgeSide = sideDot > 0 ? -1 : 1;
+        sh.threatId = h.id;
+      }
+
+      const miss = Math.max(1, best.missDistance);
+      const awayX = -best.closestX / miss;
+      const awayY = -best.closestY / miss;
+      const lateralPower = 115 + best.urgency * 95;
+      const awayPower = 25 + best.urgency * 55;
+
+      targetX = perpX * sh.dodgeSide * lateralPower + awayX * awayPower;
+      targetY = perpY * sh.dodgeSide * lateralPower + awayY * awayPower;
+
+      const mag = Math.hypot(targetX, targetY);
+      if (mag > 185) {
+        targetX = targetX / mag * 185;
+        targetY = targetY / mag * 185;
+      }
+
+      sh.dodgeStrength = best.urgency;
+      sh.dodgeHold = 0.28;
+      world.dangerText = 'DESVIO PREDITIVO';
+    } else {
+      sh.dodgeHold = Math.max(0, sh.dodgeHold - dt);
+      if (sh.dodgeHold <= 0) {
+        sh.dodgeStrength = Math.max(0, sh.dodgeStrength - dt * 4);
+        sh.threatId = 0;
+        sh.dodgeSide = 0;
+        world.dangerText = 'ROTA SEGURA';
+      } else {
+        targetX = sh.avoidX * 0.78;
+        targetY = sh.avoidY * 0.78;
+        world.dangerText = 'DESVIO PREDITIVO';
+      }
+    }
+
+    const response = 1 - Math.exp(-dt * (best ? 8.5 : 4));
+    sh.avoidX += (targetX - sh.avoidX) * response;
+    sh.avoidY += (targetY - sh.avoidY) * response;
+  }
+
+  function handleCollisions() {
+    const sh = world.ship;
+    if (sh.hitTimer > 0) return;
+
+    const hazards = [...world.fragments, ...world.rocks];
+    for (const h of hazards) {
+      if (distance(sh.x, sh.y, h.x, h.y) < 23 + h.r * 0.78) {
+        state.shield = clamp(state.shield - (h.r > 28 ? 24 : random(8, 15)), 0, 100);
+        sh.hitTimer = 0.65;
+        h.vx *= -1.15;
+        h.vy *= -1.15;
+        burst(sh.x, sh.y, 15, '#ff89a2');
+        world.shake = 10;
+        world.dangerText = 'IMPACTO NO ESCUDO';
+        sound('hit');
+
+        if (state.shield <= 0) {
+          state.mining = false;
+          world.laser = false;
+          sh.recoveryTimer = 3.2;
+          toast('Escudo colapsou. Recuo automático.');
+        }
+        break;
+      }
+    }
+  }
+
+  function updateShip(dt) {
+    const sh = world.ship;
+    sh.hitTimer = Math.max(0, sh.hitTimer - dt);
+
+    if (sh.recoveryTimer > 0) {
+      sh.recoveryTimer -= dt;
+      if (sh.recoveryTimer <= 0) {
+        state.shield = 38;
+        toast('Escudo reiniciado em 38%.');
+      }
+    } else if (state.shield < 100 && sh.hitTimer <= 0) {
+      state.shield = clamp(state.shield + dt * 4.5, 0, 100);
+    }
+
+    updateAvoidance(dt);
+
+    let baseX = world.w * 0.72;
+    let baseY = world.h * 0.53;
+
+    if (state.mining && world.target && sh.recoveryTimer <= 0) {
+      baseX = clamp(world.target.x + world.target.r + clamp(world.w * 0.105, 92, 150), 80, world.w - 80);
+      baseY = world.target.y;
+    }
+
+    const targetX = baseX + sh.avoidX;
+    const targetY = baseY + sh.avoidY;
+    const dx = targetX - sh.x;
+    const dy = targetY - sh.y;
+    const d = Math.hypot(dx, dy);
+    const dodging = Math.hypot(sh.avoidX, sh.avoidY) > 12;
+    const maxSpeed = dodging ? 215 : 130;
+    const speed = Math.min(maxSpeed, d * 2.4);
+    const desiredVx = d > 1 ? dx / d * speed : 0;
+    const desiredVy = d > 1 ? dy / d * speed : 0;
+    const velocityResponse = 1 - Math.exp(-dt * (dodging ? 6.2 : 4.8));
+
+    sh.vx += (desiredVx - sh.vx) * velocityResponse;
+    sh.vy += (desiredVy - sh.vy) * velocityResponse;
+    sh.x = clamp(sh.x + sh.vx * dt, 35, world.w - 35);
+    sh.y = clamp(sh.y + sh.vy * dt, 72, world.h - 45);
+
+    const faceX = world.target ? world.target.x : sh.x - 1;
+    const faceY = world.target ? world.target.y : sh.y;
+    const desiredAngle = Math.atan2(faceY - sh.y, faceX - sh.x) + Math.PI / 2;
+    const angleDiff = ((desiredAngle - sh.angle + Math.PI) % (Math.PI * 2)) - Math.PI;
+    sh.angle += angleDiff * Math.min(1, dt * 7.5);
+
+    const targetDistance = world.target ? distance(sh.x, sh.y, world.target.x, world.target.y) : Infinity;
+    const laserRange = clamp(world.w * 0.34, 260, 520);
+    const aimedEnough = Math.abs(angleDiff) < 0.62;
+
+    // O laser continua ativo durante o desvio, desde que haja alcance e mira suficiente.
+    world.laser = !!(
+      state.mining &&
+      world.target &&
+      sh.recoveryTimer <= 0 &&
+      state.cargo < cargoCapacity() &&
+      targetDistance <= laserRange &&
+      aimedEnough
+    );
+  }
+
+  function updateWorld(dt) {
+    world.time += dt;
+    world.shake = Math.max(0, world.shake - dt * 22);
+
+    for (const star of world.stars) {
+      star.x -= dt * (3 + star.z * 9);
+      star.phase += dt * (1 + star.z);
+      if (star.x < -2) {
+        star.x = world.w + 2;
+        star.y = Math.random() * world.h;
+      }
+    }
+
+    if (world.target) {
+      const t = world.target;
+      t.rot += t.spin * dt;
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+
+      if (t.entering && t.x >= world.w * 0.32) {
+        t.entering = false;
+        t.vx = random(-3, 3);
+      }
+      if (t.y < 120 || t.y > world.h - 100) t.vy *= -1;
+
+      if (world.laser) {
+        t.hp -= (8 + miningRate() * 5) * sector()[3] * dt;
+        addOre(miningRate() * sector()[3] * dt);
+        world.particleTimer -= dt;
+        if (world.particleTimer <= 0) {
+          world.particleTimer = 0.035;
+          burst(t.x, t.y, 2, Math.random() > 0.5 ? '#4de7ff' : '#ffd36f');
+        }
+        if (t.hp <= 0) smashTarget();
+      }
+    } else {
+      world.targetRespawn -= dt;
+      if (world.targetRespawn <= 0) spawnTarget();
+    }
+
+    for (const rock of world.rocks) {
+      rock.x += rock.vx * dt;
+      rock.y += rock.vy * dt;
+      rock.rot += rock.spin * dt;
+    }
+    world.rocks = world.rocks.filter(r => r.x > -100 && r.x < world.w + 100 && r.y > -100 && r.y < world.h + 100);
+    while (world.rocks.length < 5) spawnRock();
+
+    for (const f of world.fragments) {
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.rot += f.spin * dt;
+      f.life -= dt;
+    }
+    world.fragments = world.fragments.filter(f => f.life > 0 && f.x > -100 && f.x < world.w + 100 && f.y > -100 && f.y < world.h + 100);
+
+    for (const p of world.particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.98;
+      p.vy *= 0.98;
+      p.life -= dt;
+    }
+    world.particles = world.particles.filter(p => p.life > 0);
+
+    updateShip(dt);
+    handleCollisions();
+  }
+
+  function drawImageRotated(img, px, py, w, h, angle, alpha = 1) {
+    if (!img) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(px, py);
+    ctx.rotate(angle);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    const gradient = ctx.createRadialGradient(world.w * 0.27, world.h * 0.34, 0, world.w * 0.27, world.h * 0.34, world.w * 0.7);
+    const tint = sector()[0] === 'red' ? 'rgba(120,30,70,.18)' : sector()[0] === 'void' ? 'rgba(63,40,140,.22)' : 'rgba(18,74,120,.20)';
+    gradient.addColorStop(0, tint);
+    gradient.addColorStop(0.48, '#050b16');
+    gradient.addColorStop(1, '#02040a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, world.w, world.h);
+
+    for (const star of world.stars) {
+      ctx.globalAlpha = clamp(0.2 + star.z * 0.65 + Math.sin(star.phase) * 0.08, 0.12, 0.9);
+      ctx.fillStyle = star.z > 0.72 ? '#bdeeff' : '#fff';
+      const size = 0.55 + star.z * 1.25;
+      ctx.fillRect(star.x, star.y, size, size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRock(rock, isTarget = false) {
+    drawImageRotated(
+      isTarget ? (rock.crystal ? assetsMap.crystal : assetsMap.rock) : assetsMap.rock,
+      rock.x,
+      rock.y,
+      rock.r * 2.15,
+      rock.r * 2.15,
+      rock.rot,
+      isTarget ? 1 : 0.72,
+    );
+
+    if (isTarget) {
+      const hp = clamp(rock.hp / 100, 0, 1);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(77,231,255,.18)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(rock.x, rock.y, rock.r * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = rock.crystal ? '#4de7ff' : '#90a8c7';
+      ctx.beginPath();
+      ctx.arc(rock.x, rock.y, rock.r * 0.92, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hp);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawLaser() {
+    if (!world.laser || !world.target) return;
+
+    const sh = world.ship;
+    const t = world.target;
+    const dx = t.x - sh.x;
+    const dy = t.y - sh.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    const ux = dx / d;
+    const uy = dy / d;
+    const startX = sh.x + ux * 28;
+    const startY = sh.y + uy * 28;
+    const endX = t.x - ux * t.r * 0.68;
+    const endY = t.y - uy * t.r * 0.68;
+    const pulse = 0.55 + Math.sin(world.time * 28) * 0.3;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(77,231,255,${0.22 + pulse * 0.2})`;
+    ctx.lineWidth = 9;
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = '#4de7ff';
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#dfffff';
+    ctx.lineWidth = 2.1 + pulse * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.restore();
+
+    drawImageRotated(assetsMap.hit, endX, endY, 34 + pulse * 5, 34 + pulse * 5, world.time * 2.4, 0.82);
+  }
+
+  function drawWorld() {
+    ctx.setTransform(world.dpr, 0, 0, world.dpr, 0, 0);
+    drawBackground();
+    ctx.save();
+
+    if (world.shake) ctx.translate(random(-world.shake, world.shake), random(-world.shake, world.shake));
+
+    world.rocks.forEach(r => drawRock(r));
+    if (world.target) drawRock(world.target, true);
+    for (const f of world.fragments) drawImageRotated(assetsMap.frag, f.x, f.y, f.r * 2.3, f.r * 2.3, f.rot, 0.95);
+
+    drawLaser();
+
+    for (const p of world.particles) {
+      ctx.save();
+      ctx.globalAlpha = clamp(p.life / 0.55, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const sh = world.ship;
+    const movingFast = Math.hypot(sh.vx, sh.vy) > 28;
+    const img = movingFast ? assetsMap.thrust : assetsMap.ship;
+    const baseSize = clamp(world.w * 0.055, 54, 76);
+    const ratio = img ? img.height / img.width : 1;
+
+    if (state.shield < 100) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(77,231,255,.2)';
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = '#4de7ff';
+      ctx.beginPath();
+      ctx.arc(sh.x, sh.y, 34, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    drawImageRotated(img, sh.x, sh.y, baseSize, baseSize * ratio, sh.angle);
+    ctx.restore();
+  }
+
+  function updateHud() {
+    const cap = cargoCapacity();
+    const cargoPct = clamp(state.cargo / cap * 100, 0, 100);
+    const sh = world.ship;
+    const dodging = Math.hypot(sh.avoidX, sh.avoidY) > 12;
+
+    el('credits').textContent = format(state.credits);
+    el('gems').textContent = format(state.gems);
+    el('sectorName').textContent = sector()[1];
+    el('rateValue').textContent = (miningRate() * sector()[3]).toFixed(2);
+
+    if (world.laser && dodging) el('operationText').textContent = 'MINERANDO · DESVIO';
+    else if (world.laser) el('operationText').textContent = 'LASER EM OPERAÇÃO';
+    else if (state.mining) el('operationText').textContent = 'APROXIMANDO DO ALVO';
+    else el('operationText').textContent = 'AGUARDANDO ORDEM';
+
+    el('shieldBar').style.width = clamp(state.shield, 0, 100) + '%';
+    el('shieldText').textContent = Math.round(state.shield) + '%';
+    el('cargoBar').style.width = cargoPct + '%';
+    el('cargoText').textContent = `${Math.floor(state.cargo)} / ${cap}`;
+
+    const danger = el('dangerText');
+    danger.textContent = world.dangerText;
+    danger.className = 'danger-text' + (world.dangerText.includes('IMPACTO') ? ' hit' : world.dangerText.includes('DESVIO') ? ' warn' : '');
+
+    mineButton.textContent = state.mining ? 'PAUSAR MINERAÇÃO' : 'INICIAR MINERAÇÃO';
+    mineButton.classList.toggle('active', state.mining);
+    el('soundButton').textContent = state.sound ? '🔊' : '🔇';
+  }
+
+  function renderPanel() {
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
+
+    if (activeTab === 'cargo') {
+      panelContent.innerHTML = `<div class="panel-title"><h2>Carga</h2><span>${Math.floor(state.cargo)} / ${cargoCapacity()}</span></div><div class="resource-list">${Object.entries(RESOURCES).map(([k, r]) => `<div class="resource-row"><span>${r[0]}</span><strong>${Math.floor(state.inventory[k] || 0)}</strong><em>${r[1]} C</em></div>`).join('')}</div><button class="panel-action" data-action="sell">Vender carga por Credits</button>`;
+    } else if (activeTab === 'ship') {
+      panelContent.innerHTML = `<div class="panel-title"><h2>Rusty Miner I</h2><span>Nível ${state.shipLevel}</span></div><div class="stats-grid"><div class="stat-card"><span>LASER</span><b>${miningRate().toFixed(2)}/s</b></div><div class="stat-card"><span>CARGO</span><b>${cargoCapacity()}</b></div><div class="stat-card"><span>REFINO</span><b>${Math.round(efficiency() * 100)}%</b></div></div><div class="upgrade-list">${[['laser', 'Laser', '+0,35 minério/s'], ['cargo', 'Cargueiro', '+40 capacidade'], ['efficiency', 'Refino', '+5% valor']].map(a => `<button class="upgrade" data-upgrade="${a[0]}"><span>${a[1]}</span><small>${a[2]}</small><b>${format(upgradeCost(a[0]))} C</b></button>`).join('')}</div>`;
+    } else {
+      panelContent.innerHTML = `<div class="panel-title"><h2>Market P2P</h2><span>SIMULADO</span></div><p class="market-note">Nenhum depósito ou saque real está ativo nesta Alpha.</p><div class="market-card"><div><strong>50 Titanium</strong><span>Ordem de compra</span></div><b>120 Gems</b><button data-action="marketSell">Vender</button></div><div class="market-card"><div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div><b>85 Gems</b><button data-action="marketBuy">Comprar</button></div><div class="fee-note">Taxa simulada do Market: <b>10%</b>.</div>`;
+    }
+  }
+
+  function renderSectors() {
+    el('sectorList').innerHTML = SECTORS.map(v => {
+      const unlocked = state.credits >= v[2] || v[0] === 'sol' || state.sector === v[0];
+      return `<button class="sector-option" data-sector="${v[0]}" ${unlocked ? '' : 'disabled'}><span><strong>${v[1]}</strong><small>${v[4]}</small></span><b>${unlocked ? 'x' + v[3].toFixed(1) : format(v[2]) + ' C'}</b></button>`;
+    }).join('');
+  }
+
+  function sellCargo() {
+    if (state.cargo <= 0) return toast('Sua carga está vazia.');
+    let total = 0;
+    for (const k in state.inventory) total += RESOURCES[k][1] * state.inventory[k];
+    total = Math.round(total * efficiency() * sector()[3]);
+    state.credits += total;
+    for (const k in state.inventory) state.inventory[k] = 0;
+    state.cargo = 0;
+    sound('cash');
+    toast(`Carga vendida por ${format(total)} Credits.`);
+    saveState();
+    renderPanel();
+  }
+
+  function buyUpgrade(type) {
+    const cost = upgradeCost(type);
+    if (state.credits < cost) return toast('Credits insuficientes.');
+    state.credits -= cost;
+    if (type === 'laser') state.laserLevel += 1;
+    if (type === 'cargo') state.cargoLevel += 1;
+    if (type === 'efficiency') state.efficiencyLevel += 1;
+    state.shipLevel = Math.max(1, Math.floor((state.laserLevel + state.cargoLevel + state.efficiencyLevel) / 3));
+    sound('up');
+    toast('Upgrade instalado.');
+    saveState();
+    renderPanel();
+  }
+
+  function marketSell() {
+    if (state.inventory.titanium < 50) return toast('Você precisa de 50 Titanium.');
+    state.inventory.titanium -= 50;
+    state.cargo = Math.max(0, state.cargo - 50);
+    state.gems += 108;
+    sound('cash');
+    toast('Ordem concluída: +108 Gems após 10% de taxa.');
+    saveState();
+    renderPanel();
+  }
+
+  function marketBuy() {
+    if (state.gems < 85) return toast('Gems insuficientes. Este saldo é simulado.');
+    state.gems -= 85;
+    state.laserLevel += 2;
+    sound('up');
+    toast('Mining Core Mk-I instalado: Laser +2 níveis.');
+    saveState();
+    renderPanel();
+  }
+
+  function toast(message) {
+    const t = el('toast');
+    t.textContent = message;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  function getAudioContext() {
+    if (!state.sound) return null;
+    if (!audioContext) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioContext = new Ctx();
+    }
+    if (audioContext.state === 'suspended') audioContext.resume();
+    return audioContext;
+  }
+
+  function tone(freq, duration, gain = 0.03, type = 'sine', slide = 0) {
+    const ac = getAudioContext();
+    if (!ac) return;
+    const osc = ac.createOscillator();
+    const amp = ac.createGain();
+    const now = ac.currentTime;
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), now + duration);
+    amp.gain.setValueAtTime(gain, now);
+    amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(amp);
+    amp.connect(ac.destination);
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  function sound(kind) {
+    if (!state.sound) return;
+    if (kind === 'start') {
+      tone(180, 0.08, 0.03, 'sawtooth', 120);
+      setTimeout(() => tone(330, 0.09, 0.02, 'sine', 90), 55);
+    }
+    if (kind === 'break') {
+      tone(90, 0.18, 0.05, 'sawtooth', -35);
+      tone(460, 0.12, 0.02, 'triangle', -180);
+    }
+    if (kind === 'hit') tone(72, 0.16, 0.05, 'square', -25);
+    if (kind === 'cash') tone(520, 0.08, 0.02, 'sine', 140);
+    if (kind === 'up') tone(260, 0.1, 0.025, 'triangle', 180);
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
+    lastFrame = now;
+    updateWorld(dt);
+    drawWorld();
+    updateHud();
+    requestAnimationFrame(loop);
+  }
+
+  mineButton.onclick = () => {
+    getAudioContext();
+    if (!state.mining && state.cargo >= cargoCapacity()) return toast('Carga cheia.');
+    if (!state.mining && world.ship.recoveryTimer > 0) return toast('A nave ainda está recuperando o escudo.');
+    state.mining = !state.mining;
+    sound('start');
+    saveState();
+  };
+
+  el('soundButton').onclick = () => {
+    state.sound = !state.sound;
+    if (state.sound) {
+      getAudioContext();
+      tone(420, 0.06, 0.02, 'sine', 80);
+    }
+    saveState();
+    updateHud();
+  };
+
+  document.querySelector('.tabs').onclick = e => {
+    const button = e.target.closest('[data-tab]');
+    if (!button) return;
+    activeTab = button.dataset.tab;
+    renderPanel();
+  };
+
+  panelContent.onclick = e => {
+    const upgrade = e.target.closest('[data-upgrade]');
+    if (upgrade) return buyUpgrade(upgrade.dataset.upgrade);
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'sell') sellCargo();
+    if (action === 'marketSell') marketSell();
+    if (action === 'marketBuy') marketBuy();
+  };
+
+  el('sectorButton').onclick = () => {
+    renderSectors();
+    el('sectorModal').hidden = false;
+  };
+
+  el('closeSector').onclick = () => { el('sectorModal').hidden = true; };
+
+  el('sectorModal').onclick = e => {
+    const button = e.target.closest('[data-sector]');
+    if (button && !button.disabled) {
+      state.sector = button.dataset.sector;
+      el('sectorModal').hidden = true;
+      world.target = null;
+      world.targetRespawn = 0.15;
+      saveState();
+      toast('Rota definida: ' + sector()[1]);
+      renderPanel();
+    } else if (e.target === el('sectorModal')) {
+      el('sectorModal').hidden = true;
+    }
+  };
+
+  addEventListener('resize', resize, { passive: true });
+  addEventListener('beforeunload', saveState);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveState(); });
+
+  applyOfflineProgress();
+  resize();
+  renderPanel();
+  renderSectors();
+  updateHud();
+  loadAssets().then(() => requestAnimationFrame(loop));
 })();
