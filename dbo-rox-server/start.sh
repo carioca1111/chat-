@@ -7,6 +7,7 @@ SERVER="$RUNTIME/server"
 DB_SQL="$RUNTIME/database.sql"
 DB_DIR="/var/lib/mysql"
 DB_USER="dborox"
+MARIADB_SAFE_PID=""
 
 mkdir -p /run/mysqld
 chown -R mysql:mysql /run/mysqld "$DB_DIR"
@@ -16,37 +17,60 @@ if [ ! -d "$DB_DIR/mysql" ]; then
   mariadb-install-db --user=mysql --datadir="$DB_DIR" >/dev/null
 fi
 
-# Extreme low-memory profile for the disposable development DB. The original
-# 2000x2000 DBO Rox map needs nearly the entire 512 MB free instance by itself.
-mysqld_safe \
-  --datadir="$DB_DIR" \
-  --bind-address=127.0.0.1 \
-  --skip-networking=0 \
-  --skip-name-resolve \
-  --performance-schema=OFF \
-  --innodb-buffer-pool-size=8M \
-  --innodb-log-buffer-size=1M \
-  --innodb-flush-method=O_DIRECT \
-  --key-buffer-size=512K \
-  --aria-pagecache-buffer-size=2M \
-  --query-cache-size=0 \
-  --table-open-cache=64 \
-  --thread-cache-size=0 \
-  --host-cache-size=0 \
-  --tmp-table-size=1M \
-  --max-heap-table-size=1M \
-  --sort-buffer-size=256K \
-  --read-buffer-size=128K \
-  --read-rnd-buffer-size=256K \
-  --join-buffer-size=128K \
-  --max-connections=5 \
-  >/tmp/mariadb.log 2>&1 &
+start_mariadb() {
+  : > /tmp/mariadb.log
+  mysqld_safe \
+    --datadir="$DB_DIR" \
+    --bind-address=127.0.0.1 \
+    --skip-networking=0 \
+    --skip-name-resolve \
+    --performance-schema=OFF \
+    --innodb-buffer-pool-size=8M \
+    --innodb-log-buffer-size=1M \
+    --innodb-flush-method=O_DIRECT \
+    --key-buffer-size=512K \
+    --aria-pagecache-buffer-size=2M \
+    --query-cache-size=0 \
+    --table-open-cache=64 \
+    --thread-cache-size=0 \
+    --host-cache-size=0 \
+    --tmp-table-size=1M \
+    --max-heap-table-size=1M \
+    --sort-buffer-size=256K \
+    --read-buffer-size=128K \
+    --read-rnd-buffer-size=256K \
+    --join-buffer-size=128K \
+    --max-connections=5 \
+    >/tmp/mariadb.log 2>&1 &
+  MARIADB_SAFE_PID=$!
 
-for i in $(seq 1 60); do
-  if mariadb-admin ping -uroot --silent >/dev/null 2>&1; then break; fi
-  sleep 1
-  if [ "$i" -eq 60 ]; then cat /tmp/mariadb.log; exit 1; fi
-done
+  for i in $(seq 1 60); do
+    if mariadb-admin ping -uroot --silent >/dev/null 2>&1; then
+      echo "[db] MariaDB ready"
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "[db] MariaDB failed to start"
+  cat /tmp/mariadb.log
+  return 1
+}
+
+stop_mariadb_for_map() {
+  echo "[memory] pausing MariaDB while DBO Rox 2000x2000 map loads"
+  mariadb-admin shutdown -uroot >/dev/null 2>&1 || true
+  for i in $(seq 1 40); do
+    if ! mariadb-admin ping -uroot --silent >/dev/null 2>&1; then
+      echo "[memory] MariaDB stopped; RAM released to TFS map loader"
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "[memory] warning: MariaDB did not fully stop before map load"
+}
+
+start_mariadb
 
 mariadb -uroot -e "CREATE DATABASE IF NOT EXISTS dborox CHARACTER SET latin1 COLLATE latin1_swedish_ci;"
 
@@ -115,11 +139,12 @@ TFS_PID=$!
 
 tail -n +1 -F /tmp/tfs.log &
 TAIL_PID=$!
+DB_PAUSED_FOR_MAP=0
 
 cleanup() {
-  kill "$TAIL_PID" >/dev/null 2>&1 || true
-  kill "$TFS_PID" >/dev/null 2>&1 || true
-  kill "$BRIDGE_PID" >/dev/null 2>&1 || true
+  if [ -n "${TAIL_PID:-}" ] && [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
+  if [ -n "${TFS_PID:-}" ] && [ "$TFS_PID" -gt 1 ] 2>/dev/null; then kill "$TFS_PID" >/dev/null 2>&1 || true; fi
+  if [ -n "${BRIDGE_PID:-}" ] && [ "$BRIDGE_PID" -gt 1 ] 2>/dev/null; then kill "$BRIDGE_PID" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -132,13 +157,24 @@ while true; do
     echo "[tfs] server exited during startup"
     exit 1
   fi
+
+  if [ "$DB_PAUSED_FOR_MAP" -eq 0 ] && grep -q 'Loading map and spawns' /tmp/tfs.log; then
+    stop_mariadb_for_map
+    DB_PAUSED_FOR_MAP=1
+  fi
+
   if (echo >/dev/tcp/127.0.0.1/7172) >/dev/null 2>&1; then
+    if [ "$DB_PAUSED_FOR_MAP" -eq 1 ]; then
+      echo "[memory] map finished; restarting MariaDB before accepting Guest"
+      start_mariadb
+      DB_PAUSED_FOR_MAP=0
+    fi
     echo "[tfs] game port 7172 ready"
-    kill "$TAIL_PID" >/dev/null 2>&1 || true
-    TAIL_PID=0
+    if [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
+    TAIL_PID=""
     break
   fi
-  sleep 1
+  sleep 0.5
 done
 
 while true; do
