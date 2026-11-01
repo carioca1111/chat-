@@ -45,7 +45,8 @@ echo "[db] Guest ready"
 
 cd "$SERVER"
 chmod +x ./theforgottenserver
-./theforgottenserver > /tmp/tfs.log 2>&1 &
+chown -R otserver:otserver "$SERVER"
+runuser -u otserver -- ./theforgottenserver > /tmp/tfs.log 2>&1 &
 TFS_PID=$!
 
 for i in $(seq 1 90); do
