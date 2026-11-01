@@ -82,7 +82,7 @@ jobs:
             $hits = Select-String -Path $_.FullName -Pattern '854|860|8\.54|8\.60|setClientVersion|setProtocolVersion|setClientVersionOverride|things/' -ErrorAction SilentlyContinue
             foreach ($h in $hits) {
               $rel = $_.FullName.Replace((Get-Location).Path + '\','')
-              $out += "$rel:$($h.LineNumber): $($h.Line.Trim())"
+              $out += "${rel}:$($h.LineNumber): $($h.Line.Trim())"
             }
           }
           $out | Set-Content -Encoding UTF8 inspect/client-version.txt
