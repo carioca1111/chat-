@@ -4,62 +4,67 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#03060d" />
-  <title>Starforge Idle — Alpha 1.0</title>
+  <title>Starforge Idle — Alpha 1.1</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <main class="game-app" id="gameApp">
-    <canvas id="spaceCanvas" aria-label="Campo espacial de mineração"></canvas>
-
-    <header class="top-hud glass">
-      <div class="brand-block">
-        <span class="alpha-tag">ALPHA 1.0</span>
-        <strong>STARFORGE IDLE</strong>
-      </div>
-      <button id="sectorButton" class="sector-chip">
-        <span>MAPA / SETOR</span>
-        <b id="sectorName">Sol Belt</b>
-      </button>
-      <div class="wallet-strip">
-        <div><span>Credits</span><b id="credits">0</b></div>
-        <div><span>Gems</span><b id="gems">0</b></div>
-      </div>
-    </header>
-
-    <section class="flight-hud glass" aria-label="status da nave">
-      <div class="hud-line">
-        <span id="operationText">AGUARDANDO ORDEM</span>
-        <b><span id="rateValue">1.00</span>/s</b>
-      </div>
-      <div class="meter-row">
-        <span>SHIELD</span>
-        <div class="meter"><i id="shieldBar"></i></div>
-        <b id="shieldText">100%</b>
-      </div>
-      <div class="meter-row">
-        <span>CARGO</span>
-        <div class="meter cargo-meter"><i id="cargoBar"></i></div>
-        <b id="cargoText">0 / 100</b>
-      </div>
-      <div class="danger-text" id="dangerText">ROTA SEGURA</div>
+    <section class="play-area" aria-label="Área espacial">
+      <canvas id="spaceCanvas" aria-label="Campo espacial de mineração"></canvas>
+      <div class="viewport-frame" aria-hidden="true"></div>
     </section>
 
-    <aside class="control-panel glass" id="controlPanel">
-      <nav class="tabs" aria-label="painéis">
-        <button class="tab active" data-tab="cargo">CARGA</button>
-        <button class="tab" data-tab="ship">NAVE</button>
-        <button class="tab" data-tab="market">MARKET</button>
-      </nav>
-      <div class="panel-content" id="panelContent"></div>
+    <aside class="ui-shell" aria-label="Interface do jogo">
+      <header class="top-hud ui-card">
+        <div class="brand-block">
+          <span class="alpha-tag">ALPHA 1.1</span>
+          <strong>STARFORGE IDLE</strong>
+        </div>
+        <div class="wallet-strip">
+          <div><span>Credits</span><b id="credits">0</b></div>
+          <div><span>Gems</span><b id="gems">0</b></div>
+        </div>
+        <button id="sectorButton" class="sector-chip">
+          <span>MAPA / SETOR</span>
+          <b id="sectorName">Sol Belt</b>
+        </button>
+      </header>
+
+      <section class="flight-hud ui-card" aria-label="status da nave">
+        <div class="hud-line">
+          <span id="operationText">AGUARDANDO ORDEM</span>
+          <b><span id="rateValue">1.00</span>/s</b>
+        </div>
+        <div class="meter-row">
+          <span>SHIELD</span>
+          <div class="meter"><i id="shieldBar"></i></div>
+          <b id="shieldText">100%</b>
+        </div>
+        <div class="meter-row">
+          <span>CARGO</span>
+          <div class="meter cargo-meter"><i id="cargoBar"></i></div>
+          <b id="cargoText">0 / 100</b>
+        </div>
+        <div class="danger-text" id="dangerText">ROTA SEGURA</div>
+      </section>
+
+      <section class="control-panel ui-card" id="controlPanel">
+        <nav class="tabs" aria-label="painéis">
+          <button class="tab active" data-tab="cargo">CARGA</button>
+          <button class="tab" data-tab="ship">NAVE</button>
+          <button class="tab" data-tab="market">MARKET</button>
+        </nav>
+        <div class="panel-content" id="panelContent"></div>
+      </section>
+
+      <div class="action-dock ui-card">
+        <button id="soundButton" class="icon-action" aria-label="Som">🔊</button>
+        <button id="mineButton" class="mine-button">INICIAR MINERAÇÃO</button>
+      </div>
     </aside>
 
-    <div class="action-dock glass">
-      <button id="soundButton" class="icon-action" aria-label="Som">🔊</button>
-      <button id="mineButton" class="mine-button">INICIAR MINERAÇÃO</button>
-    </div>
-
     <div class="modal-backdrop map-backdrop" id="sectorModal" hidden>
-      <section class="sector-map-shell glass" role="dialog" aria-modal="true" aria-labelledby="sectorTitle">
+      <section class="sector-map-shell ui-card" role="dialog" aria-modal="true" aria-labelledby="sectorTitle">
         <header class="map-header">
           <div>
             <span class="map-kicker">NAVEGAÇÃO GALÁCTICA</span>
