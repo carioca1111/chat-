@@ -8,6 +8,7 @@ DB_SQL="$RUNTIME/database.sql"
 DB_DIR="/var/lib/mysql"
 DB_USER="dborox"
 MARIADB_SAFE_PID=""
+BRIDGE_PID=""
 
 mkdir -p /run/mysqld
 chown -R mysql:mysql /run/mysqld "$DB_DIR"
@@ -70,6 +71,13 @@ stop_mariadb_for_map() {
   echo "[memory] warning: MariaDB did not fully stop before map load"
 }
 
+start_bridge() {
+  cd "$ROOT"
+  node bridge.mjs &
+  BRIDGE_PID=$!
+  echo "[bridge] public websocket started after map load (pid $BRIDGE_PID)"
+}
+
 start_mariadb
 
 mariadb -uroot -e "CREATE DATABASE IF NOT EXISTS dborox CHARACTER SET latin1 COLLATE latin1_swedish_ci;"
@@ -112,13 +120,9 @@ echo "[db] config path: $SERVER/config.lua"
 echo "[db] final config override:"
 tail -n 8 "$SERVER/config.lua"
 
-# Open Render's public HTTP/WSS port immediately. Connections received before
-# TFS finishes loading are rejected by the TCP side and the browser retries.
-cd "$ROOT"
-node bridge.mjs &
-BRIDGE_PID=$!
-echo "[bridge] bootstrap process started (pid $BRIDGE_PID)"
-
+# Do NOT start Node yet. The 2000x2000 legacy map sits within a few MiB of the
+# free Render memory ceiling, so the websocket bridge is deferred until TFS has
+# completely loaded the map and opened game port 7172.
 cd "$SERVER"
 chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
@@ -130,7 +134,7 @@ if [ ! -f "$JEMALLOC" ]; then
   exit 1
 fi
 export MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:false,retain:false"
-echo "[tfs] allocator: $JEMALLOC"
+echo "[tfs] allocator: native OTServ pool + $JEMALLOC fallback"
 echo "[tfs] jemalloc profile: $MALLOC_CONF"
 
 runuser -u otserver -- env LD_PRELOAD="$JEMALLOC" MALLOC_CONF="$MALLOC_CONF" \
@@ -149,10 +153,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 while true; do
-  if ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
-    echo "[bridge] public bridge exited unexpectedly"
-    exit 1
-  fi
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] server exited during startup"
     exit 1
@@ -164,12 +164,17 @@ while true; do
   fi
 
   if (echo >/dev/tcp/127.0.0.1/7172) >/dev/null 2>&1; then
+    echo "[tfs] game port 7172 ready"
+
     if [ "$DB_PAUSED_FOR_MAP" -eq 1 ]; then
       echo "[memory] map finished; restarting MariaDB before accepting Guest"
       start_mariadb
       DB_PAUSED_FOR_MAP=0
     fi
-    echo "[tfs] game port 7172 ready"
+
+    # Only now pay the Node/WebSocket memory cost.
+    start_bridge
+
     if [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
     TAIL_PID=""
     break
@@ -182,7 +187,7 @@ while true; do
     echo "[tfs] game server stopped"
     exit 1
   fi
-  if ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
+  if [ -z "$BRIDGE_PID" ] || ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
     echo "[bridge] public bridge stopped"
     exit 1
   fi
