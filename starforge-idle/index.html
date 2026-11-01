@@ -4,15 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#020713" />
-  <title>Starforge Idle — Alpha 1.8</title>
+  <title>Starforge Idle — Alpha 1.8.1</title>
   <link rel="stylesheet" href="./style.css" />
   <link rel="stylesheet" href="./mobile.css" />
+  <style>.main-nav{grid-template-columns:repeat(6,minmax(80px,1fr))!important}</style>
 </head>
 <body>
   <main class="game-app" id="gameApp">
     <header class="global-header hud-panel">
       <div class="logo-block">
-        <span class="alpha-tag">ALPHA 1.8</span>
+        <span class="alpha-tag">ALPHA 1.8.1</span>
         <strong>STARFORGE <i>IDLE</i></strong>
       </div>
       <nav class="main-nav" aria-label="Navegação principal">
@@ -20,10 +21,10 @@
         <button class="nav-button tab" type="button" data-tab="market">▣ <span>Market</span></button>
         <button class="nav-button rmt-button" id="rmtButton" type="button">◆ <span>RMT</span></button>
         <button class="nav-button tab active" type="button" data-tab="cargo">▦ <span>Carga</span></button>
-        <button class="nav-button tab" type="button" data-tab="ship">⌁ <span>Nave</span></button>
         <button class="nav-button" id="navResearch" type="button">⌬ <span>Pesquisa</span></button>
         <button class="nav-button" id="navFleet" type="button">▰ <span>Hangar</span></button>
       </nav>
+      <button class="tab" type="button" data-tab="ship" hidden aria-hidden="true" tabindex="-1"></button>
       <div class="header-tools"><button id="soundButton" class="tool-button" aria-label="Som">🔊</button></div>
     </header>
 
