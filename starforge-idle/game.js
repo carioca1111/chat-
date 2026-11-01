@@ -1,20 +1,21 @@
 (() => {
   'use strict';
 
-  const SAVE_KEY = 'starforge-alpha-0.6';
-  const OLD_SAVE_KEY = 'starforge-alpha-0.1';
+  const SAVE_KEY = 'starforge-alpha-0.7';
+  const OLD_SAVE_KEYS = ['starforge-alpha-0.6', 'starforge-alpha-0.1'];
   const el = id => document.getElementById(id);
   const canvas = el('spaceCanvas');
   const ctx = canvas.getContext('2d', { alpha: false });
   const panelContent = el('panelContent');
   const mineButton = el('mineButton');
 
+  // [nome, valor em Credits, espaço por unidade]
   const RESOURCES = {
-    iron: ['Iron Ore', 3],
-    nickel: ['Nickel', 7],
-    cobalt: ['Cobalt', 13],
-    titanium: ['Titanium', 28],
-    crystal: ['Crystal', 65],
+    iron: ['Iron Ore', 3, 1],
+    nickel: ['Nickel', 7, 2],
+    cobalt: ['Cobalt', 13, 3],
+    titanium: ['Titanium', 28, 4],
+    crystal: ['Crystal', 65, 6],
   };
 
   const SECTORS = [
@@ -31,12 +32,6 @@
     frag: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 46"><path fill="#3a4452" stroke="#141b24" stroke-width="4" d="m7 11 19-7 16 12-4 20-18 6L5 30Z"/><path fill="#505b69" d="m10 13 16-5 7 10-12 10-12-4Z"/></svg>`,
     hit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><path fill="#4de7ff" stroke="#dffcff" stroke-width="3" d="m40 5 7 22 20-9-12 19 20 8-22 5 7 21-16-15-12 19 1-23-23 3 19-13-17-15 22 6Z"/><circle cx="40" cy="41" r="8" fill="#fff"/></svg>`,
   };
-
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const random = (a, b) => a + Math.random() * (b - a);
-  const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
-  const format = n => Math.floor(n).toLocaleString('pt-BR');
-  const TAU = Math.PI * 2;
 
   let assetsMap = {};
   let activeTab = 'cargo';
@@ -56,7 +51,6 @@
     efficiencyLevel: 1,
     sector: 'sol',
     mining: false,
-    cycleProgress: 0,
     shield: 100,
     sound: true,
     lastSeen: Date.now(),
@@ -64,16 +58,15 @@
 
   function loadState() {
     try {
-      const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);
+      let raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) for (const key of OLD_SAVE_KEYS) { raw = localStorage.getItem(key); if (raw) break; }
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       const d = defaultState();
-      return {
-        ...d,
-        ...parsed,
-        inventory: { ...d.inventory, ...(parsed.inventory || {}) },
-        shield: Number.isFinite(parsed.shield) ? parsed.shield : 100,
-      };
+      const merged = { ...d, ...parsed, inventory: { ...d.inventory, ...(parsed.inventory || {}) } };
+      merged.cargo = Object.entries(merged.inventory).reduce((sum, [k, n]) => sum + (RESOURCES[k]?.[2] || 1) * Math.max(0, n || 0), 0);
+      merged.shield = Number.isFinite(parsed.shield) ? parsed.shield : 100;
+      return merged;
     } catch {
       return defaultState();
     }
@@ -89,35 +82,38 @@
     shake: 0,
     stars: [],
     particles: [],
-    asteroids: [],
     fragments: [],
-    targetId: 0,
+    asteroids: [],
+    target: null,
     dangerText: 'ROTA SEGURA',
     laser: false,
     particleTimer: 0,
     spawnTimer: 0,
+    camera: { x: 0, y: 0, vx: 0, vy: 0 },
     ship: {
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: 0,
-      angle: -Math.PI / 2,
-      avoidX: 0,
-      avoidY: 0,
-      dodgeStrength: 0,
-      dodgeHold: 0,
-      threatId: 0,
-      dodgeSide: 0,
-      hitTimer: 0,
-      recoveryTimer: 0,
+      x: 0, y: 0, vx: 0, vy: 0, angle: -Math.PI / 2,
+      avoidX: 0, avoidY: 0, dodgeStrength: 0, dodgeHold: 0,
+      threatId: 0, dodgeSide: 0, hitTimer: 0, recoveryTimer: 0,
     },
   };
 
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const random = (a, b) => a + Math.random() * (b - a);
+  const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  const format = n => Math.floor(n).toLocaleString('pt-BR');
   const cargoCapacity = () => 100 + (state.cargoLevel - 1) * 40;
   const miningRate = () => 1 + (state.laserLevel - 1) * 0.35;
   const efficiency = () => 1 + (state.efficiencyLevel - 1) * 0.05;
   const sector = () => SECTORS.find(s => s[0] === state.sector) || SECTORS[0];
-  const target = () => world.asteroids.find(a => a.id === world.targetId) || null;
+  const targetAsteroidCount = () => Math.round(clamp((world.w * world.h) / 52000, innerWidth < 700 ? 11 : 18, innerWidth < 700 ? 16 : 28) * (0.9 + sector()[3] * 0.08));
+  const cameraLeft = () => world.camera.x - world.w / 2;
+  const cameraTop = () => world.camera.y - world.h / 2;
+  const toScreenX = wx => wx - cameraLeft();
+  const toScreenY = wy => wy - cameraTop();
+  const onScreen = (o, margin = 80) => {
+    const sx = toScreenX(o.x), sy = toScreenY(o.y);
+    return sx > -margin - o.r && sx < world.w + margin + o.r && sy > -margin - o.r && sy < world.h + margin + o.r;
+  };
 
   function upgradeCost(type) {
     const level = type === 'laser' ? state.laserLevel : type === 'cargo' ? state.cargoLevel : state.efficiencyLevel;
@@ -139,37 +135,57 @@
         : { iron: 62, nickel: 23, cobalt: 10, titanium: 4, crystal: 1 };
     const roll = Math.random() * 100;
     let sum = 0;
-    for (const key in weights) {
-      sum += weights[key];
-      if (roll <= sum) return key;
-    }
+    for (const key in weights) { sum += weights[key]; if (roll <= sum) return key; }
     return 'iron';
   }
 
-  function addOre(amount) {
-    const room = cargoCapacity() - state.cargo;
-    if (room <= 0) return;
-    state.cycleProgress += Math.min(room, Math.max(0, amount));
-    while (state.cycleProgress >= 1 && state.cargo < cargoCapacity()) {
-      const key = weightedResource();
-      state.inventory[key] += 1;
-      state.cargo += 1;
-      state.cycleProgress -= 1;
+  function addLootBundle(bundle, announce = true) {
+    let added = 0;
+    let rejected = 0;
+    const gained = {};
+    for (const [key, qty] of Object.entries(bundle)) {
+      const size = RESOURCES[key][2];
+      let take = 0;
+      for (let i = 0; i < qty; i++) {
+        if (state.cargo + size > cargoCapacity()) { rejected += qty - i; break; }
+        state.inventory[key] += 1;
+        state.cargo += size;
+        take++;
+        added++;
+      }
+      if (take) gained[key] = take;
     }
-    if (state.cargo >= cargoCapacity()) {
-      state.mining = false;
-      world.laser = false;
-      toast('Carga cheia. Venda ou aumente a capacidade.');
+    if (announce && added) {
+      const text = Object.entries(gained).map(([k, n]) => `${n} ${RESOURCES[k][0]}`).join(' · ');
+      toast(`Asteroide coletado: ${text}${rejected ? ' · carga sem espaço para o resto' : ''}`);
+    } else if (announce && rejected) toast('Asteroide quebrado, mas o cargueiro está sem espaço.');
+    if (state.cargo >= cargoCapacity()) state.mining = false;
+    return added;
+  }
+
+  function generateAsteroidLoot(r, crystal = false) {
+    const units = Math.max(2, Math.round((r * r) / 620 * random(0.7, 1.25)));
+    const bundle = { iron: 0, nickel: 0, cobalt: 0, titanium: 0, crystal: 0 };
+    for (let i = 0; i < units; i++) {
+      let key = weightedResource();
+      if (crystal && Math.random() < 0.38) key = 'crystal';
+      bundle[key]++;
     }
+    return bundle;
   }
 
   function applyOfflineProgress() {
     const elapsed = Math.max(0, Date.now() - (state.lastSeen || Date.now())) / 1000;
-    if (!state.mining || elapsed < 5) return;
-    const before = state.cargo;
-    addOre(Math.min(elapsed, 14400) * miningRate() * sector()[3] * 0.28);
-    const gained = Math.max(0, Math.floor(state.cargo - before));
-    if (gained) setTimeout(() => toast(`Mineração offline: +${gained} unidades`), 400);
+    if (!state.mining || elapsed < 20) return;
+    const completed = Math.min(24, Math.floor(elapsed / Math.max(22, 42 / (miningRate() * Math.sqrt(sector()[3])))));
+    if (!completed) return;
+    let collected = 0;
+    for (let i = 0; i < completed; i++) {
+      const r = random(24, 46);
+      collected += addLootBundle(generateAsteroidLoot(r, Math.random() < 0.08 * sector()[3]), false);
+      if (state.cargo >= cargoCapacity()) break;
+    }
+    if (collected) setTimeout(() => toast(`Expedição offline: ${completed} asteroides processados · +${collected} itens`), 450);
   }
 
   function loadAssets() {
@@ -179,80 +195,6 @@
       img.onerror = resolve;
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     })));
-  }
-
-  function asteroidMass(r, density = 1) {
-    return Math.max(18, density * r * r * 0.055);
-  }
-
-  function asteroidCount() {
-    const base = world.w < 700 ? 8 : world.w < 1100 ? 11 : 14;
-    return base + (sector()[0] === 'void' ? 3 : sector()[0] === 'red' ? 1 : 0);
-  }
-
-  function spawnPoint(initial = false) {
-    if (initial) {
-      return {
-        x: random(35, world.w - 35),
-        y: random(78, world.h - 45),
-        angle: random(0, TAU),
-      };
-    }
-
-    const edge = Math.floor(Math.random() * 4);
-    const pad = 60;
-    let x, y, inward;
-    if (edge === 0) { x = random(0, world.w); y = -pad; inward = Math.PI / 2; }
-    else if (edge === 1) { x = world.w + pad; y = random(65, world.h); inward = Math.PI; }
-    else if (edge === 2) { x = random(0, world.w); y = world.h + pad; inward = -Math.PI / 2; }
-    else { x = -pad; y = random(65, world.h); inward = 0; }
-
-    return { x, y, angle: inward + random(-0.72, 0.72) };
-  }
-
-  function makeAsteroid(initial = false, preferredLarge = false) {
-    const p = spawnPoint(initial);
-    const largeRoll = preferredLarge || Math.random() > 0.72;
-    const r = largeRoll ? random(34, 66) : random(14, 34);
-    const speed = random(16, 56) * (1 + (sector()[3] - 1) * 0.12);
-    const density = random(0.78, 1.38);
-    const crystalChance = sector()[0] === 'void' ? 0.24 : sector()[0] === 'red' ? 0.12 : 0.05;
-    return {
-      id: nextEntityId++,
-      x: p.x,
-      y: p.y,
-      vx: Math.cos(p.angle) * speed,
-      vy: Math.sin(p.angle) * speed,
-      r,
-      mass: asteroidMass(r, density),
-      density,
-      rot: random(0, TAU),
-      spin: random(-0.45, 0.45),
-      hp: 100,
-      crystal: Math.random() < crystalChance,
-      collisionCooldown: 0,
-      age: 0,
-    };
-  }
-
-  function chooseTarget(force = false) {
-    const current = target();
-    if (!force && current && current.hp > 0) return current;
-    if (!world.asteroids.length) return null;
-
-    const candidates = [...world.asteroids]
-      .filter(a => a.r >= 24 && a.x > 50 && a.x < world.w - 50 && a.y > 80 && a.y < world.h - 50)
-      .sort((a, b) => {
-        const da = distance(a.x, a.y, world.ship.x, world.ship.y);
-        const db = distance(b.x, b.y, world.ship.x, world.ship.y);
-        const sizeBiasA = a.r * 1.8;
-        const sizeBiasB = b.r * 1.8;
-        return (da - sizeBiasA) - (db - sizeBiasB);
-      });
-
-    const selected = candidates[0] || world.asteroids[0];
-    world.targetId = selected?.id || 0;
-    return selected || null;
   }
 
   function resize() {
@@ -265,225 +207,174 @@
     canvas.style.height = world.h + 'px';
     ctx.setTransform(world.dpr, 0, 0, world.dpr, 0, 0);
 
+    if (!world.ship.x && !world.ship.y) {
+      world.ship.x = 0; world.ship.y = 0;
+      world.camera.x = 0; world.camera.y = 0;
+    }
     if (!world.stars.length) {
-      world.stars = Array.from({ length: Math.round(clamp(world.w * world.h / 9000, 55, 150)) }, () => ({
+      world.stars = Array.from({ length: Math.round(clamp(world.w * world.h / 7000, 70, 180)) }, () => ({
         x: Math.random() * world.w,
         y: Math.random() * world.h,
-        z: random(0.25, 1),
+        z: random(0.15, 1),
         phase: random(0, 7),
       }));
     }
-
-    if (!world.ship.x) {
-      world.ship.x = world.w * 0.72;
-      world.ship.y = world.h * 0.52;
-    }
-
-    if (!world.asteroids.length) {
-      for (let i = 0; i < asteroidCount(); i++) world.asteroids.push(makeAsteroid(true, i < 2));
-      chooseTarget(true);
-    }
+    while (world.asteroids.length < targetAsteroidCount()) spawnAsteroid(world.asteroids.length < 3);
   }
 
-  function burst(px, py, count, color) {
+  function spawnAsteroid(initial = false) {
+    const r = Math.random() < 0.18 ? random(48, 76) : Math.random() < 0.5 ? random(28, 47) : random(14, 27);
+    const density = random(0.75, 1.4);
+    const mass = Math.max(8, r * r * density);
+    const margin = Math.max(world.w, world.h) * random(0.62, 1.15) + r + 100;
+    const a = random(0, Math.PI * 2);
+    const px = world.camera.x + Math.cos(a) * margin;
+    const py = world.camera.y + Math.sin(a) * margin;
+    const driftAngle = a + Math.PI + random(-1.15, 1.15);
+    const speed = random(8, 34) * (0.92 + sector()[3] * 0.1);
+    const crystalChance = sector()[0] === 'void' ? 0.28 : sector()[0] === 'red' ? 0.14 : 0.055;
+    const crystal = Math.random() < crystalChance;
+    const asteroid = {
+      id: nextEntityId++, x: px, y: py,
+      vx: Math.cos(driftAngle) * speed,
+      vy: Math.sin(driftAngle) * speed,
+      r, mass, density,
+      rot: random(0, Math.PI * 2), spin: random(-0.42, 0.42),
+      hp: Math.round(55 + r * 1.75), maxHp: 0,
+      crystal, loot: null, born: world.time,
+    };
+    asteroid.maxHp = asteroid.hp;
+    asteroid.loot = generateAsteroidLoot(r, crystal);
+    world.asteroids.push(asteroid);
+    return asteroid;
+  }
+
+  function chooseTarget() {
+    if (!state.mining || state.cargo >= cargoCapacity()) { world.target = null; return; }
+    const sh = world.ship;
+    let best = null, score = Infinity;
+    for (const a of world.asteroids) {
+      const d = distance(sh.x, sh.y, a.x, a.y);
+      if (d < 90) continue;
+      const relative = Math.hypot(a.vx - sh.vx, a.vy - sh.vy);
+      const value = Object.entries(a.loot).reduce((s, [k, n]) => s + RESOURCES[k][1] * n, 0);
+      const candidate = d + relative * 5 - Math.min(700, value * 0.35) - a.r * 3;
+      if (candidate < score) { score = candidate; best = a; }
+    }
+    world.target = best;
+  }
+
+  function burst(wx, wy, count, color) {
     for (let i = 0; i < count; i++) {
-      const a = Math.random() * TAU;
+      const a = Math.random() * Math.PI * 2;
       const speed = random(30, 180);
-      world.particles.push({
-        x: px,
-        y: py,
-        vx: Math.cos(a) * speed,
-        vy: Math.sin(a) * speed,
-        life: random(0.25, 0.85),
-        size: random(1, 4),
-        color,
-      });
-    }
-  }
-
-  function spawnFragments(a) {
-    const count = Math.floor(clamp(a.r / 8, 4, 10));
-    for (let i = 0; i < count; i++) {
-      const angle = random(0, TAU);
-      const speed = random(35, 120) + Math.hypot(a.vx, a.vy) * 0.25;
-      const r = random(6, Math.max(8, a.r * 0.24));
-      world.fragments.push({
-        id: nextEntityId++,
-        x: a.x,
-        y: a.y,
-        vx: a.vx + Math.cos(angle) * speed,
-        vy: a.vy + Math.sin(angle) * speed,
-        r,
-        mass: asteroidMass(r, a.density * 0.78),
-        rot: random(0, TAU),
-        spin: random(-2.5, 2.5),
-        life: random(6, 11),
-        dangerous: Math.random() > 0.15,
-        collisionCooldown: 0,
-      });
+      world.particles.push({ x: wx, y: wy, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: random(0.25, 0.85), size: random(1, 4), color });
     }
   }
 
   function destroyAsteroid(a) {
-    spawnFragments(a);
-    burst(a.x, a.y, 28 + Math.floor(a.r / 2), a.crystal ? '#4de7ff' : '#c8d0dd');
-    world.shake = Math.max(world.shake, clamp(a.r / 7, 5, 11));
+    const idx = world.asteroids.indexOf(a);
+    if (idx >= 0) world.asteroids.splice(idx, 1);
+    const count = Math.floor(random(4, 8));
+    for (let i = 0; i < count; i++) {
+      const ang = random(0, Math.PI * 2);
+      const speed = random(42, 128);
+      const r = random(6, Math.min(16, a.r * 0.32));
+      world.fragments.push({
+        id: nextEntityId++, x: a.x, y: a.y,
+        vx: a.vx + Math.cos(ang) * speed, vy: a.vy + Math.sin(ang) * speed,
+        r, mass: Math.max(1, r * r * 0.55), rot: random(0, Math.PI * 2), spin: random(-2.5, 2.5), life: random(7, 12), dangerous: true,
+      });
+    }
+    burst(a.x, a.y, 32, a.crystal ? '#4de7ff' : '#c8d0dd');
+    world.shake = 7;
     sound('break');
-    world.asteroids = world.asteroids.filter(v => v.id !== a.id);
-    if (world.targetId === a.id) world.targetId = 0;
-    chooseTarget(true);
+    addLootBundle(a.loot, true);
+    if (world.target === a) world.target = null;
+    if (state.mining && state.cargo < cargoCapacity()) chooseTarget();
   }
 
-  function resolveBodyCollision(a, b, restitution = 0.82) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const dist = Math.max(0.001, Math.hypot(dx, dy));
-    const minDist = a.r + b.r;
-    if (dist >= minDist) return false;
+  function resolveBodyCollision(a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    let d = Math.hypot(dx, dy);
+    const minD = a.r + b.r;
+    if (d <= 0 || d >= minD) return;
+    const nx = dx / d, ny = dy / d;
+    const overlap = minD - d;
+    const invA = 1 / Math.max(1, a.mass), invB = 1 / Math.max(1, b.mass);
+    const invSum = invA + invB;
+    a.x -= nx * overlap * (invA / invSum);
+    a.y -= ny * overlap * (invA / invSum);
+    b.x += nx * overlap * (invB / invSum);
+    b.y += ny * overlap * (invB / invSum);
 
-    const nx = dx / dist;
-    const ny = dy / dist;
-    const rvx = b.vx - a.vx;
-    const rvy = b.vy - a.vy;
+    const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
     const velAlongNormal = rvx * nx + rvy * ny;
-
-    const overlap = minDist - dist;
-    const totalMass = a.mass + b.mass;
-    const moveA = overlap * (b.mass / totalMass);
-    const moveB = overlap * (a.mass / totalMass);
-    a.x -= nx * moveA;
-    a.y -= ny * moveA;
-    b.x += nx * moveB;
-    b.y += ny * moveB;
-
-    if (velAlongNormal > 0) return true;
-
-    const impulse = -(1 + restitution) * velAlongNormal / (1 / a.mass + 1 / b.mass);
-    const ix = impulse * nx;
-    const iy = impulse * ny;
-    a.vx -= ix / a.mass;
-    a.vy -= iy / a.mass;
-    b.vx += ix / b.mass;
-    b.vy += iy / b.mass;
-
-    const tangentX = -ny;
-    const tangentY = nx;
-    const relTangent = rvx * tangentX + rvy * tangentY;
-    const spinKick = relTangent * 0.0025;
-    a.spin -= spinKick * (b.mass / totalMass);
-    b.spin += spinKick * (a.mass / totalMass);
-
-    const energy = Math.abs(velAlongNormal) * Math.min(a.mass, b.mass);
-    if (energy > 900) {
-      burst((a.x + b.x) / 2, (a.y + b.y) / 2, 5, '#9fd9ff');
-      world.shake = Math.max(world.shake, clamp(energy / 3000, 1.5, 4));
-    }
-    return true;
+    if (velAlongNormal > 0) return;
+    const restitution = 0.82;
+    const j = -(1 + restitution) * velAlongNormal / invSum;
+    const ix = j * nx, iy = j * ny;
+    a.vx -= ix * invA; a.vy -= iy * invA;
+    b.vx += ix * invB; b.vy += iy * invB;
+    const tangentImpact = rvx * -ny + rvy * nx;
+    a.spin -= tangentImpact * invA * 0.018;
+    b.spin += tangentImpact * invB * 0.018;
+    if (Math.abs(velAlongNormal) > 24) burst((a.x + b.x) / 2, (a.y + b.y) / 2, 4, '#aeb8c8');
   }
 
-  function handleAsteroidPhysics(dt) {
-    const bodies = [...world.asteroids, ...world.fragments];
-    for (const body of bodies) body.collisionCooldown = Math.max(0, (body.collisionCooldown || 0) - dt);
-
-    for (let i = 0; i < bodies.length; i++) {
-      for (let j = i + 1; j < bodies.length; j++) {
-        const a = bodies[i], b = bodies[j];
-        if (a.collisionCooldown > 0 && b.collisionCooldown > 0) continue;
-        if (distance(a.x, a.y, b.x, b.y) >= a.r + b.r) continue;
-        if (resolveBodyCollision(a, b)) {
-          a.collisionCooldown = 0.045;
-          b.collisionCooldown = 0.045;
-        }
-      }
+  function solveAsteroidPhysics() {
+    const list = world.asteroids;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) resolveBodyCollision(list[i], list[j]);
     }
   }
 
-  function predictThreat(hazard) {
+  function predictThreat(h) {
     const sh = world.ship;
-    const dx = hazard.x - sh.x;
-    const dy = hazard.y - sh.y;
-    const rvx = hazard.vx - sh.vx;
-    const rvy = hazard.vy - sh.vy;
+    const dx = h.x - sh.x, dy = h.y - sh.y;
+    const rvx = h.vx - sh.vx, rvy = h.vy - sh.vy;
     const speedSq = rvx * rvx + rvy * rvy;
     if (speedSq < 9) return null;
-
-    const timeToClosest = -(dx * rvx + dy * rvy) / speedSq;
-    if (timeToClosest <= 0.02 || timeToClosest > 2.0) return null;
-
-    const closestX = dx + rvx * timeToClosest;
-    const closestY = dy + rvy * timeToClosest;
-    const missDistance = Math.hypot(closestX, closestY);
-    const safeRadius = 38 + hazard.r * 1.22;
-    const currentDistance = Math.hypot(dx, dy);
-    if (missDistance >= safeRadius || currentDistance > 400 + hazard.r) return null;
-
-    const massFactor = clamp((hazard.mass || asteroidMass(hazard.r)) / 90, 0.7, 2.5);
-    const urgency = (1 - timeToClosest / 2) * (0.35 + 0.65 * (1 - missDistance / safeRadius)) * Math.sqrt(massFactor);
-    return { hazard, rvx, rvy, closestX, closestY, missDistance, urgency };
+    const t = -(dx * rvx + dy * rvy) / speedSq;
+    if (t <= 0.02 || t > 2.2) return null;
+    const cx = dx + rvx * t, cy = dy + rvy * t;
+    const miss = Math.hypot(cx, cy);
+    const massFactor = clamp(Math.log10(Math.max(10, h.mass || h.r * h.r)) / 4, 0.65, 1.35);
+    const safeRadius = (38 + h.r * 1.12) * massFactor;
+    if (miss >= safeRadius || Math.hypot(dx, dy) > 430 + h.r) return null;
+    return { hazard: h, rvx, rvy, cx, cy, miss, urgency: (1 - t / 2.2) * (0.35 + 0.65 * (1 - miss / safeRadius)) * massFactor };
   }
 
   function updateAvoidance(dt) {
     const sh = world.ship;
-    const t = target();
-    const hazards = [
-      ...world.fragments.filter(f => f.dangerous),
-      ...world.asteroids.filter(a => !t || a.id !== t.id),
-    ];
+    const hazards = [...world.fragments.filter(f => f.dangerous), ...world.asteroids.filter(a => a !== world.target || distance(a.x, a.y, sh.x, sh.y) > a.r + 70)];
     let best = null;
-    for (const hazard of hazards) {
-      const threat = predictThreat(hazard);
-      if (!threat) continue;
-      if (!best || threat.urgency > best.urgency) best = threat;
-    }
-
-    let targetX = 0;
-    let targetY = 0;
+    for (const h of hazards) { const t = predictThreat(h); if (t && (!best || t.urgency > best.urgency)) best = t; }
+    let targetX = 0, targetY = 0;
     if (best) {
       const h = best.hazard;
       const relSpeed = Math.max(1, Math.hypot(best.rvx, best.rvy));
-      const perpX = -best.rvy / relSpeed;
-      const perpY = best.rvx / relSpeed;
-
-      if (sh.threatId !== h.id || sh.dodgeSide === 0) {
-        const optionA = { x: sh.x + perpX * 120, y: sh.y + perpY * 120 };
-        const optionB = { x: sh.x - perpX * 120, y: sh.y - perpY * 120 };
-        const scoreA = distance(optionA.x, optionA.y, h.x, h.y);
-        const scoreB = distance(optionB.x, optionB.y, h.x, h.y);
-        sh.dodgeSide = scoreA >= scoreB ? 1 : -1;
+      const px = -best.rvy / relSpeed, py = best.rvx / relSpeed;
+      if (sh.threatId !== h.id || !sh.dodgeSide) {
+        const sideDot = px * best.cx + py * best.cy;
+        sh.dodgeSide = sideDot > 0 ? -1 : 1;
         sh.threatId = h.id;
       }
-
-      const miss = Math.max(1, best.missDistance);
-      const awayX = -best.closestX / miss;
-      const awayY = -best.closestY / miss;
-      const lateralPower = 112 + best.urgency * 92;
-      const awayPower = 24 + best.urgency * 58;
-      targetX = perpX * sh.dodgeSide * lateralPower + awayX * awayPower;
-      targetY = perpY * sh.dodgeSide * lateralPower + awayY * awayPower;
-
+      const miss = Math.max(1, best.miss);
+      const ax = -best.cx / miss, ay = -best.cy / miss;
+      const lateral = 115 + best.urgency * 115;
+      const away = 24 + best.urgency * 65;
+      targetX = px * sh.dodgeSide * lateral + ax * away;
+      targetY = py * sh.dodgeSide * lateral + ay * away;
       const mag = Math.hypot(targetX, targetY);
-      if (mag > 195) {
-        targetX = targetX / mag * 195;
-        targetY = targetY / mag * 195;
-      }
-      sh.dodgeStrength = best.urgency;
-      sh.dodgeHold = 0.34;
-      world.dangerText = 'DESVIO PREDITIVO';
+      if (mag > 220) { targetX = targetX / mag * 220; targetY = targetY / mag * 220; }
+      sh.dodgeHold = 0.3; sh.dodgeStrength = best.urgency; world.dangerText = 'DESVIO PREDITIVO';
     } else {
       sh.dodgeHold = Math.max(0, sh.dodgeHold - dt);
-      if (sh.dodgeHold <= 0) {
-        sh.dodgeStrength = Math.max(0, sh.dodgeStrength - dt * 4);
-        sh.threatId = 0;
-        sh.dodgeSide = 0;
-        world.dangerText = 'ROTA SEGURA';
-      } else {
-        targetX = sh.avoidX * 0.76;
-        targetY = sh.avoidY * 0.76;
-        world.dangerText = 'DESVIO PREDITIVO';
-      }
+      if (sh.dodgeHold <= 0) { sh.threatId = 0; sh.dodgeSide = 0; sh.dodgeStrength = Math.max(0, sh.dodgeStrength - dt * 4); world.dangerText = 'ROTA SEGURA'; }
+      else { targetX = sh.avoidX * 0.76; targetY = sh.avoidY * 0.76; world.dangerText = 'DESVIO PREDITIVO'; }
     }
-
-    const response = 1 - Math.exp(-dt * (best ? 8.8 : 4));
+    const response = 1 - Math.exp(-dt * (best ? 8.5 : 4));
     sh.avoidX += (targetX - sh.avoidX) * response;
     sh.avoidY += (targetY - sh.avoidY) * response;
   }
@@ -491,36 +382,18 @@
   function handleShipCollisions() {
     const sh = world.ship;
     if (sh.hitTimer > 0) return;
-    const t = target();
-    const hazards = [...world.fragments, ...world.asteroids.filter(a => !t || a.id !== t.id)];
-
+    const hazards = [...world.fragments, ...world.asteroids];
     for (const h of hazards) {
-      if (distance(sh.x, sh.y, h.x, h.y) >= 23 + h.r * 0.8) continue;
-      const speed = Math.hypot(h.vx - sh.vx, h.vy - sh.vy);
-      const mass = h.mass || asteroidMass(h.r);
-      const impact = clamp((speed * Math.sqrt(mass)) / 28, 7, 32);
-      state.shield = clamp(state.shield - impact, 0, 100);
+      const minD = 22 + h.r * 0.82;
+      if (distance(sh.x, sh.y, h.x, h.y) >= minD) continue;
+      const rel = Math.hypot(h.vx - sh.vx, h.vy - sh.vy);
+      state.shield = clamp(state.shield - clamp(5 + rel * 0.19 + h.r * 0.12, 7, 31), 0, 100);
       sh.hitTimer = 0.65;
-
-      const dx = h.x - sh.x;
-      const dy = h.y - sh.y;
-      const d = Math.max(1, Math.hypot(dx, dy));
-      const nx = dx / d, ny = dy / d;
-      h.vx += nx * 28;
-      h.vy += ny * 28;
-      sh.vx -= nx * 24;
-      sh.vy -= ny * 24;
-
-      burst(sh.x, sh.y, 15, '#ff89a2');
-      world.shake = 10;
-      world.dangerText = 'IMPACTO NO ESCUDO';
-      sound('hit');
-      if (state.shield <= 0) {
-        state.mining = false;
-        world.laser = false;
-        sh.recoveryTimer = 3.2;
-        toast('Escudo colapsou. Recuo automático.');
-      }
+      const dx = sh.x - h.x, dy = sh.y - h.y, d = Math.max(1, Math.hypot(dx, dy));
+      sh.vx += dx / d * 95; sh.vy += dy / d * 95;
+      h.vx -= dx / d * 18; h.vy -= dy / d * 18;
+      burst(sh.x, sh.y, 15, '#ff89a2'); world.shake = 10; world.dangerText = 'IMPACTO NO ESCUDO'; sound('hit');
+      if (state.shield <= 0) { state.mining = false; world.laser = false; sh.recoveryTimer = 3.2; world.target = null; toast('Escudo colapsou. Recuo automático.'); }
       break;
     }
   }
@@ -528,226 +401,147 @@
   function updateShip(dt) {
     const sh = world.ship;
     sh.hitTimer = Math.max(0, sh.hitTimer - dt);
-
     if (sh.recoveryTimer > 0) {
       sh.recoveryTimer -= dt;
-      if (sh.recoveryTimer <= 0) {
-        state.shield = 38;
-        toast('Escudo reiniciado em 38%.');
-      }
-    } else if (state.shield < 100 && sh.hitTimer <= 0) {
-      state.shield = clamp(state.shield + dt * 4.5, 0, 100);
-    }
+      if (sh.recoveryTimer <= 0) { state.shield = 38; toast('Escudo reiniciado em 38%.'); }
+    } else if (state.shield < 100 && sh.hitTimer <= 0) state.shield = clamp(state.shield + dt * 4.2, 0, 100);
 
-    if (state.mining && !target()) chooseTarget(true);
+    if (state.mining && (!world.target || !world.asteroids.includes(world.target))) chooseTarget();
     updateAvoidance(dt);
 
-    const t = target();
-    let baseX = world.w * 0.72;
-    let baseY = world.h * 0.53;
-    if (state.mining && t && sh.recoveryTimer <= 0) {
-      const approach = clamp(world.w * 0.105, 92, 150);
-      const dx = sh.x - t.x;
-      const dy = sh.y - t.y;
-      const len = Math.max(1, Math.hypot(dx, dy));
-      const ux = dx / len;
-      const uy = dy / len;
-      baseX = clamp(t.x + ux * (t.r + approach), 70, world.w - 70);
-      baseY = clamp(t.y + uy * (t.r + approach), 75, world.h - 50);
+    let tx = sh.x, ty = sh.y;
+    if (sh.recoveryTimer > 0) {
+      tx = sh.x - Math.cos(sh.angle - Math.PI / 2) * 220;
+      ty = sh.y - Math.sin(sh.angle - Math.PI / 2) * 220;
+    } else if (state.mining && world.target) {
+      const t = world.target;
+      const dx = sh.x - t.x, dy = sh.y - t.y;
+      const d = Math.max(1, Math.hypot(dx, dy));
+      const ux = dx / d, uy = dy / d;
+      const standOff = t.r + clamp(world.w * 0.09, 95, 150);
+      tx = t.x + ux * standOff;
+      ty = t.y + uy * standOff;
     }
+    tx += sh.avoidX; ty += sh.avoidY;
 
-    const targetX = baseX + sh.avoidX;
-    const targetY = baseY + sh.avoidY;
-    const dx = targetX - sh.x;
-    const dy = targetY - sh.y;
-    const d = Math.hypot(dx, dy);
+    const dx = tx - sh.x, dy = ty - sh.y, d = Math.hypot(dx, dy);
     const dodging = Math.hypot(sh.avoidX, sh.avoidY) > 12;
-    const maxSpeed = dodging ? 220 : 135;
-    const speed = Math.min(maxSpeed, d * 2.5);
-    const desiredVx = d > 1 ? dx / d * speed : 0;
-    const desiredVy = d > 1 ? dy / d * speed : 0;
-    const response = 1 - Math.exp(-dt * (dodging ? 6.4 : 4.8));
-    sh.vx += (desiredVx - sh.vx) * response;
-    sh.vy += (desiredVy - sh.vy) * response;
-    sh.x = clamp(sh.x + sh.vx * dt, 35, world.w - 35);
-    sh.y = clamp(sh.y + sh.vy * dt, 72, world.h - 45);
+    const travel = state.mining && world.target && d > 85;
+    const maxSpeed = dodging ? 260 : travel ? 195 : 135;
+    const speed = Math.min(maxSpeed, d * (travel ? 1.8 : 2.5));
+    const dvx = d > 1 ? dx / d * speed : 0, dvy = d > 1 ? dy / d * speed : 0;
+    const response = 1 - Math.exp(-dt * (dodging ? 6.3 : 4.4));
+    sh.vx += (dvx - sh.vx) * response; sh.vy += (dvy - sh.vy) * response;
+    sh.x += sh.vx * dt; sh.y += sh.vy * dt;
 
-    const faceX = t ? t.x : sh.x - 1;
-    const faceY = t ? t.y : sh.y;
-    const desiredAngle = Math.atan2(faceY - sh.y, faceX - sh.x) + Math.PI / 2;
-    const angleDiff = ((desiredAngle - sh.angle + Math.PI) % TAU) - Math.PI;
-    sh.angle += angleDiff * Math.min(1, dt * 7.5);
+    const faceX = world.target ? world.target.x : sh.x + (Math.abs(sh.vx) > 2 ? sh.vx : 1);
+    const faceY = world.target ? world.target.y : sh.y + sh.vy;
+    const desired = Math.atan2(faceY - sh.y, faceX - sh.x) + Math.PI / 2;
+    const diff = ((desired - sh.angle + Math.PI) % (Math.PI * 2)) - Math.PI;
+    sh.angle += diff * Math.min(1, dt * 7.2);
 
-    const targetDistance = t ? distance(sh.x, sh.y, t.x, t.y) : Infinity;
-    const laserRange = clamp(world.w * 0.36, 280, 560);
-    const aimedEnough = Math.abs(angleDiff) < 0.68;
-    world.laser = !!(
-      state.mining && t && sh.recoveryTimer <= 0 && state.cargo < cargoCapacity() &&
-      targetDistance <= laserRange && aimedEnough
-    );
+    const targetDistance = world.target ? distance(sh.x, sh.y, world.target.x, world.target.y) : Infinity;
+    const laserRange = clamp(world.w * 0.31, 250, 510);
+    world.laser = !!(state.mining && world.target && sh.recoveryTimer <= 0 && state.cargo < cargoCapacity() && targetDistance <= laserRange && Math.abs(diff) < 0.7);
   }
 
-  function moveBodies(dt) {
-    for (const a of world.asteroids) {
-      a.age += dt;
-      a.x += a.vx * dt;
-      a.y += a.vy * dt;
-      a.rot += a.spin * dt;
-    }
-    for (const f of world.fragments) {
-      f.x += f.vx * dt;
-      f.y += f.vy * dt;
-      f.rot += f.spin * dt;
-      f.life -= dt;
-    }
-  }
-
-  function cullAndSpawn(dt) {
-    const margin = 170;
-    const currentTarget = target();
-    world.asteroids = world.asteroids.filter(a => {
-      const inBounds = a.x > -margin && a.x < world.w + margin && a.y > -margin && a.y < world.h + margin;
-      if (!inBounds && currentTarget && a.id === currentTarget.id) world.targetId = 0;
-      return inBounds || a.age < 2.2;
-    });
-    world.fragments = world.fragments.filter(f => f.life > 0 && f.x > -margin && f.x < world.w + margin && f.y > -margin && f.y < world.h + margin);
-
-    world.spawnTimer -= dt;
-    const desired = asteroidCount();
-    if (world.asteroids.length < desired && world.spawnTimer <= 0) {
-      const missing = desired - world.asteroids.length;
-      const burstCount = Math.min(missing, Math.random() < 0.32 ? 2 : 1);
-      for (let i = 0; i < burstCount; i++) world.asteroids.push(makeAsteroid(false, Math.random() < 0.18));
-      world.spawnTimer = random(0.18, 0.7);
-    }
-
-    if (!target()) chooseTarget(true);
+  function updateCamera(dt) {
+    const sh = world.ship, c = world.camera;
+    const look = 0.55;
+    const targetX = sh.x + sh.vx * look;
+    const targetY = sh.y + sh.vy * look;
+    const stiffness = 2.15;
+    const damping = 4.2;
+    c.vx += (targetX - c.x) * stiffness * dt;
+    c.vy += (targetY - c.y) * stiffness * dt;
+    c.vx *= Math.exp(-damping * dt);
+    c.vy *= Math.exp(-damping * dt);
+    c.x += c.vx * dt * 7.5;
+    c.y += c.vy * dt * 7.5;
   }
 
   function updateWorld(dt) {
     world.time += dt;
     world.shake = Math.max(0, world.shake - dt * 22);
 
-    for (const star of world.stars) {
-      star.x -= dt * (3 + star.z * 9);
-      star.phase += dt * (1 + star.z);
-      if (star.x < -2) {
-        star.x = world.w + 2;
-        star.y = Math.random() * world.h;
-      }
+    for (const a of world.asteroids) {
+      a.x += a.vx * dt; a.y += a.vy * dt; a.rot += a.spin * dt;
+      a.vx *= Math.pow(0.9996, dt * 60); a.vy *= Math.pow(0.9996, dt * 60);
     }
+    solveAsteroidPhysics();
 
-    moveBodies(dt);
-    handleAsteroidPhysics(dt);
-    cullAndSpawn(dt);
-
-    const t = target();
-    if (t && world.laser) {
-      t.hp -= (8 + miningRate() * 5) * sector()[3] * dt;
-      addOre(miningRate() * sector()[3] * dt);
+    if (world.laser && world.target) {
+      const t = world.target;
+      t.hp -= (9 + miningRate() * 8) * sector()[3] * dt;
       world.particleTimer -= dt;
-      if (world.particleTimer <= 0) {
-        world.particleTimer = 0.035;
-        burst(t.x, t.y, 2, Math.random() > 0.5 ? '#4de7ff' : '#ffd36f');
-      }
+      if (world.particleTimer <= 0) { world.particleTimer = 0.035; burst(t.x, t.y, 2, Math.random() > 0.5 ? '#4de7ff' : '#ffd36f'); }
       if (t.hp <= 0) destroyAsteroid(t);
     }
 
-    for (const p of world.particles) {
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vx *= 0.98;
-      p.vy *= 0.98;
-      p.life -= dt;
-    }
+    for (const f of world.fragments) { f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.spin * dt; f.life -= dt; }
+    world.fragments = world.fragments.filter(f => f.life > 0 && distance(f.x, f.y, world.camera.x, world.camera.y) < Math.max(world.w, world.h) * 2.2);
+
+    for (const p of world.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98; p.vy *= 0.98; p.life -= dt; }
     world.particles = world.particles.filter(p => p.life > 0);
 
     updateShip(dt);
     handleShipCollisions();
+    updateCamera(dt);
+
+    const maxDist = Math.max(world.w, world.h) * 2.7;
+    world.asteroids = world.asteroids.filter(a => a === world.target || distance(a.x, a.y, world.camera.x, world.camera.y) < maxDist);
+    if (world.target && !world.asteroids.includes(world.target)) world.target = null;
+    world.spawnTimer -= dt;
+    if (world.spawnTimer <= 0) {
+      world.spawnTimer = random(0.22, 0.7);
+      while (world.asteroids.length < targetAsteroidCount()) spawnAsteroid(false);
+    }
   }
 
-  function drawImageRotated(img, px, py, w, h, angle, alpha = 1) {
+  function drawImageRotated(img, sx, sy, w, h, angle, alpha = 1) {
     if (!img) return;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(px, py);
-    ctx.rotate(angle);
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
-    ctx.restore();
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(sx, sy); ctx.rotate(angle); ctx.drawImage(img, -w / 2, -h / 2, w, h); ctx.restore();
   }
 
   function drawBackground() {
-    const gradient = ctx.createRadialGradient(world.w * 0.27, world.h * 0.34, 0, world.w * 0.27, world.h * 0.34, world.w * 0.7);
     const tint = sector()[0] === 'red' ? 'rgba(120,30,70,.18)' : sector()[0] === 'void' ? 'rgba(63,40,140,.22)' : 'rgba(18,74,120,.20)';
-    gradient.addColorStop(0, tint);
-    gradient.addColorStop(0.48, '#050b16');
-    gradient.addColorStop(1, '#02040a');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, world.w, world.h);
+    const g = ctx.createRadialGradient(world.w * 0.27, world.h * 0.34, 0, world.w * 0.27, world.h * 0.34, world.w * 0.76);
+    g.addColorStop(0, tint); g.addColorStop(0.5, '#050b16'); g.addColorStop(1, '#02040a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, world.w, world.h);
 
-    for (const star of world.stars) {
-      ctx.globalAlpha = clamp(0.2 + star.z * 0.65 + Math.sin(star.phase) * 0.08, 0.12, 0.9);
-      ctx.fillStyle = star.z > 0.72 ? '#bdeeff' : '#fff';
-      const size = 0.55 + star.z * 1.25;
-      ctx.fillRect(star.x, star.y, size, size);
+    for (const s of world.stars) {
+      const px = ((s.x - world.camera.x * s.z * 0.018) % world.w + world.w) % world.w;
+      const py = ((s.y - world.camera.y * s.z * 0.018) % world.h + world.h) % world.h;
+      s.phase += 0.01 * (1 + s.z);
+      ctx.globalAlpha = clamp(0.18 + s.z * 0.72 + Math.sin(s.phase) * 0.08, 0.1, 0.95);
+      ctx.fillStyle = s.z > 0.72 ? '#bdeeff' : '#fff';
+      const sz = 0.55 + s.z * 1.25;
+      ctx.fillRect(px, py, sz, sz);
     }
     ctx.globalAlpha = 1;
   }
 
-  function drawRock(a, isTarget = false) {
-    drawImageRotated(
-      a.crystal ? assetsMap.crystal : assetsMap.rock,
-      a.x, a.y, a.r * 2.15, a.r * 2.15, a.rot,
-      isTarget ? 1 : 0.78,
-    );
-    if (!isTarget) return;
-
-    const hp = clamp(a.hp / 100, 0, 1);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(77,231,255,.18)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(a.x, a.y, a.r * 0.96, 0, TAU);
-    ctx.stroke();
-    ctx.strokeStyle = a.crystal ? '#4de7ff' : '#90a8c7';
-    ctx.beginPath();
-    ctx.arc(a.x, a.y, a.r * 0.96, -Math.PI / 2, -Math.PI / 2 + TAU * hp);
-    ctx.stroke();
-    ctx.restore();
+  function drawAsteroid(a) {
+    const sx = toScreenX(a.x), sy = toScreenY(a.y);
+    if (!onScreen(a, 140)) return;
+    const target = a === world.target;
+    drawImageRotated(a.crystal ? assetsMap.crystal : assetsMap.rock, sx, sy, a.r * 2.15, a.r * 2.15, a.rot, target ? 1 : 0.83);
+    if (target) {
+      const hp = clamp(a.hp / a.maxHp, 0, 1);
+      ctx.save(); ctx.strokeStyle = 'rgba(77,231,255,.22)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, a.r * 0.96, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = a.crystal ? '#4de7ff' : '#90a8c7'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, sy, a.r * 0.96, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hp); ctx.stroke(); ctx.restore();
+    }
   }
 
   function drawLaser() {
-    const t = target();
-    if (!world.laser || !t) return;
-    const sh = world.ship;
-    const dx = t.x - sh.x;
-    const dy = t.y - sh.y;
-    const d = Math.max(1, Math.hypot(dx, dy));
-    const ux = dx / d;
-    const uy = dy / d;
-    const startX = sh.x + ux * 28;
-    const startY = sh.y + uy * 28;
-    const endX = t.x - ux * t.r * 0.68;
-    const endY = t.y - uy * t.r * 0.68;
+    if (!world.laser || !world.target) return;
+    const sh = world.ship, t = world.target;
+    const sx0 = toScreenX(sh.x), sy0 = toScreenY(sh.y), tx = toScreenX(t.x), ty = toScreenY(t.y);
+    const dx = tx - sx0, dy = ty - sy0, d = Math.max(1, Math.hypot(dx, dy)), ux = dx / d, uy = dy / d;
+    const startX = sx0 + ux * 28, startY = sy0 + uy * 28, endX = tx - ux * t.r * 0.68, endY = ty - uy * t.r * 0.68;
     const pulse = 0.55 + Math.sin(world.time * 28) * 0.3;
-
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = `rgba(77,231,255,${0.22 + pulse * 0.2})`;
-    ctx.lineWidth = 9;
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = '#4de7ff';
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-    ctx.strokeStyle = '#dfffff';
-    ctx.lineWidth = 2.1 + pulse * 1.2;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-    ctx.restore();
+    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(77,231,255,${0.22 + pulse * 0.2})`; ctx.lineWidth = 9; ctx.shadowBlur = 18; ctx.shadowColor = '#4de7ff';
+    ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke(); ctx.strokeStyle = '#dfffff'; ctx.lineWidth = 2.1 + pulse * 1.2; ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke(); ctx.restore();
     drawImageRotated(assetsMap.hit, endX, endY, 34 + pulse * 5, 34 + pulse * 5, world.time * 2.4, 0.82);
   }
 
@@ -756,76 +550,49 @@
     drawBackground();
     ctx.save();
     if (world.shake) ctx.translate(random(-world.shake, world.shake), random(-world.shake, world.shake));
-
-    const t = target();
-    for (const a of world.asteroids) drawRock(a, !!t && a.id === t.id);
-    for (const f of world.fragments) drawImageRotated(assetsMap.frag, f.x, f.y, f.r * 2.3, f.r * 2.3, f.rot, 0.95);
+    for (const a of world.asteroids) drawAsteroid(a);
+    for (const f of world.fragments) {
+      const sx = toScreenX(f.x), sy = toScreenY(f.y);
+      if (sx < -60 || sx > world.w + 60 || sy < -60 || sy > world.h + 60) continue;
+      drawImageRotated(assetsMap.frag, sx, sy, f.r * 2.3, f.r * 2.3, f.rot, 0.95);
+    }
     drawLaser();
-
     for (const p of world.particles) {
-      ctx.save();
-      ctx.globalAlpha = clamp(p.life / 0.55, 0, 1);
-      ctx.fillStyle = p.color;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, TAU);
-      ctx.fill();
-      ctx.restore();
+      const sx = toScreenX(p.x), sy = toScreenY(p.y);
+      if (sx < -20 || sx > world.w + 20 || sy < -20 || sy > world.h + 20) continue;
+      ctx.save(); ctx.globalAlpha = clamp(p.life / 0.55, 0, 1); ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color; ctx.beginPath(); ctx.arc(sx, sy, p.size, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
-
-    const sh = world.ship;
-    const shipImg = Math.hypot(sh.vx, sh.vy) > 28 ? assetsMap.thrust : assetsMap.ship;
-    const shipW = clamp(world.w * 0.055, 54, 76);
-    const ratio = shipImg ? shipImg.height / shipImg.width : 1;
-    if (state.shield < 100) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(77,231,255,.2)';
-      ctx.shadowBlur = 16;
-      ctx.shadowColor = '#4de7ff';
-      ctx.beginPath();
-      ctx.arc(sh.x, sh.y, 34, 0, TAU);
-      ctx.stroke();
-      ctx.restore();
-    }
-    drawImageRotated(shipImg, sh.x, sh.y, shipW, shipW * ratio, sh.angle);
+    const sh = world.ship, sx = toScreenX(sh.x), sy = toScreenY(sh.y), moving = Math.hypot(sh.vx, sh.vy) > 28;
+    const img = moving ? assetsMap.thrust : assetsMap.ship;
+    const base = clamp(world.w * 0.055, 54, 76), ratio = img ? img.height / img.width : 1;
+    if (state.shield < 100) { ctx.save(); ctx.strokeStyle = 'rgba(77,231,255,.2)'; ctx.shadowBlur = 16; ctx.shadowColor = '#4de7ff'; ctx.beginPath(); ctx.arc(sx, sy, 34, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+    drawImageRotated(img, sx, sy, base, base * ratio, sh.angle);
     ctx.restore();
   }
 
-  function renderHud() {
-    const cap = cargoCapacity();
-    const cargoPct = clamp(state.cargo / cap * 100, 0, 100);
-    el('credits').textContent = format(state.credits);
-    el('gems').textContent = format(state.gems);
-    el('sectorName').textContent = sector()[1];
-    el('rateValue').textContent = (miningRate() * sector()[3]).toFixed(2);
-    const dodging = world.dangerText.includes('DESVIO');
-    el('operationText').textContent = world.laser ? (dodging ? 'MINERANDO · DESVIO' : 'LASER EM OPERAÇÃO') : state.mining ? 'MANOBRANDO ATÉ O ALVO' : 'AGUARDANDO ORDEM';
-    el('shieldBar').style.width = clamp(state.shield, 0, 100) + '%';
-    el('shieldText').textContent = Math.round(state.shield) + '%';
-    el('cargoBar').style.width = cargoPct + '%';
-    el('cargoText').textContent = `${Math.floor(state.cargo)} / ${cap}`;
-    const danger = el('dangerText');
-    danger.textContent = world.dangerText;
-    danger.className = 'danger-text' + (world.dangerText.includes('IMPACTO') ? ' hit' : dodging ? ' warn' : '');
-    mineButton.textContent = state.mining ? 'PAUSAR MINERAÇÃO' : 'INICIAR MINERAÇÃO';
-    mineButton.classList.toggle('active', state.mining);
-    el('soundButton').textContent = state.sound ? '🔊' : '🔇';
+  function hud() {
+    const cap = cargoCapacity(), pct = clamp(state.cargo / cap * 100, 0, 100);
+    el('credits').textContent = format(state.credits); el('gems').textContent = format(state.gems); el('sectorName').textContent = sector()[1];
+    el('rateValue').textContent = miningRate().toFixed(2);
+    el('operationText').textContent = world.laser ? (Math.hypot(world.ship.avoidX, world.ship.avoidY) > 12 ? 'MINERANDO · DESVIO' : 'LASER EM OPERAÇÃO') : state.mining ? (world.target ? 'CAÇANDO ASTEROIDE' : 'PROCURANDO ALVO') : 'AGUARDANDO ORDEM';
+    el('shieldBar').style.width = clamp(state.shield, 0, 100) + '%'; el('shieldText').textContent = Math.round(state.shield) + '%';
+    el('cargoBar').style.width = pct + '%'; el('cargoText').textContent = `${Math.floor(state.cargo)} / ${cap}`;
+    const d = el('dangerText'); d.textContent = world.dangerText; d.className = 'danger-text' + (world.dangerText.includes('IMPACTO') ? ' hit' : world.dangerText.includes('DESVIO') ? ' warn' : '');
+    mineButton.textContent = state.mining ? 'PAUSAR MINERAÇÃO' : 'INICIAR MINERAÇÃO'; mineButton.classList.toggle('active', state.mining); el('soundButton').textContent = state.sound ? '🔊' : '🔇';
   }
 
-  function renderPanel() {
+  function panel() {
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
-
     if (activeTab === 'cargo') {
-      panelContent.innerHTML = `<div class="panel-title"><h2>Carga</h2><span>${Math.floor(state.cargo)} / ${cargoCapacity()}</span></div><div class="resource-list">${Object.entries(RESOURCES).map(([k, r]) => `<div class="resource-row"><span>${r[0]}</span><strong>${Math.floor(state.inventory[k] || 0)}</strong><em>${r[1]} C</em></div>`).join('')}</div><button class="panel-action" data-action="sell">Vender carga por Credits</button>`;
+      panelContent.innerHTML = `<div class="panel-title"><h2>Carga</h2><span>${Math.floor(state.cargo)} / ${cargoCapacity()} espaço</span></div><div class="resource-list">${Object.entries(RESOURCES).map(([k, r]) => `<div class="resource-row"><span>${r[0]}</span><strong>${Math.floor(state.inventory[k] || 0)}</strong><em>${r[2]} espaço · ${r[1]} C</em></div>`).join('')}</div><button class="panel-action" data-action="sell">Vender carga por Credits</button>`;
     } else if (activeTab === 'ship') {
-      panelContent.innerHTML = `<div class="panel-title"><h2>Rusty Miner I</h2><span>Nível ${state.shipLevel}</span></div><div class="stats-grid"><div class="stat-card"><span>LASER</span><b>${miningRate().toFixed(2)}/s</b></div><div class="stat-card"><span>CARGO</span><b>${cargoCapacity()}</b></div><div class="stat-card"><span>REFINO</span><b>${Math.round(efficiency() * 100)}%</b></div></div><div class="upgrade-list">${[['laser', 'Laser', '+0,35 minério/s'], ['cargo', 'Cargueiro', '+40 capacidade'], ['efficiency', 'Refino', '+5% valor']].map(v => `<button class="upgrade" data-upgrade="${v[0]}"><span>${v[1]}</span><small>${v[2]}</small><b>${format(upgradeCost(v[0]))} C</b></button>`).join('')}</div>`;
+      panelContent.innerHTML = `<div class="panel-title"><h2>Rusty Miner I</h2><span>Nível ${state.shipLevel}</span></div><div class="stats-grid"><div class="stat-card"><span>LASER</span><b>${miningRate().toFixed(2)}x</b></div><div class="stat-card"><span>CARGO</span><b>${cargoCapacity()}</b></div><div class="stat-card"><span>REFINO</span><b>${Math.round(efficiency() * 100)}%</b></div></div><div class="upgrade-list">${[['laser','Laser','quebra mais rápido'],['cargo','Cargueiro','+40 espaço'],['efficiency','Refino','+5% valor']].map(a => `<button class="upgrade" data-upgrade="${a[0]}"><span>${a[1]}</span><small>${a[2]}</small><b>${format(upgradeCost(a[0]))} C</b></button>`).join('')}</div>`;
     } else {
-      panelContent.innerHTML = `<div class="panel-title"><h2>Market P2P</h2><span>SIMULADO</span></div><p class="market-note">Nenhum depósito ou saque real está ativo nesta Alpha.</p><div class="market-card"><div><strong>50 Titanium</strong><span>Ordem de compra</span></div><b>120 Gems</b><button data-action="ms">Vender</button></div><div class="market-card"><div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div><b>85 Gems</b><button data-action="mb">Comprar</button></div><div class="fee-note">Taxa simulada do Market: <b>10%</b>.</div>`;
+      panelContent.innerHTML = `<div class="panel-title"><h2>Market P2P</h2><span>SIMULADO</span></div><p class="market-note">Nenhum depósito ou saque real está ativo nesta Alpha.</p><div class="market-card"><div><strong>20 Titanium</strong><span>Ordem de compra</span></div><b>120 Gems</b><button data-action="ms">Vender</button></div><div class="market-card"><div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div><b>85 Gems</b><button data-action="mb">Comprar</button></div><div class="fee-note">Taxa simulada do Market: <b>10%</b>.</div>`;
     }
   }
 
-  function renderSectors() {
+  function sectors() {
     el('sectorList').innerHTML = SECTORS.map(v => {
       const unlocked = state.credits >= v[2] || v[0] === 'sol' || state.sector === v[0];
       return `<button class="sector-option" data-sector="${v[0]}" ${unlocked ? '' : 'disabled'}><span><strong>${v[1]}</strong><small>${v[4]}</small></span><b>${unlocked ? 'x' + v[3].toFixed(1) : format(v[2]) + ' C'}</b></button>`;
@@ -839,177 +606,79 @@
     total = Math.round(total * efficiency() * sector()[3]);
     state.credits += total;
     for (const k in state.inventory) state.inventory[k] = 0;
-    state.cargo = 0;
-    sound('cash');
-    toast(`Carga vendida por ${format(total)} Credits.`);
-    saveState();
-    renderPanel();
+    state.cargo = 0; sound('cash'); toast(`Carga vendida por ${format(total)} Credits.`); saveState(); panel();
   }
 
-  function buyUpgrade(type) {
-    const cost = upgradeCost(type);
-    if (state.credits < cost) return toast('Credits insuficientes.');
-    state.credits -= cost;
-    if (type === 'laser') state.laserLevel++;
-    if (type === 'cargo') state.cargoLevel++;
-    if (type === 'efficiency') state.efficiencyLevel++;
-    state.shipLevel = Math.max(1, Math.floor((state.laserLevel + state.cargoLevel + state.efficiencyLevel) / 3));
-    sound('up');
-    toast('Upgrade instalado.');
-    saveState();
-    renderPanel();
+  function upgrade(type) {
+    const c = upgradeCost(type); if (state.credits < c) return toast('Credits insuficientes.');
+    state.credits -= c; if (type === 'laser') state.laserLevel++; if (type === 'cargo') state.cargoLevel++; if (type === 'efficiency') state.efficiencyLevel++;
+    state.shipLevel = Math.max(1, Math.floor((state.laserLevel + state.cargoLevel + state.efficiencyLevel) / 3)); sound('up'); toast('Upgrade instalado.'); saveState(); panel();
   }
 
   function marketSell() {
-    if (state.inventory.titanium < 50) return toast('Você precisa de 50 Titanium.');
-    state.inventory.titanium -= 50;
-    state.cargo = Math.max(0, state.cargo - 50);
-    state.gems += 108;
-    sound('cash');
-    toast('Ordem concluída: +108 Gems após 10% de taxa.');
-    saveState();
-    renderPanel();
+    if (state.inventory.titanium < 20) return toast('Você precisa de 20 Titanium.');
+    state.inventory.titanium -= 20; state.cargo = Math.max(0, state.cargo - 20 * RESOURCES.titanium[2]); state.gems += 108; sound('cash'); toast('Ordem concluída: +108 Gems após 10% de taxa.'); saveState(); panel();
   }
-
   function marketBuy() {
     if (state.gems < 85) return toast('Gems insuficientes. Este saldo é simulado.');
-    state.gems -= 85;
-    state.laserLevel += 2;
-    sound('up');
-    toast('Mining Core Mk-I instalado: Laser +2 níveis.');
-    saveState();
-    renderPanel();
+    state.gems -= 85; state.laserLevel += 2; sound('up'); toast('Mining Core Mk-I instalado: Laser +2 níveis.'); saveState(); panel();
   }
 
   function toast(message) {
-    const box = el('toast');
-    box.textContent = message;
-    box.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => box.classList.remove('show'), 2400);
+    const q = el('toast'); q.textContent = message; q.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => q.classList.remove('show'), 2600);
   }
 
   function getAudio() {
     if (!state.sound) return null;
-    if (!audioContext) {
-      const AudioCtor = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtor) return null;
-      audioContext = new AudioCtor();
-    }
-    if (audioContext.state === 'suspended') audioContext.resume();
-    return audioContext;
+    if (!audioContext) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; audioContext = new C(); }
+    if (audioContext.state === 'suspended') audioContext.resume(); return audioContext;
   }
-
-  function tone(freq, duration, gain = 0.03, type = 'sine', slide = 0) {
-    const ac = getAudio();
-    if (!ac) return;
-    const osc = ac.createOscillator();
-    const amp = ac.createGain();
-    const now = ac.currentTime;
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, now);
-    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), now + duration);
-    amp.gain.setValueAtTime(gain, now);
-    amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    osc.connect(amp);
-    amp.connect(ac.destination);
-    osc.start(now);
-    osc.stop(now + duration);
+  function tone(f, d, g = 0.03, type = 'sine', slide = 0) {
+    const ac = getAudio(); if (!ac) return; const o = ac.createOscillator(), n = ac.createGain(), z = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, z); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), z + d); n.gain.setValueAtTime(g, z); n.gain.exponentialRampToValueAtTime(0.0001, z + d); o.connect(n); n.connect(ac.destination); o.start(z); o.stop(z + d);
   }
-
-  function sound(kind) {
+  function sound(k) {
     if (!state.sound) return;
-    if (kind === 'start') {
-      tone(180, 0.08, 0.03, 'sawtooth', 120);
-      setTimeout(() => tone(330, 0.09, 0.02, 'sine', 90), 55);
-    }
-    if (kind === 'break') {
-      tone(90, 0.18, 0.05, 'sawtooth', -35);
-      tone(460, 0.12, 0.02, 'triangle', -180);
-    }
-    if (kind === 'hit') tone(72, 0.16, 0.05, 'square', -25);
-    if (kind === 'cash') tone(520, 0.08, 0.02, 'sine', 140);
-    if (kind === 'up') tone(260, 0.1, 0.025, 'triangle', 180);
+    if (k === 'start') { tone(180, 0.08, 0.03, 'sawtooth', 120); setTimeout(() => tone(330, 0.09, 0.02, 'sine', 90), 55); }
+    if (k === 'break') { tone(90, 0.18, 0.05, 'sawtooth', -35); tone(460, 0.12, 0.02, 'triangle', -180); }
+    if (k === 'hit') tone(72, 0.16, 0.05, 'square', -25);
+    if (k === 'cash') tone(520, 0.08, 0.02, 'sine', 140);
+    if (k === 'up') tone(260, 0.1, 0.025, 'triangle', 180);
   }
 
   function loop(now) {
-    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
-    lastFrame = now;
-    updateWorld(dt);
-    draw();
-    renderHud();
-    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000)); lastFrame = now;
+    updateWorld(dt); draw(); hud(); requestAnimationFrame(loop);
   }
 
   mineButton.onclick = () => {
     getAudio();
-    if (!state.mining && state.cargo >= cargoCapacity()) return toast('Carga cheia.');
+    if (!state.mining && state.cargo >= cargoCapacity()) return toast('Carga cheia. Venda ou aumente a capacidade.');
     if (!state.mining && world.ship.recoveryTimer > 0) return toast('A nave ainda está recuperando o escudo.');
     state.mining = !state.mining;
-    if (state.mining) chooseTarget(true);
-    sound('start');
-    saveState();
+    if (state.mining) chooseTarget(); else { world.target = null; world.laser = false; }
+    sound('start'); saveState();
   };
-
-  el('soundButton').onclick = () => {
-    state.sound = !state.sound;
-    if (state.sound) {
-      getAudio();
-      tone(420, 0.06, 0.02, 'sine', 80);
-    }
-    saveState();
-    renderHud();
-  };
-
-  document.querySelector('.tabs').onclick = e => {
-    const button = e.target.closest('[data-tab]');
-    if (!button) return;
-    activeTab = button.dataset.tab;
-    renderPanel();
-  };
-
+  el('soundButton').onclick = () => { state.sound = !state.sound; if (state.sound) { getAudio(); tone(420, 0.06, 0.02, 'sine', 80); } saveState(); hud(); };
+  document.querySelector('.tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { activeTab = b.dataset.tab; panel(); } };
   panelContent.onclick = e => {
-    const upgrade = e.target.closest('[data-upgrade]');
-    if (upgrade) return buyUpgrade(upgrade.dataset.upgrade);
+    const u = e.target.closest('[data-upgrade]'); if (u) return upgrade(u.dataset.upgrade);
     const action = e.target.closest('[data-action]')?.dataset.action;
-    if (action === 'sell') sellCargo();
-    if (action === 'ms') marketSell();
-    if (action === 'mb') marketBuy();
+    if (action === 'sell') sellCargo(); if (action === 'ms') marketSell(); if (action === 'mb') marketBuy();
   };
-
-  el('sectorButton').onclick = () => {
-    renderSectors();
-    el('sectorModal').hidden = false;
-  };
-
-  el('closeSector').onclick = () => { el('sectorModal').hidden = true; };
-
+  el('sectorButton').onclick = () => { sectors(); el('sectorModal').hidden = false; };
+  el('closeSector').onclick = () => el('sectorModal').hidden = true;
   el('sectorModal').onclick = e => {
-    const button = e.target.closest('[data-sector]');
-    if (button && !button.disabled) {
-      state.sector = button.dataset.sector;
-      el('sectorModal').hidden = true;
-      world.asteroids = [];
-      world.fragments = [];
-      world.targetId = 0;
-      for (let i = 0; i < asteroidCount(); i++) world.asteroids.push(makeAsteroid(true, i < 2));
-      chooseTarget(true);
-      saveState();
-      toast('Rota definida: ' + sector()[1]);
-      renderPanel();
-    } else if (e.target === el('sectorModal')) {
-      el('sectorModal').hidden = true;
-    }
+    const b = e.target.closest('[data-sector]');
+    if (b && !b.disabled) {
+      state.sector = b.dataset.sector; el('sectorModal').hidden = true;
+      world.asteroids = []; world.fragments = []; world.target = null; while (world.asteroids.length < targetAsteroidCount()) spawnAsteroid(false);
+      if (state.mining) chooseTarget(); saveState(); toast('Rota definida: ' + sector()[1]); panel();
+    } else if (e.target === el('sectorModal')) el('sectorModal').hidden = true;
   };
 
   addEventListener('resize', resize, { passive: true });
   addEventListener('beforeunload', saveState);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveState(); });
 
-  applyOfflineProgress();
-  resize();
-  renderPanel();
-  renderSectors();
-  renderHud();
-  loadAssets().then(() => requestAnimationFrame(loop));
+  applyOfflineProgress(); resize(); panel(); sectors(); hud(); loadAssets().then(() => requestAnimationFrame(loop));
 })();
