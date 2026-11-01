@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -n "${RELAY_ONLY_URL:-}" ]; then
   echo "[boot] relay-only mode enabled -> ${RELAY_ONLY_URL}"
-  exec node "$ROOT/bridge-proxy.mjs"
+  exec node "$ROOT/bridge.mjs"
 fi
 
 RUNTIME="$ROOT/runtime"
