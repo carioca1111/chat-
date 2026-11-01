@@ -1,0 +1,17 @@
+Module
+  name: guest_autologin
+  description: Development-only automatic Guest login for DBO Rox Web
+  author: Ascension OT
+  autoload: true
+  autoload-priority: 9998
+
+  dependencies:
+    - client_entergame
+    - game_things
+
+  @onLoad: |
+    dofile 'guest_autologin'
+    GuestAutoLogin.init()
+
+  @onUnload: |
+    GuestAutoLogin.terminate()
