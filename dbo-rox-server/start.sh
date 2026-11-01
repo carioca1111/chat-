@@ -16,16 +16,30 @@ if [ ! -d "$DB_DIR/mysql" ]; then
   mariadb-install-db --user=mysql --datadir="$DB_DIR" >/dev/null
 fi
 
-# Keep MariaDB intentionally small: the original 2000x2000 DBO map needs most
-# of the free instance memory while booting.
+# Extreme low-memory profile for the disposable development DB. The original
+# 2000x2000 DBO Rox map needs nearly the entire 512 MB free instance by itself.
 mysqld_safe \
   --datadir="$DB_DIR" \
   --bind-address=127.0.0.1 \
   --skip-networking=0 \
-  --innodb-buffer-pool-size=32M \
-  --key-buffer-size=8M \
+  --skip-name-resolve \
   --performance-schema=OFF \
-  --max-connections=20 \
+  --innodb-buffer-pool-size=8M \
+  --innodb-log-buffer-size=1M \
+  --innodb-flush-method=O_DIRECT \
+  --key-buffer-size=512K \
+  --aria-pagecache-buffer-size=2M \
+  --query-cache-size=0 \
+  --table-open-cache=64 \
+  --thread-cache-size=0 \
+  --host-cache-size=0 \
+  --tmp-table-size=1M \
+  --max-heap-table-size=1M \
+  --sort-buffer-size=256K \
+  --read-buffer-size=128K \
+  --read-rnd-buffer-size=256K \
+  --join-buffer-size=128K \
+  --max-connections=5 \
   >/tmp/mariadb.log 2>&1 &
 
 for i in $(seq 1 60); do
@@ -98,7 +112,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# DBO Rox has a large 2000x2000 map. Do not impose an artificial startup timeout.
 while true; do
   if ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
     echo "[bridge] public bridge exited unexpectedly"
@@ -117,7 +130,6 @@ while true; do
   sleep 1
 done
 
-# Keep both processes supervised after startup.
 while true; do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] game server stopped"
