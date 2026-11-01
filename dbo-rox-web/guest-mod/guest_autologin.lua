@@ -2,7 +2,7 @@ GuestAutoLogin = {}
 
 local HOST = 'dbo-rox-game-guest32.onrender.com'
 local PORT = 443
-local CLIENT_VERSION = 860
+local CLIENT_VERSION = 854
 local ACCOUNT = 'guest'
 local PASSWORD = 'guest'
 local CHARACTER = 'Guest'
@@ -54,7 +54,7 @@ function GuestAutoLogin.connect()
         if attempts < 80 then
             scheduleRetry(250)
         else
-            g_logger.error('[Guest] DBO Rox 8.60 DAT/SPR did not finish loading')
+            g_logger.error('[Guest] DBO Rox 8.54 DAT/SPR did not finish loading')
         end
         return
     end
@@ -66,7 +66,7 @@ function GuestAutoLogin.connect()
     G.host = HOST
     G.port = PORT
 
-    g_logger.info('[Guest] entering DBO Rox world directly as Guest')
+    g_logger.info('[Guest] entering DBO Rox world directly as Guest (client 8.54)')
     g_game.loginWorld(ACCOUNT, PASSWORD, WORLD, HOST, PORT, CHARACTER, '', '')
 end
 

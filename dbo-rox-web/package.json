@@ -4,10 +4,11 @@
   "type": "module",
   "engines": {"node": ">=20"},
   "scripts": {
-    "build": "node prepare.mjs",
+    "build": "node prepare.mjs && node fix-client-854.mjs",
     "start": "node server.mjs"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "node-unrar-js": "^2.0.2"
   }
