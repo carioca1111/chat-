@@ -92,6 +92,25 @@ async function walk(dir) {
   return out;
 }
 
+async function patchLegacySource(sourceDir) {
+  const connectionPath = path.join(sourceDir, 'connection.cpp');
+  if (!fs.existsSync(connectionPath)) throw new Error('connection.cpp not found in DBO Rox source');
+  let connection = await fsp.readFile(connectionPath, 'utf8');
+  const replacements = [
+    ['boost::posix_time::seconds(Connection::readTimeout)', 'boost::posix_time::seconds(static_cast<long>(Connection::readTimeout))'],
+    ['boost::posix_time::seconds(Connection::writeTimeout)', 'boost::posix_time::seconds(static_cast<long>(Connection::writeTimeout))'],
+  ];
+  let changed = 0;
+  for (const [from, to] of replacements) {
+    if (connection.includes(from)) {
+      connection = connection.replaceAll(from, to);
+      changed++;
+    }
+  }
+  await fsp.writeFile(connectionPath, connection);
+  console.log(`[compat] patched ${changed} modern-Boost timeout expressions in connection.cpp`);
+}
+
 for (const [name, url] of Object.entries(PACKAGES)) {
   const archive = path.join(WORK, `${name}.rar`);
   await fetchMediaFire(url, archive);
@@ -103,6 +122,7 @@ const configure = sourceFiles.find(f => path.basename(f) === 'configure');
 if (!configure) throw new Error('Could not find configure in DBO Rox source package');
 const sourceRoot = path.dirname(configure);
 await fsp.cp(sourceRoot, SOURCE_OUT, { recursive: true, force: true });
+await patchLegacySource(SOURCE_OUT);
 
 const serverFiles = await walk(path.join(WORK, 'server'));
 const configFile = serverFiles.find(f => path.basename(f).toLowerCase() === 'config.lua');
