@@ -99,7 +99,18 @@ cd "$SERVER"
 chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
 : > /tmp/tfs.log
-runuser -u otserver -- stdbuf -oL -eL ./theforgottenserver > /tmp/tfs.log 2>&1 &
+
+JEMALLOC="$(ldconfig -p | awk '/libjemalloc\.so\.2/{print $NF; exit}')"
+if [ -z "$JEMALLOC" ]; then
+  echo "[tfs] jemalloc runtime not found"
+  exit 1
+fi
+export MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:false,retain:false"
+echo "[tfs] allocator: $JEMALLOC"
+echo "[tfs] jemalloc profile: $MALLOC_CONF"
+
+runuser -u otserver -- env LD_PRELOAD="$JEMALLOC" MALLOC_CONF="$MALLOC_CONF" \
+  stdbuf -oL -eL ./theforgottenserver > /tmp/tfs.log 2>&1 &
 TFS_PID=$!
 
 tail -n +1 -F /tmp/tfs.log &
