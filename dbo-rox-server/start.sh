@@ -16,7 +16,17 @@ if [ ! -d "$DB_DIR/mysql" ]; then
   mariadb-install-db --user=mysql --datadir="$DB_DIR" >/dev/null
 fi
 
-mysqld_safe --datadir="$DB_DIR" --bind-address=127.0.0.1 --skip-networking=0 >/tmp/mariadb.log 2>&1 &
+# Keep MariaDB intentionally small: the original 2000x2000 DBO map needs most
+# of the free instance memory while booting.
+mysqld_safe \
+  --datadir="$DB_DIR" \
+  --bind-address=127.0.0.1 \
+  --skip-networking=0 \
+  --innodb-buffer-pool-size=32M \
+  --key-buffer-size=8M \
+  --performance-schema=OFF \
+  --max-connections=20 \
+  >/tmp/mariadb.log 2>&1 &
 
 for i in $(seq 1 60); do
   if mariadb-admin ping -uroot --silent >/dev/null 2>&1; then break; fi
@@ -64,6 +74,13 @@ echo "[db] config path: $SERVER/config.lua"
 echo "[db] final config override:"
 tail -n 8 "$SERVER/config.lua"
 
+# Open Render's public HTTP/WSS port immediately. Connections received before
+# TFS finishes loading are rejected by the TCP side and the browser retries.
+cd "$ROOT"
+node bridge.mjs &
+BRIDGE_PID=$!
+echo "[bridge] bootstrap process started (pid $BRIDGE_PID)"
+
 cd "$SERVER"
 chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
@@ -73,26 +90,42 @@ TFS_PID=$!
 
 tail -n +1 -F /tmp/tfs.log &
 TAIL_PID=$!
-cleanup_tail() { kill "$TAIL_PID" >/dev/null 2>&1 || true; }
-trap cleanup_tail EXIT
 
-for i in $(seq 1 120); do
+cleanup() {
+  kill "$TAIL_PID" >/dev/null 2>&1 || true
+  kill "$TFS_PID" >/dev/null 2>&1 || true
+  kill "$BRIDGE_PID" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+# DBO Rox has a large 2000x2000 map. Do not impose an artificial startup timeout.
+while true; do
+  if ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
+    echo "[bridge] public bridge exited unexpectedly"
+    exit 1
+  fi
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] server exited during startup"
     exit 1
   fi
   if (echo >/dev/tcp/127.0.0.1/7172) >/dev/null 2>&1; then
     echo "[tfs] game port 7172 ready"
-    cleanup_tail
-    trap - EXIT
+    kill "$TAIL_PID" >/dev/null 2>&1 || true
+    TAIL_PID=0
     break
   fi
   sleep 1
-  if [ "$i" -eq 120 ]; then
-    echo "[tfs] timeout waiting for port 7172"
-    exit 1
-  fi
 done
 
-cd "$ROOT"
-exec node bridge.mjs
+# Keep both processes supervised after startup.
+while true; do
+  if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
+    echo "[tfs] game server stopped"
+    exit 1
+  fi
+  if ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
+    echo "[bridge] public bridge stopped"
+    exit 1
+  fi
+  sleep 5
+done
