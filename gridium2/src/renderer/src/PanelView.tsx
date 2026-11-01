@@ -95,9 +95,9 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
       <h2>ITENS RAROS RECEBIDOS</h2>
       <button onClick={() => exportRareDiagnostics(accounts)}>Exportar diagnóstico de itens</button>
       <p>Unidades recebidas desde o início do registro · aumentos de estoque observados</p>
-      <table><thead><tr><th>Item</th>{accounts.map(a => <th key={a.id}>Conta {a.id}</th>)}<th>Total</th></tr></thead>
+      <div class="rare-table-scroll"><table><thead><tr><th>Item</th>{accounts.map(a => <th key={a.id}>Conta {a.id}</th>)}<th>Total</th></tr></thead>
       <tbody>{rare.map(item => <tr key={item.name}><th scope="row">{item.name}</th>{item.accounts.map((quantity, i) => <td key={i}>{fmt(quantity)}</td>)}<td>{fmt(item.quantity)}</td></tr>)}</tbody>
-      <tfoot><tr><th>Total de raros</th>{analytics.map((row, i) => <td key={i}>{fmt(row.rareItemsTotal)}</td>)}<td>{fmt(total.rareItemsTotal)}</td></tr></tfoot></table>
+      <tfoot><tr><th>Total de raros</th>{analytics.map((row, i) => <td key={i}>{fmt(row.rareItemsTotal)}</td>)}<td>{fmt(total.rareItemsTotal)}</td></tr></tfoot></table></div>
     </section>
 
 

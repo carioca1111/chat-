@@ -1,4 +1,7 @@
 import { render } from 'preact'
+import { PanelView } from '../../src/renderer/src/PanelView'
+import '../../src/renderer/src/styles.css'
+import '../../src/renderer/src/panel.css'
 import { HuntView } from '../../src/renderer/src/HuntView'
 import { loadHuntSpecies } from '../../src/renderer/src/hunt-data'
 const scope = window as any
@@ -32,3 +35,26 @@ scope.runLifecycle = async () => {
   return {cycles:1000,before,after,maximumWorkers}
 }
 scope.smokeReady=true
+
+scope.checkPanelLayout = async (snapshot: any, itemCount: number) => {
+  for (const account of snapshot.accounts) {
+    account.panelAnalytics.rareItems = Array.from({ length: itemCount }, (_, i) => ({
+      itemId: String(i), name: i === 0 ? 'Boss Token' : 'Rare Item ' + i, quantity: i + 1
+    }))
+  }
+  render(<PanelView snapshot={snapshot} />, document.getElementById('app')!)
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  const panel = document.querySelector('.panel-page') as HTMLElement
+  const section = document.querySelector('.rare-counts') as HTMLElement
+  const table = section.querySelector('table')!
+  const bounds = section.getBoundingClientRect()
+  const tableBounds = table.getBoundingClientRect()
+  if (bounds.height < 150 || tableBounds.bottom > bounds.bottom) throw new Error('Rare item section collapsed')
+  if (section.scrollHeight > section.clientHeight + 2) throw new Error('Rare item section has hidden vertical content')
+  if (panel.scrollWidth > panel.clientWidth + 2) throw new Error('Panel overflows horizontally')
+  const sections = [...panel.children] as HTMLElement[]
+  for (let i = 1; i < sections.length; i++) {
+    if (sections[i].getBoundingClientRect().top < sections[i - 1].getBoundingClientRect().bottom) throw new Error('Panel sections overlap')
+  }
+  return { width: innerWidth, height: innerHeight, itemCount, sectionHeight: bounds.height, tableHeight: tableBounds.height }
+}

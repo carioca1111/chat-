@@ -33,6 +33,15 @@ async function run() {
   }
   await pause(200)
   const renderer=await window.webContents.executeJavaScript('window.runLifecycle()')
+  const panelLayout = []
+  for (const [width, height] of [[1366, 768], [1100, 650], [1920, 1080]]) {
+    window.setContentSize(width, height)
+    for (const count of [1, 25]) {
+      panelLayout.push(await window.webContents.executeJavaScript(
+        'window.checkPanelLayout(' + JSON.stringify({ accounts: runtime.snapshots() }) + ',' + count + ')'
+      ))
+    }
+  }
   const after={webContents:webContents.getAllWebContents().length,runtime:runtime.diagnostics(),memory:process.memoryUsage(),processes:app.getAppMetrics()}
   assert.equal(after.webContents,5)
   assert.equal(after.webContents,baseline.webContents)
@@ -40,7 +49,7 @@ async function run() {
   assert.ok(after.runtime.accounts.every(a=>a.sockets===0))
   runtime.destroy();await pause(200)
   assert.equal(webContents.getAllWebContents().length,1)
-  const report={baseline,after,renderer,reconnects:500,afterDestroyWebContents:webContents.getAllWebContents().length}
+  const report={baseline,after,renderer,panelLayout,reconnects:500,afterDestroyWebContents:webContents.getAllWebContents().length}
   writeFileSync('docs/performance/electron-lifecycle.json',JSON.stringify(report,null,2))
   console.log(JSON.stringify(report))
   window.destroy();server.close();app.exit(0)
