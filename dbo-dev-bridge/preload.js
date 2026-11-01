@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('bridgeApi', {
   connectRelay: () => ipcRenderer.invoke('connect-relay'),
   disconnectRelay: () => ipcRenderer.invoke('disconnect-relay'),
   copy: text => ipcRenderer.invoke('copy', text),
+  openExternal: url => ipcRenderer.invoke('open-external', url),
   onState: cb => ipcRenderer.on('state', (_e, state) => cb(state)),
   onLog: cb => ipcRenderer.on('log-line', (_e, line) => cb(line))
 });
