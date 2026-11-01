@@ -9,6 +9,7 @@ DB_DIR="/var/lib/mysql"
 DB_USER="dborox"
 MARIADB_SAFE_PID=""
 BRIDGE_PID=""
+BOOT_PID=""
 
 mkdir -p /run/mysqld
 chown -R mysql:mysql /run/mysqld "$DB_DIR"
@@ -71,6 +72,21 @@ stop_mariadb_for_map() {
   echo "[memory] warning: MariaDB did not fully stop before map load"
 }
 
+start_boot_listener() {
+  /usr/local/bin/dbo-boot-listener &
+  BOOT_PID=$!
+  echo "[boot] lightweight startup listener pid $BOOT_PID"
+}
+
+stop_boot_listener() {
+  if [ -n "${BOOT_PID:-}" ] && [ "$BOOT_PID" -gt 1 ] 2>/dev/null; then
+    kill "$BOOT_PID" >/dev/null 2>&1 || true
+    wait "$BOOT_PID" >/dev/null 2>&1 || true
+    BOOT_PID=""
+    sleep 0.2
+  fi
+}
+
 start_bridge() {
   cd "$ROOT"
   node bridge.mjs &
@@ -120,9 +136,10 @@ echo "[db] config path: $SERVER/config.lua"
 echo "[db] final config override:"
 tail -n 8 "$SERVER/config.lua"
 
-# Do NOT start Node yet. The 2000x2000 legacy map sits within a few MiB of the
-# free Render memory ceiling, so the websocket bridge is deferred until TFS has
-# completely loaded the map and opened game port 7172.
+# Keep Render healthy with a tiny native listener, not Node. The websocket
+# bridge is deliberately delayed until the 2000x2000 map is completely loaded.
+start_boot_listener
+
 cd "$SERVER"
 chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
@@ -149,12 +166,17 @@ cleanup() {
   if [ -n "${TAIL_PID:-}" ] && [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${TFS_PID:-}" ] && [ "$TFS_PID" -gt 1 ] 2>/dev/null; then kill "$TFS_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${BRIDGE_PID:-}" ] && [ "$BRIDGE_PID" -gt 1 ] 2>/dev/null; then kill "$BRIDGE_PID" >/dev/null 2>&1 || true; fi
+  if [ -n "${BOOT_PID:-}" ] && [ "$BOOT_PID" -gt 1 ] 2>/dev/null; then kill "$BOOT_PID" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT INT TERM
 
 while true; do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] server exited during startup"
+    exit 1
+  fi
+  if [ -z "$BOOT_PID" ] || ! kill -0 "$BOOT_PID" >/dev/null 2>&1; then
+    echo "[boot] startup listener stopped unexpectedly"
     exit 1
   fi
 
@@ -172,7 +194,7 @@ while true; do
       DB_PAUSED_FOR_MAP=0
     fi
 
-    # Only now pay the Node/WebSocket memory cost.
+    stop_boot_listener
     start_bridge
 
     if [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
