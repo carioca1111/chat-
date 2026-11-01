@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#03060d" />
-  <title>Starforge Idle — Alpha 0.8</title>
+  <title>Starforge Idle — Alpha 0.9</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -13,11 +13,11 @@
 
     <header class="top-hud glass">
       <div class="brand-block">
-        <span class="alpha-tag">ALPHA 0.8</span>
+        <span class="alpha-tag">ALPHA 0.9</span>
         <strong>STARFORGE IDLE</strong>
       </div>
       <button id="sectorButton" class="sector-chip">
-        <span>SETOR</span>
+        <span>MAPA / SETOR</span>
         <b id="sectorName">Sol Belt</b>
       </button>
       <div class="wallet-strip">
@@ -58,10 +58,27 @@
       <button id="mineButton" class="mine-button">INICIAR MINERAÇÃO</button>
     </div>
 
-    <div class="modal-backdrop" id="sectorModal" hidden>
-      <section class="modal glass" role="dialog" aria-modal="true" aria-labelledby="sectorTitle">
-        <header><h2 id="sectorTitle">Escolher setor</h2><button id="closeSector" aria-label="Fechar">×</button></header>
-        <div id="sectorList" class="sector-list"></div>
+    <div class="modal-backdrop map-backdrop" id="sectorModal" hidden>
+      <section class="sector-map-shell glass" role="dialog" aria-modal="true" aria-labelledby="sectorTitle">
+        <header class="map-header">
+          <div>
+            <span class="map-kicker">NAVEGAÇÃO GALÁCTICA</span>
+            <h2 id="sectorTitle">Mapa de setores</h2>
+          </div>
+          <button id="closeSector" class="map-close" aria-label="Fechar">×</button>
+        </header>
+        <div class="map-layout">
+          <div class="sector-map" id="sectorMap">
+            <div class="galaxy-art" aria-hidden="true"></div>
+            <svg class="map-routes" id="mapRoutes" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <div id="mapNodes" class="map-nodes"></div>
+            <div class="map-hint">Toque em uma região e depois em um sub-setor.</div>
+          </div>
+          <aside class="map-side" id="mapSide">
+            <div id="mapDetails"></div>
+            <button class="travel-button" id="travelButton">SELECIONE UM DESTINO</button>
+          </aside>
+        </div>
       </section>
     </div>
 
