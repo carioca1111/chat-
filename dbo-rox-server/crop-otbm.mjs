@@ -93,10 +93,12 @@ const mapPath = files.find(f => path.basename(f).toLowerCase() === 'dbzo.otbm');
 if (!mapPath) throw new Error('DBZO.otbm not found under runtime server');
 
 const original = await fs.readFile(mapPath);
-if (original.length < 8 || original.subarray(0, 4).toString('ascii') !== 'OTBM') {
-  throw new Error(`Unexpected OTBM header in ${mapPath}`);
-}
+if (original.length < 8) throw new Error(`OTBM file is too small: ${mapPath}`);
 
+// Legacy OTBM files use a four-byte identifier before the first node. Depending
+// on the writer/version this is commonly 0x00000000 rather than ASCII "OTBM".
+// Preserve those bytes verbatim and parse the node tree beginning at offset 4.
+console.log(`[map] OTBM identifier: ${original.subarray(0, 4).toString('hex')}`);
 const state = { i: 4 };
 const tree = parseNode(original, state);
 if (state.i !== original.length) {
