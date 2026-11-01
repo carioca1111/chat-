@@ -26,11 +26,13 @@ COPY dbo-rox-server/prepare-server.mjs ./prepare-server.mjs
 RUN node prepare-server.mjs
 
 # Regenerate the 2010-era autotools helper files with the toolchain available
-# on Debian 12, then compile the original DBO Rox TFS 0.4 source.
+# on Debian 12. The native OTServ pool allocator is enabled because this old
+# server creates millions of small map/tile/item objects and the 512 MiB free
+# Render instance otherwise exhausts memory while loading the 2000x2000 map.
 RUN cd /app/source && \
     autoreconf -fiv && \
     chmod +x configure && \
-    ./configure --enable-mysql && \
+    ./configure --enable-mysql --enable-otserv-allocator && \
     make -j2 && \
     BIN="$(find . -maxdepth 2 -type f -executable \( -name 'theforgottenserver' -o -name 'TheForgottenServer' \) | head -n1)" && \
     test -n "$BIN" && \
@@ -38,8 +40,7 @@ RUN cd /app/source && \
     chmod +x /app/runtime/server/theforgottenserver && \
     chown -R otserver:otserver /app/runtime/server
 
-# Install the allocator only after compiling so changing runtime tuning does not
-# invalidate the expensive cached TFS build layer.
+# jemalloc backs allocations that are not served by the OTServ object pools.
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && \
     rm -rf /var/lib/apt/lists/*
 
