@@ -1,6 +1,6 @@
 GuestAutoLogin = {}
 
-local HOST = 'dbo-rox-game-alpha01.onrender.com'
+local HOST = 'dbo-rox-game-guest32.onrender.com'
 local PORT = 443
 local CLIENT_VERSION = 860
 local ACCOUNT = 'guest'
