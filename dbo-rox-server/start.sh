@@ -10,6 +10,7 @@ DB_USER="dborox"
 MARIADB_SAFE_PID=""
 BRIDGE_PID=""
 BOOT_PID=""
+DB_PAUSER_PID=""
 
 mkdir -p /run/mysqld
 chown -R mysql:mysql /run/mysqld "$DB_DIR"
@@ -60,22 +61,23 @@ start_mariadb() {
 }
 
 stop_mariadb_for_map() {
-  echo "[memory] pausing MariaDB while DBO Rox 2000x2000 map loads"
+  echo "[memory] pausing MariaDB before DBO Rox map peak"
   mariadb-admin shutdown -uroot >/dev/null 2>&1 || true
   for i in $(seq 1 40); do
     if ! mariadb-admin ping -uroot --silent >/dev/null 2>&1; then
       echo "[memory] MariaDB stopped; RAM released to TFS map loader"
+      touch /tmp/db-paused-for-map
       return 0
     fi
     sleep 0.25
   done
-  echo "[memory] warning: MariaDB did not fully stop before map load"
+  echo "[memory] warning: MariaDB did not fully stop before map peak"
 }
 
 start_boot_listener() {
   /usr/local/bin/dbo-boot-listener &
   BOOT_PID=$!
-  echo "[boot] lightweight startup listener pid $BOOT_PID"
+  echo "[boot] static startup listener pid $BOOT_PID"
 }
 
 stop_boot_listener() {
@@ -134,6 +136,7 @@ LUA
 
 echo "[db] config path: $SERVER/config.lua"
 
+rm -f /tmp/db-paused-for-map
 start_boot_listener
 
 cd "$SERVER"
@@ -141,15 +144,25 @@ chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
 : > /tmp/tfs.log
 
-echo "[tfs] allocator: native OTServ pool (low-memory boot profile)"
-# Keep only stdbuf so startup milestones are flushed immediately to the file.
-# No jemalloc preload and no tail process during the memory-critical map load.
-runuser -u otserver -- stdbuf -oL -eL ./theforgottenserver > /tmp/tfs.log 2>&1 &
+echo "[tfs] allocator: native OTServ pool (ultra-low-memory boot profile)"
+# No jemalloc, stdbuf or tail process. TFS completes its SQL startup work in
+# well under the fixed pause window, then MariaDB is shut down before map peak.
+runuser -u otserver -- ./theforgottenserver > /tmp/tfs.log 2>&1 &
 TFS_PID=$!
-DB_PAUSED_FOR_MAP=0
-MAP_LOGGED=0
+
+# Previous boots consistently reach SQL/database-manager work immediately and
+# begin the map several seconds later. Pause DB at 4s so the TFS log does not
+# need line-buffering/preloads just to detect the map milestone.
+(
+  sleep 4
+  if kill -0 "$TFS_PID" >/dev/null 2>&1; then
+    stop_mariadb_for_map
+  fi
+) &
+DB_PAUSER_PID=$!
 
 cleanup() {
+  if [ -n "${DB_PAUSER_PID:-}" ] && [ "$DB_PAUSER_PID" -gt 1 ] 2>/dev/null; then kill "$DB_PAUSER_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${TFS_PID:-}" ] && [ "$TFS_PID" -gt 1 ] 2>/dev/null; then kill "$TFS_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${BRIDGE_PID:-}" ] && [ "$BRIDGE_PID" -gt 1 ] 2>/dev/null; then kill "$BRIDGE_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${BOOT_PID:-}" ] && [ "$BOOT_PID" -gt 1 ] 2>/dev/null; then kill "$BOOT_PID" >/dev/null 2>&1 || true; fi
@@ -159,7 +172,7 @@ trap cleanup EXIT INT TERM
 while true; do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] server exited during startup"
-    tail -n 60 /tmp/tfs.log || true
+    tail -n 80 /tmp/tfs.log || true
     exit 1
   fi
   if [ -z "$BOOT_PID" ] || ! kill -0 "$BOOT_PID" >/dev/null 2>&1; then
@@ -167,25 +180,14 @@ while true; do
     exit 1
   fi
 
-  if [ "$DB_PAUSED_FOR_MAP" -eq 0 ] && grep -q 'Loading map and spawns' /tmp/tfs.log; then
-    stop_mariadb_for_map
-    DB_PAUSED_FOR_MAP=1
-  fi
-
-  if [ "$MAP_LOGGED" -eq 0 ] && grep -q 'Map size:' /tmp/tfs.log; then
-    grep 'Map size:' /tmp/tfs.log | tail -n 1 || true
-    echo "[memory] map parsing continues with DB and Node bridge offline"
-    MAP_LOGGED=1
-  fi
-
   if (echo >/dev/tcp/127.0.0.1/7172) >/dev/null 2>&1; then
     echo "[tfs] game port 7172 ready"
-    tail -n 40 /tmp/tfs.log || true
+    tail -n 60 /tmp/tfs.log || true
 
-    if [ "$DB_PAUSED_FOR_MAP" -eq 1 ]; then
+    if [ -f /tmp/db-paused-for-map ]; then
       echo "[memory] map finished; restarting MariaDB before accepting Guest"
       start_mariadb
-      DB_PAUSED_FOR_MAP=0
+      rm -f /tmp/db-paused-for-map
     fi
 
     stop_boot_listener
@@ -198,7 +200,7 @@ done
 while true; do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] game server stopped"
-    tail -n 60 /tmp/tfs.log || true
+    tail -n 80 /tmp/tfs.log || true
     exit 1
   fi
   if [ -z "$BRIDGE_PID" ] || ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
