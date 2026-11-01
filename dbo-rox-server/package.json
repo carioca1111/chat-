@@ -1,0 +1,10 @@
+{
+  "name": "dbo-rox-game-server",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "dependencies": {
+    "node-unrar-js": "^2.0.2",
+    "ws": "^8.18.3"
+  }
+}
