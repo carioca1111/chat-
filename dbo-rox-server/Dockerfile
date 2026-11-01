@@ -38,6 +38,11 @@ RUN cd /app/source && \
     chmod +x /app/runtime/server/theforgottenserver && \
     chown -R otserver:otserver /app/runtime/server
 
+# Install the allocator only after compiling so changing runtime tuning does not
+# invalidate the expensive cached TFS build layer.
+RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY dbo-rox-server/bridge.mjs ./bridge.mjs
 COPY dbo-rox-server/start.sh ./start.sh
 RUN chmod +x ./start.sh
