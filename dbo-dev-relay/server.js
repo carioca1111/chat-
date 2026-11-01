@@ -18,24 +18,43 @@ function getDevice(device, secret, create = false) {
   if (!device || !secret || device.length > 128 || secret.length < 32 || secret.length > 256) return null;
   let d = devices.get(device);
   if (!d && create) {
-    d = { secret, agent: null, clients: new Map(), heartbeat: null, lastSeen: Date.now() };
+    d = { id: device, secret, agent: null, clients: new Map(), heartbeat: null, lastSeen: Date.now() };
     devices.set(device, d);
   }
   if (!d || !safeEq(d.secret, secret)) return null;
   return d;
 }
 
+function activeDevices() {
+  return [...devices.values()].filter(d => d.agent && d.agent.readyState === WebSocket.OPEN);
+}
+
 function json(ws, obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
-function closeClient(d, id, code = 1000, reason = '') {
-  const ws = d.clients.get(id);
-  if (ws) {
+function attachGameClient(ws, d) {
+  if (!d || !d.agent || d.agent.readyState !== WebSocket.OPEN) return ws.close(1013, 'agent offline');
+  if (d.clients.size >= MAX_CLIENTS) return ws.close(1013, 'too many clients');
+
+  const id = crypto.randomUUID();
+  d.clients.set(id, ws);
+  d.lastSeen = Date.now();
+  json(d.agent, { op: 'open', id });
+
+  ws.on('message', data => {
+    if (!d.agent || d.agent.readyState !== WebSocket.OPEN) return ws.close(1012, 'agent offline');
+    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    json(d.agent, { op: 'data', id, data: buf.toString('base64') });
+  });
+  ws.on('close', () => {
     d.clients.delete(id);
-    try { ws.close(code, reason); } catch {}
-  }
-  json(d.agent, { op: 'close', id });
+    json(d.agent, { op: 'close', id });
+  });
+  ws.on('error', () => {
+    d.clients.delete(id);
+    json(d.agent, { op: 'close', id });
+  });
 }
 
 const server = http.createServer((req, res) => {
@@ -44,8 +63,8 @@ const server = http.createServer((req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
   if (u.pathname === '/health') {
-    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-    return res.end('ok');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ ok: true, activeAgents: activeDevices().length }));
   }
   if (u.pathname === '/status') {
     const d = getDevice(u.searchParams.get('device'), u.searchParams.get('secret'));
@@ -63,14 +82,14 @@ const server = http.createServer((req, res) => {
     }));
   }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><meta charset="utf-8"><title>DBO Dev Relay</title><body style="font-family:Segoe UI;background:#10131a;color:#eee;padding:30px"><h1>DBO Dev Relay</h1><p>Relay ativo. Use o DBO Dev Bridge no Windows.</p></body>`);
+  res.end(`<!doctype html><meta charset="utf-8"><title>DBO Dev Relay</title><body style="font-family:Segoe UI;background:#10131a;color:#eee;padding:30px"><h1>DBO Dev Relay</h1><p>Relay ativo. Agentes conectados: ${activeDevices().length}</p><p>O OTClient Web usa o WebSocket na raiz deste domínio durante a Alpha 0.1.</p></body>`);
 });
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD, perMessageDeflate: false });
 
 server.on('upgrade', (req, socket, head) => {
   const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (u.pathname !== '/agent' && u.pathname !== '/game') {
+  if (u.pathname !== '/agent' && u.pathname !== '/game' && u.pathname !== '/') {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     return socket.destroy();
   }
@@ -101,7 +120,6 @@ wss.on('connection', (ws, req, u) => {
       if (!msg.id) return;
       const client = d.clients.get(msg.id);
       if (!client) return;
-      if (msg.op === 'opened') return;
       if (msg.op === 'data' && msg.data) {
         try { client.send(Buffer.from(msg.data, 'base64'), { binary: true }); } catch {}
       } else if (msg.op === 'close') {
@@ -123,25 +141,14 @@ wss.on('connection', (ws, req, u) => {
     return;
   }
 
+  if (u.pathname === '/') {
+    const active = activeDevices();
+    if (active.length !== 1) return ws.close(1013, active.length ? 'multiple agents online' : 'agent offline');
+    return attachGameClient(ws, active[0]);
+  }
+
   const d = getDevice(deviceId, secret);
-  if (!d || !d.agent || d.agent.readyState !== WebSocket.OPEN) return ws.close(1013, 'agent offline');
-  if (d.clients.size >= MAX_CLIENTS) return ws.close(1013, 'too many clients');
-
-  const id = crypto.randomUUID();
-  d.clients.set(id, ws);
-  d.lastSeen = Date.now();
-  json(d.agent, { op: 'open', id });
-
-  ws.on('message', data => {
-    if (!d.agent || d.agent.readyState !== WebSocket.OPEN) return ws.close(1012, 'agent offline');
-    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-    json(d.agent, { op: 'data', id, data: buf.toString('base64') });
-  });
-  ws.on('close', () => {
-    d.clients.delete(id);
-    json(d.agent, { op: 'close', id });
-  });
-  ws.on('error', () => closeClient(d, id, 1011, 'websocket error'));
+  return attachGameClient(ws, d);
 });
 
 setInterval(() => {
