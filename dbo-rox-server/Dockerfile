@@ -9,6 +9,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# Keep the browser/runtime stack amd64, but add i386 development/runtime libs
+# solely for TFS. This 2010-era server is extremely pointer-heavy; a 32-bit
+# address model substantially reduces the resident size of the 2000x2000 map.
+RUN dpkg --add-architecture i386 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    g++-multilib libc6:i386 libc6-dev:i386 \
+    libboost-thread1.74-dev:i386 libboost-regex1.74-dev:i386 \
+    libboost-system1.74-dev:i386 libboost-date-time1.74-dev:i386 \
+    libboost-filesystem1.74-dev:i386 \
+    libgmp-dev:i386 zlib1g-dev:i386 libxml2-dev:i386 \
+    liblua5.1-0-dev:i386 libssl-dev:i386 libmariadb-dev:i386 \
+    libsqlite3-dev:i386 && \
+    rm -rf /var/lib/apt/lists/*
+
 # TFS 0.4 predates modern Boost releases and checks for the old Boost TR1
 # wrapper headers. Debian 12 still ships the GCC TR1 headers, so expose small
 # compatibility wrappers instead of modifying the DBO Rox gameplay source.
@@ -25,17 +39,19 @@ RUN npm install --omit=dev
 COPY dbo-rox-server/prepare-server.mjs ./prepare-server.mjs
 RUN node prepare-server.mjs
 
-# Regenerate the 2010-era autotools helper files with the toolchain available
-# on Debian 12. The native OTServ pool allocator is enabled because this old
-# server creates millions of small map/tile/item objects and the 512 MiB free
-# Render instance otherwise exhausts memory while loading the 2000x2000 map.
+# Compile only the TFS executable as i386. The rest of the image (Node,
+# MariaDB and the native supervisor) stays amd64. The OTServ object allocator
+# remains enabled on top of the smaller 32-bit pointer layout.
 RUN cd /app/source && \
     autoreconf -fiv && \
     chmod +x configure && \
+    PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig \
+    CXX="g++ -m32" LDFLAGS="-m32" \
     ./configure --enable-mysql --enable-otserv-allocator && \
-    make -j2 && \
+    make -j2 CXXFLAGS="-pipe -m32" LDFLAGS="-m32" && \
     BIN="$(find . -maxdepth 2 -type f -executable \( -name 'theforgottenserver' -o -name 'TheForgottenServer' \) | head -n1)" && \
     test -n "$BIN" && \
+    file "$BIN" && \
     cp "$BIN" /app/runtime/server/theforgottenserver && \
     chmod +x /app/runtime/server/theforgottenserver && \
     chown -R otserver:otserver /app/runtime/server
