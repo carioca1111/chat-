@@ -66,6 +66,41 @@ RUN cd /app/source && \
     chmod +x /app/runtime/server/theforgottenserver && \
     chown -R otserver:otserver /app/runtime/server
 
+# Preload the original DBO Rox SQL into the image. Runtime imports on Render's
+# 0.15 CPU free instance became the startup bottleneck, while the Docker builder
+# can do this once and bake the initialized /var/lib/mysql into the image.
+RUN set -eux; \
+    mkdir -p /run/mysqld; \
+    chown -R mysql:mysql /run/mysqld /var/lib/mysql; \
+    if [ ! -d /var/lib/mysql/mysql ]; then \
+      mariadb-install-db --user=mysql --datadir=/var/lib/mysql >/dev/null; \
+    fi; \
+    mariadbd \
+      --user=mysql \
+      --datadir=/var/lib/mysql \
+      --socket=/run/mysqld/mysqld.sock \
+      --pid-file=/run/mysqld/mysqld.pid \
+      --skip-networking \
+      --skip-name-resolve \
+      --performance-schema=OFF \
+      --innodb-buffer-pool-size=32M \
+      --key-buffer-size=8M \
+      >/tmp/db-preseed.log 2>&1 & \
+    DBPID=$!; \
+    READY=0; \
+    for i in $(seq 1 120); do \
+      if mariadb-admin --protocol=socket --socket=/run/mysqld/mysqld.sock -uroot ping --silent >/dev/null 2>&1; then READY=1; break; fi; \
+      sleep 0.5; \
+    done; \
+    if [ "$READY" -ne 1 ]; then cat /tmp/db-preseed.log; exit 1; fi; \
+    mariadb --protocol=socket --socket=/run/mysqld/mysqld.sock -uroot \
+      -e "CREATE DATABASE IF NOT EXISTS dborox CHARACTER SET latin1 COLLATE latin1_swedish_ci;"; \
+    mariadb --protocol=socket --socket=/run/mysqld/mysqld.sock -uroot dborox < /app/runtime/database.sql; \
+    mariadb-admin --protocol=socket --socket=/run/mysqld/mysqld.sock -uroot shutdown; \
+    wait "$DBPID" || true; \
+    rm -f /run/mysqld/mysqld.sock /run/mysqld/mysqld.pid; \
+    echo '[build] original DBO Rox database preseeded into image'
+
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && \
     rm -rf /var/lib/apt/lists/*
 
