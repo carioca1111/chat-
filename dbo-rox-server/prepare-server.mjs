@@ -120,6 +120,23 @@ async function patchLegacySource(sourceDir) {
     console.log('[compat] patched legacy stringstream debug output in protocolgame.cpp');
   }
   await fsp.writeFile(protocolGamePath, protocolGame);
+
+  const talkActionPath = path.join(sourceDir, 'talkaction.cpp');
+  if (!fs.existsSync(talkActionPath)) throw new Error('talkaction.cpp not found in DBO Rox source');
+  let talkAction = await fsp.readFile(talkActionPath, 'utf8');
+  let talkChanged = 0;
+  const talkReplacements = [
+    ['sl << ss', 'sl << ss.str()'],
+    ['ss << sl', 'ss << sl.str()'],
+  ];
+  for (const [from, to] of talkReplacements) {
+    if (talkAction.includes(from)) {
+      talkAction = talkAction.replaceAll(from, to);
+      talkChanged++;
+    }
+  }
+  await fsp.writeFile(talkActionPath, talkAction);
+  console.log(`[compat] patched ${talkChanged} legacy stringstream insertions in talkaction.cpp`);
 }
 
 for (const [name, url] of Object.entries(PACKAGES)) {
