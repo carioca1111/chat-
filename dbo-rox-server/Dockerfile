@@ -44,6 +44,12 @@ RUN cd /app/source && \
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && \
     rm -rf /var/lib/apt/lists/*
 
+# Render requires a public port during startup. This tiny C listener keeps that
+# port open using negligible RAM while the legacy map loads; it is replaced by
+# the real Node websocket bridge only after TFS opens game port 7172.
+COPY dbo-rox-server/boot-listener.c ./boot-listener.c
+RUN gcc -O2 -s ./boot-listener.c -o /usr/local/bin/dbo-boot-listener
+
 COPY dbo-rox-server/bridge.mjs ./bridge.mjs
 COPY dbo-rox-server/start.sh ./start.sh
 RUN chmod +x ./start.sh
