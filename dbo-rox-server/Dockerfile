@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Keep the browser/runtime stack amd64, but add i386 development/runtime libs
 # solely for TFS. This 2010-era server is extremely pointer-heavy; a 32-bit
-# address model substantially reduces the resident size of the 2000x2000 map.
+# address model substantially reduces the resident size of the original map.
 RUN dpkg --add-architecture i386 && \
     apt-get update && apt-get install -y --no-install-recommends \
     g++-multilib libc6:i386 libc6-dev:i386 \
@@ -45,7 +45,8 @@ COPY dbo-rox-server/package.json ./package.json
 RUN npm install --omit=dev
 
 COPY dbo-rox-server/prepare-server.mjs ./prepare-server.mjs
-RUN node prepare-server.mjs
+COPY dbo-rox-server/crop-otbm.mjs ./crop-otbm.mjs
+RUN node prepare-server.mjs && node crop-otbm.mjs /app/runtime/server
 
 # Compile only the TFS executable as i386. The original source archive contains
 # at least one stale prebuilt amd64 object (allocator.o), so purge every object
