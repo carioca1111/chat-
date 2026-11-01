@@ -47,15 +47,17 @@ RUN npm install --omit=dev
 COPY dbo-rox-server/prepare-server.mjs ./prepare-server.mjs
 RUN node prepare-server.mjs
 
-# Compile only the TFS executable as i386. The rest of the image (Node,
-# MariaDB and the native supervisor) stays amd64. The OTServ object allocator
-# remains enabled on top of the smaller 32-bit pointer layout.
+# Compile only the TFS executable as i386. The original source archive contains
+# at least one stale prebuilt amd64 object (allocator.o), so purge every object
+# and dependency cache before make to force a clean 32-bit rebuild.
 RUN cd /app/source && \
     autoreconf -fiv && \
     chmod +x configure && \
     PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig \
     CXX="g++ -m32" LDFLAGS="-m32" \
     ./configure --enable-mysql --enable-otserv-allocator && \
+    find . -maxdepth 1 -type f -name '*.o' -delete && \
+    rm -rf .deps && \
     make -j2 CXXFLAGS="-pipe -m32" LDFLAGS="-m32" && \
     BIN="$(find . -maxdepth 2 -type f -executable \( -name 'theforgottenserver' -o -name 'TheForgottenServer' \) | head -n1)" && \
     test -n "$BIN" && \
