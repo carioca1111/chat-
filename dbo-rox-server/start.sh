@@ -100,9 +100,9 @@ chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
 : > /tmp/tfs.log
 
-JEMALLOC="$(ldconfig -p | awk '/libjemalloc\.so\.2/{print $NF; exit}')"
-if [ -z "$JEMALLOC" ]; then
-  echo "[tfs] jemalloc runtime not found"
+JEMALLOC="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2"
+if [ ! -f "$JEMALLOC" ]; then
+  echo "[tfs] jemalloc runtime not found at $JEMALLOC"
   exit 1
 fi
 export MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:false,retain:false"
