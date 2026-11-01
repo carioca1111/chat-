@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#020713" />
-  <title>Starforge Idle — Alpha 1.5</title>
+  <title>Starforge Idle — Alpha 1.6</title>
   <link rel="stylesheet" href="./style.css" />
   <link rel="stylesheet" href="./mobile.css" />
 </head>
@@ -12,7 +12,7 @@
   <main class="game-app" id="gameApp">
     <header class="global-header hud-panel">
       <div class="logo-block">
-        <span class="alpha-tag">ALPHA 1.5</span>
+        <span class="alpha-tag">ALPHA 1.6</span>
         <strong>STARFORGE <i>IDLE</i></strong>
       </div>
       <nav class="main-nav" aria-label="Navegação principal">
@@ -43,7 +43,7 @@
       <section class="hud-panel economy-card">
         <div class="economy-row"><span>◉ Credits</span><b id="credits">0</b></div>
         <div class="economy-row"><span>◆ Gems</span><b id="gems">0</b></div>
-        <div class="economy-row"><span>◈ Combustível</span><b>—</b></div>
+        <div class="economy-row"><span>◈ Combustível</span><b id="fuelValue">1.000 / 1.000</b></div>
         <button id="sectorButton" class="sector-chip" type="button">
           <span>SETOR ATUAL</span><b id="sectorName">Sol Belt</b>
         </button>
@@ -127,9 +127,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </main>
-  <script src="./game.js"></script>
-  <script src="./dashboard.js"></script>
-  <script src="./travel-effects.js"></script>
-  <script src="./mobile-ui.js"></script>
+  <script src="./game-loader.js"></script>
 </body>
 </html>
