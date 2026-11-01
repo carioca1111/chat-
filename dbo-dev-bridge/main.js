@@ -31,7 +31,7 @@ function settingsPath() {
 function defaults() {
   return {
     relayUrl: 'wss://dbo-dev-relay-alpha01.onrender.com',
-    clientUrl: 'https://dbo-rox-local-web-alpha01.onrender.com',
+    clientUrl: 'https://dbo-rox-web-alpha01.onrender.com',
     gameHost: '127.0.0.1',
     gamePort: 7172,
     serverExe: '',
