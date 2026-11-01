@@ -6,6 +6,7 @@ RUNTIME="$ROOT/runtime"
 SERVER="$RUNTIME/server"
 DB_SQL="$RUNTIME/database.sql"
 DB_DIR="/var/lib/mysql"
+DB_USER="dborox"
 
 mkdir -p /run/mysqld
 chown -R mysql:mysql /run/mysqld "$DB_DIR"
@@ -30,6 +31,16 @@ if ! mariadb -uroot -Nse "SELECT 1 FROM dborox.accounts LIMIT 1" >/dev/null 2>&1
   mariadb -uroot dborox < "$DB_SQL"
 fi
 
+# Local-only game DB account. MariaDB itself is bound to 127.0.0.1 inside this
+# container and is not exposed publicly by Render.
+mariadb -uroot <<SQL
+CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1';
+CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost';
+GRANT ALL PRIVILEGES ON dborox.* TO '${DB_USER}'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON dborox.* TO '${DB_USER}'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
 # Disposable development Guest. Reuses the original sample account/character so
 # all vocation/outfit/server-specific columns remain compatible with the mod.
 mariadb -uroot dborox <<'SQL'
@@ -42,6 +53,11 @@ WHERE id=3;
 SQL
 
 echo "[db] Guest ready"
+
+# Modern MariaDB authenticates local root over a Unix socket. TFS connects over
+# TCP, so point the legacy config at the dedicated local game account.
+sed -i -E "s|^sqlUser\s*=.*$|sqlUser = \"${DB_USER}\"|" "$SERVER/config.lua"
+sed -i -E 's|^sqlPass\s*=.*$|sqlPass = ""|' "$SERVER/config.lua"
 
 cd "$SERVER"
 chmod +x ./theforgottenserver
