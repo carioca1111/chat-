@@ -1,0 +1,14 @@
+{
+  "name": "dbo-rox-web-bootstrap",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "build": "node prepare.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "node-unrar-js": "^2.0.2"
+  }
+}
