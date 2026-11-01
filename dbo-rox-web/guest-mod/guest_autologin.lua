@@ -1,6 +1,6 @@
 GuestAutoLogin = {}
 
-local HOST = 'dbo-rox-game-guest32.onrender.com'
+local HOST = 'dbo-dev-relay-alpha01.onrender.com'
 local PORT = 443
 local CLIENT_VERSION = 860
 local ACCOUNT = 'guest'
@@ -66,14 +66,14 @@ function GuestAutoLogin.connect()
     G.host = HOST
     G.port = PORT
 
-    g_logger.info('[Guest] entering DBO Rox world directly as Guest')
+    g_logger.info('[Guest] entering local DBO Rox through DBO Dev Relay')
     g_game.loginWorld(ACCOUNT, PASSWORD, WORLD, HOST, PORT, CHARACTER, '', '')
 end
 
 function GuestAutoLogin.onGameStart()
     cancelRetry()
     attempts = 0
-    g_logger.info('[Guest] entered world successfully')
+    g_logger.info('[Guest] entered local world successfully')
 end
 
 function GuestAutoLogin.onGameEnd()
