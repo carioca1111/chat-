@@ -40,15 +40,15 @@ RUN cd /app/source && \
     chmod +x /app/runtime/server/theforgottenserver && \
     chown -R otserver:otserver /app/runtime/server
 
-# jemalloc backs allocations that are not served by the OTServ object pools.
+# Keep jemalloc available for diagnostics/future use, though the current
+# memory-critical boot path relies on the native OTServ allocator only.
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && \
     rm -rf /var/lib/apt/lists/*
 
-# Render requires a public port during startup. This tiny C listener keeps that
-# port open using negligible RAM while the legacy map loads; it is replaced by
-# the real Node websocket bridge only after TFS opens game port 7172.
+# Render requires a public port during startup. Build the listener statically
+# so it does not map glibc shared libraries while the 2000x2000 map is at peak RAM.
 COPY dbo-rox-server/boot-listener.c ./boot-listener.c
-RUN gcc -O2 -s ./boot-listener.c -o /usr/local/bin/dbo-boot-listener
+RUN gcc -Os -static -s ./boot-listener.c -o /usr/local/bin/dbo-boot-listener
 
 COPY dbo-rox-server/bridge.mjs ./bridge.mjs
 COPY dbo-rox-server/start.sh ./start.sh
