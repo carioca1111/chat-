@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, clipboard, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -31,6 +31,7 @@ function settingsPath() {
 function defaults() {
   return {
     relayUrl: 'wss://dbo-dev-relay-alpha01.onrender.com',
+    clientUrl: 'https://dbo-rox-local-web-alpha01.onrender.com',
     gameHost: '127.0.0.1',
     gamePort: 7172,
     serverExe: '',
@@ -64,7 +65,8 @@ function getUrls(s) {
   const q = `device=${encodeURIComponent(s.deviceId)}&secret=${encodeURIComponent(s.deviceSecret)}`;
   return {
     gameWs: `${s.relayUrl.replace(/\/$/, '')}/game?${q}`,
-    statusUrl: `${wsBaseToHttp(s.relayUrl).replace(/\/$/, '')}/status?${q}`
+    statusUrl: `${wsBaseToHttp(s.relayUrl).replace(/\/$/, '')}/status?${q}`,
+    clientUrl: s.clientUrl
   };
 }
 
@@ -207,7 +209,7 @@ function stopServer() {
 function createWindow() {
   win = new BrowserWindow({
     width: 1050, height: 720, minWidth: 900, minHeight: 620,
-    title: 'DBO Dev Bridge Alpha 0.1',
+    title: 'DBO Dev Bridge Alpha 0.1.1',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   win.loadFile('index.html');
@@ -244,6 +246,12 @@ app.whenReady().then(() => {
   ipcMain.handle('connect-relay', () => { connectRelay(); return { ok: true }; });
   ipcMain.handle('disconnect-relay', () => { disconnectRelay(); return { ok: true }; });
   ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return true; });
+  ipcMain.handle('open-external', async (_e, url) => {
+    const target = String(url || '');
+    if (!/^https:\/\//i.test(target)) return false;
+    await shell.openExternal(target);
+    return true;
+  });
 });
 
 app.on('window-all-closed', () => {
