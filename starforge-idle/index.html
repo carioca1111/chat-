@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#020713" />
-  <title>Starforge Idle — Alpha 1.6.1</title>
+  <title>Starforge Idle — Alpha 1.6.2</title>
   <link rel="stylesheet" href="./style.css" />
   <link rel="stylesheet" href="./mobile.css" />
 </head>
@@ -12,7 +12,7 @@
   <main class="game-app" id="gameApp">
     <header class="global-header hud-panel">
       <div class="logo-block">
-        <span class="alpha-tag">ALPHA 1.6.1</span>
+        <span class="alpha-tag">ALPHA 1.6.2</span>
         <strong>STARFORGE <i>IDLE</i></strong>
       </div>
       <nav class="main-nav" aria-label="Navegação principal">
@@ -24,109 +24,32 @@
         <button class="nav-button" id="navResearch" type="button">⌬ <span>Pesquisa</span></button>
         <button class="nav-button" id="navFleet" type="button">⋙ <span>Frota</span></button>
       </nav>
-      <div class="header-tools">
-        <button id="soundButton" class="tool-button" aria-label="Som">🔊</button>
-      </div>
+      <div class="header-tools"><button id="soundButton" class="tool-button" aria-label="Som">🔊</button></div>
     </header>
 
     <aside class="left-rail">
-      <section class="hud-panel pilot-card">
-        <div class="pilot-line">
-          <div class="pilot-emblem">🚀</div>
-          <div><small>PILOTO</small><strong>Orion</strong><span>Explorador independente</span></div>
-          <b>Nv. 1</b>
-        </div>
-        <div class="xp-line"><span>PROGRESSÃO</span><b>INICIAL</b></div>
-        <div class="thin-meter"><i style="width:18%"></i></div>
-      </section>
-
-      <section class="hud-panel economy-card">
-        <div class="economy-row"><span>◉ Credits</span><b id="credits">0</b></div>
-        <div class="economy-row"><span>◆ Gems</span><b id="gems">0</b></div>
-        <div class="economy-row"><span>◈ Combustível</span><b id="fuelValue">1.000 / 1.000</b></div>
-        <button id="sectorButton" class="sector-chip" type="button">
-          <span>SETOR ATUAL</span><b id="sectorName">Sol Belt</b>
-        </button>
-      </section>
-
-      <section class="hud-panel fleet-card">
-        <header class="section-title"><strong>FROTA / EQUIPE</strong><span>1 / 3</span></header>
-        <article class="ship-slot active">
-          <div class="ship-thumb">🚀</div><div><b>Rusty Miner I</b><span>Mineradora · ativa</span><div class="mini-bar"><i></i></div></div><em>100%</em>
-        </article>
-        <article class="ship-slot locked"><div class="ship-thumb">◫</div><div><b>Slot de nave</b><span>Requer hangar Nv. 2</span></div><em>🔒</em></article>
-        <article class="ship-slot locked"><div class="ship-thumb">◫</div><div><b>Slot de nave</b><span>Requer hangar Nv. 3</span></div><em>🔒</em></article>
-      </section>
+      <section class="hud-panel pilot-card"><div class="pilot-line"><div class="pilot-emblem">🚀</div><div><small>PILOTO</small><strong>Orion</strong><span>Explorador independente</span></div><b>Nv. 1</b></div><div class="xp-line"><span>PROGRESSÃO</span><b>INICIAL</b></div><div class="thin-meter"><i style="width:18%"></i></div></section>
+      <section class="hud-panel economy-card"><div class="economy-row"><span>◉ Credits</span><b id="credits">0</b></div><div class="economy-row"><span>◆ Gems</span><b id="gems">0</b></div><div class="economy-row"><span>◈ Combustível</span><b id="fuelValue">1.000 / 1.000</b></div><button id="sectorButton" class="sector-chip" type="button"><span>SETOR ATUAL</span><b id="sectorName">Sol Belt</b></button></section>
+      <section class="hud-panel fleet-card"><header class="section-title"><strong>FROTA / EQUIPE</strong><span>1 / 3</span></header><article class="ship-slot active"><div class="ship-thumb">🚀</div><div><b>Rusty Miner I</b><span>Mineradora · ativa</span><div class="mini-bar"><i></i></div></div><em>100%</em></article><article class="ship-slot locked"><div class="ship-thumb">◫</div><div><b>Slot de nave</b><span>Requer hangar Nv. 2</span></div><em>🔒</em></article><article class="ship-slot locked"><div class="ship-thumb">◫</div><div><b>Slot de nave</b><span>Requer hangar Nv. 3</span></div><em>🔒</em></article></section>
     </aside>
 
     <section class="center-stage">
-      <section class="hud-panel cargo-strip" id="controlPanel">
-        <div class="cargo-strip-head"><strong>PAINEL ATIVO</strong><span id="panelLabel">CARGA</span></div>
-        <div class="panel-content" id="panelContent"></div>
-      </section>
-
-      <section class="play-area hud-panel" aria-label="Área espacial">
-        <canvas id="spaceCanvas" aria-label="Campo espacial de mineração"></canvas>
-        <div class="viewport-frame" aria-hidden="true"></div>
-        <div class="sector-overlay"><span id="operationText">AGUARDANDO ORDEM</span><b><span id="rateValue">1.00</span>/s</b></div>
-        <div class="danger-pill" id="dangerText">ROTA SEGURA</div>
-        <div class="action-dock">
-          <button id="mineButton" class="mine-button" type="button">INICIAR MINERAÇÃO</button>
-        </div>
-      </section>
+      <section class="hud-panel cargo-strip" id="controlPanel"><div class="cargo-strip-head"><strong>PAINEL ATIVO</strong><span id="panelLabel">CARGA</span></div><div class="panel-content" id="panelContent"></div></section>
+      <section class="play-area hud-panel" aria-label="Área espacial"><canvas id="spaceCanvas" aria-label="Campo espacial de mineração"></canvas><div class="viewport-frame" aria-hidden="true"></div><div class="sector-overlay"><span id="operationText">AGUARDANDO ORDEM</span><b><span id="rateValue">1.00</span>/s</b></div><div class="danger-pill" id="dangerText">ROTA SEGURA</div><div class="action-dock"><button id="mineButton" class="mine-button" type="button">INICIAR MINERAÇÃO</button></div></section>
     </section>
 
     <aside class="right-rail">
-      <section class="hud-panel automation-card">
-        <header class="section-title"><strong>⚙ AUTOMAÇÕES</strong><span>LOCAL</span></header>
-        <label class="toggle-row"><span><b>Minerar automaticamente</b><small>reinicia a mineração quando possível</small></span><input id="autoMineToggle" type="checkbox"></label>
-        <label class="toggle-row"><span><b>Pausar com carga alta</b><small>para ao atingir o limite definido</small></span><input id="autoCargoToggle" type="checkbox" checked></label>
-        <div class="automation-slider"><span>Limite de carga</span><input id="cargoLimitRange" type="range" min="50" max="100" step="5" value="90"><b id="cargoLimitValue">90%</b></div>
-        <label class="toggle-row disabled"><span><b>Reparo automático</b><small>módulo ainda não instalado</small></span><input type="checkbox" disabled></label>
-        <label class="toggle-row disabled"><span><b>Retornar ao hangar</b><small>hangar será implementado depois</small></span><input type="checkbox" disabled></label>
-      </section>
-
-      <section class="hud-panel ship-info-card">
-        <header class="section-title"><strong>ⓘ INFORMAÇÕES DA NAVE</strong><span>Rusty Miner I</span></header>
-        <div class="ship-hero"><div class="ship-hero-icon">🚀</div><div><b>Rusty Miner I</b><span>Classe: Mineradora</span></div></div>
-        <div class="ship-meter-row"><span>Escudo</span><div class="meter"><i id="shieldBar"></i></div><b id="shieldText">100%</b></div>
-        <div class="ship-meter-row"><span>Carga</span><div class="meter cargo-meter"><i id="cargoBar"></i></div><b id="cargoText">0 / 100</b></div>
-        <div class="ship-stats">
-          <div><span>Taxa miner.</span><b id="shipRateMirror">1.00/s</b></div>
-          <div><span>Estado</span><b id="shipStatusMirror">Pronta</b></div>
-          <div><span>Motor</span><b>Cruzeiro</b></div>
-          <div><span>Módulos</span><b>2 / 5</b></div>
-        </div>
-      </section>
-
-      <section class="hud-panel chat-card">
-        <header class="section-title"><strong>CHAT</strong><span>LOCAL / protótipo</span></header>
-        <div class="chat-tabs"><button class="chat-tab active" type="button">Global</button><button class="chat-tab" type="button">Setor</button><button class="chat-tab" type="button" disabled>Guilda</button></div>
-        <div class="chat-log" id="chatLog" aria-live="polite">
-          <p><time>03:51</time> <b>[Sistema]</b> Bem-vindo ao Starforge Idle.</p>
-          <p><time>03:52</time> <b>[Global]</b> MinerX: Nickel está valorizando no Market.</p>
-          <p><time>03:53</time> <b>[Setor]</b> Astra: Campo de asteroides denso à frente.</p>
-        </div>
-        <form class="chat-form" id="chatForm"><input id="chatInput" maxlength="120" placeholder="Digite sua mensagem..." aria-label="Mensagem"><button type="submit">➤</button></form>
-      </section>
+      <section class="hud-panel automation-card"><header class="section-title"><strong>⚙ AUTOMAÇÕES</strong><span>LOCAL</span></header><label class="toggle-row"><span><b>Minerar automaticamente</b><small>reinicia a mineração quando possível</small></span><input id="autoMineToggle" type="checkbox"></label><label class="toggle-row"><span><b>Pausar com carga alta</b><small>para ao atingir o limite definido</small></span><input id="autoCargoToggle" type="checkbox" checked></label><div class="automation-slider"><span>Limite de carga</span><input id="cargoLimitRange" type="range" min="50" max="100" step="5" value="90"><b id="cargoLimitValue">90%</b></div><label class="toggle-row disabled"><span><b>Reparo automático</b><small>módulo ainda não instalado</small></span><input type="checkbox" disabled></label><label class="toggle-row disabled"><span><b>Retornar ao hangar</b><small>hangar será implementado depois</small></span><input type="checkbox" disabled></label></section>
+      <section class="hud-panel ship-info-card"><header class="section-title"><strong>ⓘ INFORMAÇÕES DA NAVE</strong><span>Rusty Miner I</span></header><div class="ship-hero"><div class="ship-hero-icon">🚀</div><div><b>Rusty Miner I</b><span>Classe: Mineradora</span></div></div><div class="ship-meter-row"><span>Escudo</span><div class="meter"><i id="shieldBar"></i></div><b id="shieldText">100%</b></div><div class="ship-meter-row"><span>Carga</span><div class="meter cargo-meter"><i id="cargoBar"></i></div><b id="cargoText">0 / 100</b></div><div class="ship-stats"><div><span>Taxa miner.</span><b id="shipRateMirror">1.00/s</b></div><div><span>Estado</span><b id="shipStatusMirror">Pronta</b></div><div><span>Motor</span><b>Cruzeiro</b></div><div><span>Módulos</span><b>2 / 5</b></div></div></section>
+      <section class="hud-panel chat-card"><header class="section-title"><strong>CHAT</strong><span>LOCAL / protótipo</span></header><div class="chat-tabs"><button class="chat-tab active" type="button">Global</button><button class="chat-tab" type="button">Setor</button><button class="chat-tab" type="button" disabled>Guilda</button></div><div class="chat-log" id="chatLog" aria-live="polite"><p><time>03:51</time> <b>[Sistema]</b> Bem-vindo ao Starforge Idle.</p><p><time>03:52</time> <b>[Global]</b> MinerX: Nickel está valorizando no Market.</p><p><time>03:53</time> <b>[Setor]</b> Astra: Campo de asteroides denso à frente.</p></div><form class="chat-form" id="chatForm"><input id="chatInput" maxlength="120" placeholder="Digite sua mensagem..." aria-label="Mensagem"><button type="submit">➤</button></form></section>
     </aside>
 
-    <div class="modal-backdrop map-backdrop" id="sectorModal" hidden>
-      <section class="sector-map-shell hud-panel" role="dialog" aria-modal="true" aria-labelledby="sectorTitle">
-        <header class="map-header"><div><span class="map-kicker">NAVEGAÇÃO GALÁCTICA · VIAGEM EM TEMPO REAL</span><h2 id="sectorTitle">Mapa de setores</h2></div><button id="closeSector" class="map-close" aria-label="Fechar">×</button></header>
-        <div class="map-layout">
-          <div class="sector-map" id="sectorMap"><div class="galaxy-art" aria-hidden="true"></div><svg class="map-routes" id="mapRoutes" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="mapNodes" class="map-nodes"></div><div class="map-hint">Todos os setores podem ser visitados. Distância e capacidade da nave determinam o custo real.</div></div>
-          <aside class="map-side" id="mapSide"><div id="mapDetails"></div><button class="travel-button" id="travelButton">SELECIONE UM DESTINO</button></aside>
-        </div>
-      </section>
-    </div>
+    <div class="modal-backdrop map-backdrop" id="sectorModal" hidden><section class="sector-map-shell hud-panel" role="dialog" aria-modal="true" aria-labelledby="sectorTitle"><header class="map-header"><div><span class="map-kicker">NAVEGAÇÃO GALÁCTICA · VIAGEM EM TEMPO REAL</span><h2 id="sectorTitle">Mapa de setores</h2></div><button id="closeSector" class="map-close" aria-label="Fechar">×</button></header><div class="map-layout"><div class="sector-map" id="sectorMap"><div class="galaxy-art" aria-hidden="true"></div><svg class="map-routes" id="mapRoutes" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="mapNodes" class="map-nodes"></div><div class="map-hint">Todos os setores podem ser visitados. Distância e capacidade da nave determinam o custo real.</div></div><aside class="map-side" id="mapSide"><div id="mapDetails"></div><button class="travel-button" id="travelButton">SELECIONE UM DESTINO</button></aside></div></section></div>
 
-    <div class="modal-backdrop simple-modal" id="rmtModal" hidden>
-      <section class="small-modal hud-panel"><header><div><small>MARKETPLACE</small><h2>RMT</h2></div><button class="map-close" id="closeRmt" type="button">×</button></header><p>Área reservada para negociação entre jogadores. Nesta Alpha, nenhuma operação com dinheiro real ou cripto está habilitada.</p><div class="rmt-placeholder"><b>RMT SIMULADO</b><span>Economia e segurança serão validadas antes de qualquer integração financeira.</span></div></section>
-    </div>
+    <div class="modal-backdrop simple-modal" id="rmtModal" hidden><section class="small-modal hud-panel"><header><div><small>MARKETPLACE</small><h2>RMT</h2></div><button class="map-close" id="closeRmt" type="button">×</button></header><p>Área reservada para negociação entre jogadores. Nesta Alpha, nenhuma operação com dinheiro real ou cripto está habilitada.</p><div class="rmt-placeholder"><b>RMT SIMULADO</b><span>Economia e segurança serão validadas antes de qualquer integração financeira.</span></div></section></div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </main>
-  <script src="./game-loader.js?v=1.6.1"></script>
+  <script src="./game-loader.js?v=1.6.2"></script>
 </body>
 </html>
