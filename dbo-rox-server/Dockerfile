@@ -9,6 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# TFS 0.4 predates modern Boost releases and checks for the old Boost TR1
+# wrapper headers. Debian 12 still ships the GCC TR1 headers, so expose small
+# compatibility wrappers instead of modifying the DBO Rox gameplay source.
+RUN mkdir -p /usr/include/boost/tr1 && \
+    printf '#pragma once\n#include <tr1/unordered_set>\n' > /usr/include/boost/tr1/unordered_set.hpp && \
+    printf '#pragma once\n#include <tr1/unordered_map>\n' > /usr/include/boost/tr1/unordered_map.hpp
+
 WORKDIR /app
 COPY dbo-rox-server/package.json ./package.json
 RUN npm install --omit=dev
