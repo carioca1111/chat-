@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#060912" />
+  <title>Starforge Idle — Alpha 0.1</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">ALPHA 0.1</p>
+      <h1>STARFORGE IDLE</h1>
+    </div>
+    <div class="wallets" aria-label="recursos principais">
+      <div><span>Credits</span><strong id="credits">0</strong></div>
+      <div><span>Gems (sim.)</span><strong id="gems">0</strong></div>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="space-card" aria-label="área de mineração">
+      <div class="sector-head">
+        <div>
+          <span class="label">Setor atual</span>
+          <strong id="sectorName">Sol Belt</strong>
+        </div>
+        <button id="sectorButton" class="ghost-btn">Trocar setor</button>
+      </div>
+
+      <div class="space-scene" id="spaceScene">
+        <div class="asteroid" aria-hidden="true"></div>
+        <div class="laser" id="laser" aria-hidden="true"></div>
+        <div class="ship-wrap" id="shipWrap" aria-hidden="true">
+          <div class="ship">🚀</div>
+          <div class="thruster"></div>
+        </div>
+        <div class="scanline"></div>
+      </div>
+
+      <div class="mining-status">
+        <div class="status-row">
+          <div>
+            <span class="label">Operação</span>
+            <strong id="operationText">Aguardando ordem</strong>
+          </div>
+          <div class="rate"><span id="rateValue">1.0</span> minério/s</div>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-meta">
+          <span id="progressText">0%</span>
+          <span id="cargoText">Carga 0 / 100</span>
+        </div>
+      </div>
+
+      <button id="mineButton" class="primary-btn">INICIAR MINERAÇÃO</button>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel">
+        <div class="panel-head"><h2>Carga</h2><span id="cargoBadge">0%</span></div>
+        <div class="resource-list" id="resourceList"></div>
+        <button id="sellButton" class="secondary-btn">Vender carga por Credits</button>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Rusty Miner I</h2><span>Nível <b id="shipLevel">1</b></span></div>
+        <div class="stats">
+          <div><span>Laser</span><strong id="laserStat">1.0/s</strong></div>
+          <div><span>Capacidade</span><strong id="cargoStat">100</strong></div>
+          <div><span>Eficiência</span><strong id="efficiencyStat">100%</strong></div>
+        </div>
+        <div class="upgrade-list">
+          <button class="upgrade" data-upgrade="laser"><span>Laser</span><small>+0,35 minério/s</small><b id="laserCost">150 C</b></button>
+          <button class="upgrade" data-upgrade="cargo"><span>Cargueiro</span><small>+40 capacidade</small><b id="cargoCost">200 C</b></button>
+          <button class="upgrade" data-upgrade="efficiency"><span>Refino</span><small>+5% valor de venda</small><b id="efficiencyCost">300 C</b></button>
+        </div>
+      </article>
+
+      <article class="panel wide">
+        <div class="panel-head"><h2>Market P2P — protótipo</h2><span class="sim-badge">SIMULADO</span></div>
+        <p class="muted">Nesta Alpha não existe dinheiro real. O market abaixo serve para testarmos a sensação de oferta, demanda e taxas.</p>
+        <div class="market-grid">
+          <div class="market-card">
+            <div><strong>50 Titanium</strong><span>Ordem de compra</span></div>
+            <b>120 Gems</b>
+            <button id="marketSell">Vender</button>
+          </div>
+          <div class="market-card">
+            <div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div>
+            <b>85 Gems</b>
+            <button id="marketBuy">Comprar</button>
+          </div>
+        </div>
+        <div class="fee-note">Taxa simulada do Market: <b>10%</b>. Saque real e criptomoedas ainda estão desativados.</div>
+      </article>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="sectorModal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="sectorTitle">
+      <div class="panel-head"><h2 id="sectorTitle">Escolher setor</h2><button id="closeSector" class="icon-btn" aria-label="Fechar">×</button></div>
+      <div id="sectorList" class="sector-list"></div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./game.js"></script>
+</body>
+</html>
