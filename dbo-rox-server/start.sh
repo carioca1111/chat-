@@ -56,8 +56,10 @@ echo "[db] Guest ready"
 
 # Modern MariaDB authenticates local root over a Unix socket. TFS connects over
 # TCP, so point the legacy config at the dedicated local game account.
-sed -i -E "s|^sqlUser\s*=.*$|sqlUser = \"${DB_USER}\"|" "$SERVER/config.lua"
-sed -i -E 's|^sqlPass\s*=.*$|sqlPass = ""|' "$SERVER/config.lua"
+sed -i -E "s|^[[:space:]]*sqlUser[[:space:]]*=.*$|sqlUser = \"${DB_USER}\"|" "$SERVER/config.lua"
+sed -i -E 's|^[[:space:]]*sqlPass[[:space:]]*=.*$|sqlPass = ""|' "$SERVER/config.lua"
+echo "[db] effective TFS DB settings:"
+grep -E '^[[:space:]]*(sqlHost|sqlUser|sqlDatabase)[[:space:]]*=' "$SERVER/config.lua" || true
 
 cd "$SERVER"
 chmod +x ./theforgottenserver
