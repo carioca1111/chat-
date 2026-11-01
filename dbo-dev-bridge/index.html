@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DBO Dev Bridge</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#10131a;color:#eef2f7}
+  .wrap{padding:22px;max-width:1100px;margin:auto}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:#181d27;border:1px solid #2a3140;border-radius:14px;padding:16px}.ok{color:#62d394}.bad{color:#ff7d7d}.muted{color:#9ca8ba}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,input{font:inherit}button{background:#2d6cdf;color:white;border:0;border-radius:10px;padding:10px 14px;cursor:pointer}button.secondary{background:#2a3140}button.danger{background:#9b2c2c}input{background:#0f131a;border:1px solid #31394a;color:white;border-radius:9px;padding:10px;width:100%;box-sizing:border-box}.field{margin:10px 0}.log{height:280px;overflow:auto;background:#090c11;border-radius:10px;padding:12px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap}.url{word-break:break-all;font-family:Consolas,monospace;font-size:12px;background:#0f131a;padding:9px;border-radius:8px}.wide{grid-column:1/-1}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DBO Dev Bridge <span class="muted">Alpha 0.1</span></h1>
+  <p class="muted">Roda o DBO/TFS no seu PC e cria um túnel de saída. Não precisa abrir porta na Claro.</p>
+  <div class="grid">
+    <div class="card"><div class="muted">Relay</div><h2 id="relay">—</h2></div>
+    <div class="card"><div class="muted">TFS / processo</div><h2 id="proc">—</h2></div>
+    <div class="card"><div class="muted">Porta 7172</div><h2 id="port">—</h2></div>
+    <div class="card"><div class="muted">RAM do PC</div><h2 id="ram">—</h2></div>
+
+    <div class="card wide">
+      <h3>Servidor local</h3>
+      <div class="field"><label>Executável TFS/DBO</label><input id="serverExe" readonly placeholder="Selecione o .exe do servidor" /></div>
+      <div class="row"><button id="pick">Selecionar servidor</button><button id="start">INICIAR DBO</button><button id="stop" class="danger">PARAR</button></div>
+    </div>
+
+    <div class="card wide">
+      <h3>Túnel</h3>
+      <div class="field"><label>Relay</label><input id="relayUrl" /></div>
+      <div class="row"><button id="save">Salvar e reconectar</button><button id="connect" class="secondary">Conectar</button><button id="disconnect" class="secondary">Desconectar</button></div>
+      <p class="muted">URL WSS do jogo</p><div id="gameWs" class="url">—</div><br/><button id="copyWs" class="secondary">Copiar WSS</button>
+      <p class="muted">Status remoto</p><div id="statusUrl" class="url">—</div><br/><button id="copyStatus" class="secondary">Copiar status</button>
+    </div>
+
+    <div class="card wide"><h3>Logs</h3><div id="logs" class="log"></div></div>
+  </div>
+</div>
+<script>
+let current={};
+const $=id=>document.getElementById(id);
+const fmt=b=>{if(!b)return '—'; const u=['B','KB','MB','GB'];let i=0;while(b>1024&&i<u.length-1){b/=1024;i++}return b.toFixed(i?1:0)+' '+u[i]};
+function status(el,ok,labelOk,labelBad){el.textContent=ok?labelOk:labelBad;el.className=ok?'ok':'bad'}
+function render(s){current=s||{}; status($('relay'),s.relayConnected,'CONECTADO','OFFLINE'); status($('proc'),s.serverRunning,'RODANDO','PARADO'); status($('port'),s.gameReady,'ABERTA','FECHADA'); $('ram').textContent=s.memory?`${fmt(s.memory.used)} / ${fmt(s.memory.total)}`:'—'; if(s.settings){$('serverExe').value=s.settings.serverExe||'';$('relayUrl').value=s.settings.relayUrl||''} $('gameWs').textContent=s.urls?.gameWs||'—'; $('statusUrl').textContent=s.urls?.statusUrl||'—'; if(Array.isArray(s.logs)){$('logs').textContent=s.logs.join('\n');$('logs').scrollTop=$('logs').scrollHeight}}
+window.bridgeApi.onState(render); window.bridgeApi.onLog(line=>{const l=$('logs');l.textContent+=(l.textContent?'\n':'')+line;l.scrollTop=l.scrollHeight});
+$('pick').onclick=()=>window.bridgeApi.pickServer(); $('start').onclick=()=>window.bridgeApi.startServer(); $('stop').onclick=()=>window.bridgeApi.stopServer(); $('connect').onclick=()=>window.bridgeApi.connectRelay(); $('disconnect').onclick=()=>window.bridgeApi.disconnectRelay(); $('save').onclick=()=>window.bridgeApi.saveSettings({relayUrl:$('relayUrl').value.trim(),autoConnect:true}); $('copyWs').onclick=()=>window.bridgeApi.copy(current.urls?.gameWs||''); $('copyStatus').onclick=()=>window.bridgeApi.copy(current.urls?.statusUrl||'');
+window.bridgeApi.getState().then(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+name: Build DBO Dev Bridge Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dbo-dev-bridge-alpha01]
+    paths:
+      - 'dbo-dev-bridge/**'
+      - '.github/workflows/build-dbo-dev-bridge-windows.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: dbo-dev-bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: dbo-dev-bridge/package.json
+      - name: Install dependencies
+        run: npm install
+      - name: Build portable Windows app
+        run: npm run dist
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DBO-Dev-Bridge-Alpha-0.1-Windows
+          path: dbo-dev-bridge/dist/*.exe
+      - name: Create prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "dbo-dev-bridge-alpha01-${{ github.run_number }}"
+          gh release create $tag (Get-ChildItem dist\*.exe | ForEach-Object { $_.FullName }) --repo "${{ github.repository }}" --prerelease --title "DBO Dev Bridge Alpha 0.1 build ${{ github.run_number }}" --notes "Portable Windows build for local DBO Rox testing through the outbound WSS relay."
