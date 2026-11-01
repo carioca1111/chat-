@@ -23,9 +23,10 @@ RUN npm install --omit=dev
 COPY dbo-rox-server/prepare-server.mjs ./prepare-server.mjs
 RUN node prepare-server.mjs
 
-# The original DBO Rox package ships the TFS 0.4 source. Build that source on
-# Linux so the gameplay/data/scripts remain the original mod rather than a rewrite.
+# Regenerate the 2010-era autotools helper files with the toolchain available
+# on Debian 12, then compile the original DBO Rox TFS 0.4 source.
 RUN cd /app/source && \
+    autoreconf -fiv && \
     chmod +x configure && \
     ./configure --enable-mysql && \
     make -j2 && \
