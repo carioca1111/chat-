@@ -16,6 +16,8 @@ RUN mkdir -p /usr/include/boost/tr1 && \
     printf '#pragma once\n#include <tr1/unordered_set>\n' > /usr/include/boost/tr1/unordered_set.hpp && \
     printf '#pragma once\n#include <tr1/unordered_map>\n' > /usr/include/boost/tr1/unordered_map.hpp
 
+RUN useradd --system --create-home --shell /bin/bash otserver
+
 WORKDIR /app
 COPY dbo-rox-server/package.json ./package.json
 RUN npm install --omit=dev
@@ -33,7 +35,8 @@ RUN cd /app/source && \
     BIN="$(find . -maxdepth 2 -type f -executable \( -name 'theforgottenserver' -o -name 'TheForgottenServer' \) | head -n1)" && \
     test -n "$BIN" && \
     cp "$BIN" /app/runtime/server/theforgottenserver && \
-    chmod +x /app/runtime/server/theforgottenserver
+    chmod +x /app/runtime/server/theforgottenserver && \
+    chown -R otserver:otserver /app/runtime/server
 
 COPY dbo-rox-server/bridge.mjs ./bridge.mjs
 COPY dbo-rox-server/start.sh ./start.sh
