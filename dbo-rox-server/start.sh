@@ -133,11 +133,9 @@ sqlDatabase = "dborox"
 LUA
 
 echo "[db] config path: $SERVER/config.lua"
-echo "[db] final config override:"
-tail -n 8 "$SERVER/config.lua"
 
-# Keep Render healthy with a tiny native listener, not Node. The websocket
-# bridge is deliberately delayed until the 2000x2000 map is completely loaded.
+# Keep Render healthy with a tiny native listener. Do not pay the Node runtime
+# cost until TFS has fully loaded the legacy map.
 start_boot_listener
 
 cd "$SERVER"
@@ -145,25 +143,16 @@ chmod +x ./theforgottenserver
 chown -R otserver:otserver "$SERVER"
 : > /tmp/tfs.log
 
-JEMALLOC="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2"
-if [ ! -f "$JEMALLOC" ]; then
-  echo "[tfs] jemalloc runtime not found at $JEMALLOC"
-  exit 1
-fi
-export MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:false,retain:false"
-echo "[tfs] allocator: native OTServ pool + $JEMALLOC fallback"
-echo "[tfs] jemalloc profile: $MALLOC_CONF"
-
-runuser -u otserver -- env LD_PRELOAD="$JEMALLOC" MALLOC_CONF="$MALLOC_CONF" \
-  stdbuf -oL -eL ./theforgottenserver > /tmp/tfs.log 2>&1 &
+echo "[tfs] allocator: native OTServ pool (minimal boot profile)"
+# No jemalloc preload, stdbuf, or tail process during the memory-critical map
+# load. The native OTServ pools handle the millions of small map objects; logs
+# remain in /tmp/tfs.log and are polled directly by this shell.
+runuser -u otserver -- ./theforgottenserver > /tmp/tfs.log 2>&1 &
 TFS_PID=$!
-
-tail -n +1 -F /tmp/tfs.log &
-TAIL_PID=$!
 DB_PAUSED_FOR_MAP=0
+MAP_LOGGED=0
 
 cleanup() {
-  if [ -n "${TAIL_PID:-}" ] && [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${TFS_PID:-}" ] && [ "$TFS_PID" -gt 1 ] 2>/dev/null; then kill "$TFS_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${BRIDGE_PID:-}" ] && [ "$BRIDGE_PID" -gt 1 ] 2>/dev/null; then kill "$BRIDGE_PID" >/dev/null 2>&1 || true; fi
   if [ -n "${BOOT_PID:-}" ] && [ "$BOOT_PID" -gt 1 ] 2>/dev/null; then kill "$BOOT_PID" >/dev/null 2>&1 || true; fi
@@ -173,6 +162,7 @@ trap cleanup EXIT INT TERM
 while true; do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] server exited during startup"
+    tail -n 60 /tmp/tfs.log || true
     exit 1
   fi
   if [ -z "$BOOT_PID" ] || ! kill -0 "$BOOT_PID" >/dev/null 2>&1; then
@@ -185,8 +175,15 @@ while true; do
     DB_PAUSED_FOR_MAP=1
   fi
 
+  if [ "$MAP_LOGGED" -eq 0 ] && grep -q 'Map size:' /tmp/tfs.log; then
+    grep 'Map size:' /tmp/tfs.log | tail -n 1 || true
+    echo "[memory] map parsing continues with DB and Node bridge offline"
+    MAP_LOGGED=1
+  fi
+
   if (echo >/dev/tcp/127.0.0.1/7172) >/dev/null 2>&1; then
     echo "[tfs] game port 7172 ready"
+    tail -n 40 /tmp/tfs.log || true
 
     if [ "$DB_PAUSED_FOR_MAP" -eq 1 ]; then
       echo "[memory] map finished; restarting MariaDB before accepting Guest"
@@ -196,9 +193,6 @@ while true; do
 
     stop_boot_listener
     start_bridge
-
-    if [ "$TAIL_PID" -gt 1 ] 2>/dev/null; then kill "$TAIL_PID" >/dev/null 2>&1 || true; fi
-    TAIL_PID=""
     break
   fi
   sleep 0.5
@@ -207,6 +201,7 @@ done
 while true; do
   if ! kill -0 "$TFS_PID" >/dev/null 2>&1; then
     echo "[tfs] game server stopped"
+    tail -n 60 /tmp/tfs.log || true
     exit 1
   fi
   if [ -z "$BRIDGE_PID" ] || ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
