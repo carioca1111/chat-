@@ -24,17 +24,22 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: npm install
+      - name: Syntax check
+        run: |
+          node --check main.js
+          node --check autoprep.js
+          node --check preload.js
       - name: Build portable Windows app
         run: npm run dist
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DBO-Dev-Bridge-Alpha-0.1-Windows
+          name: DBO-Dev-Bridge-Alpha-0.2-Windows
           path: dbo-dev-bridge/dist/*.exe
       - name: Create prerelease
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "dbo-dev-bridge-alpha01-${{ github.run_number }}"
-          gh release create $tag (Get-ChildItem dist\*.exe | ForEach-Object { $_.FullName }) --repo "${{ github.repository }}" --prerelease --title "DBO Dev Bridge Alpha 0.1 build ${{ github.run_number }}" --notes "Portable Windows build for local DBO Rox testing through the outbound WSS relay."
+          $tag = "dbo-dev-bridge-alpha02-${{ github.run_number }}"
+          gh release create $tag (Get-ChildItem dist\*.exe | ForEach-Object { $_.FullName }) --repo "${{ github.repository }}" --prerelease --title "DBO Dev Bridge Alpha 0.2 build ${{ github.run_number }}" --notes "One-click Windows preparation: original DBO Rox base + portable MariaDB + outbound WSS relay."

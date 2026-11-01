@@ -5,32 +5,48 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>DBO Dev Bridge</title>
 <style>
-  body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#10131a;color:#eef2f7}
-  .wrap{padding:22px;max-width:1100px;margin:auto}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:#181d27;border:1px solid #2a3140;border-radius:14px;padding:16px}.ok{color:#62d394}.bad{color:#ff7d7d}.muted{color:#9ca8ba}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,input{font:inherit}button{background:#2d6cdf;color:white;border:0;border-radius:10px;padding:10px 14px;cursor:pointer}button.secondary{background:#2a3140}button.danger{background:#9b2c2c}button.primary{background:#1f8f57;font-weight:700}input{background:#0f131a;border:1px solid #31394a;color:white;border-radius:9px;padding:10px;width:100%;box-sizing:border-box}.field{margin:10px 0}.log{height:280px;overflow:auto;background:#090c11;border-radius:10px;padding:12px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap}.url{word-break:break-all;font-family:Consolas,monospace;font-size:12px;background:#0f131a;padding:9px;border-radius:8px}.wide{grid-column:1/-1}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}}
+  body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#10131a;color:#eef2f7}.wrap{padding:22px;max-width:1180px;margin:auto}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.card{background:#181d27;border:1px solid #2a3140;border-radius:14px;padding:16px}.wide{grid-column:1/-1}
+  .ok{color:#62d394}.bad{color:#ff7d7d}.warn{color:#f7c66a}.muted{color:#9ca8ba}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,input{font:inherit}
+  button{background:#2d6cdf;color:white;border:0;border-radius:10px;padding:11px 15px;cursor:pointer}button.secondary{background:#2a3140}button.danger{background:#9b2c2c}button.primary{background:#1f8f57;font-weight:700}button.prepare{background:#8b5cf6;font-weight:800;font-size:16px;padding:14px 20px}
+  button:disabled{opacity:.55;cursor:not-allowed}input{background:#0f131a;border:1px solid #31394a;color:white;border-radius:9px;padding:10px;width:100%;box-sizing:border-box}.field{margin:10px 0}
+  .log{height:290px;overflow:auto;background:#090c11;border-radius:10px;padding:12px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap}.url{word-break:break-all;font-family:Consolas,monospace;font-size:12px;background:#0f131a;padding:9px;border-radius:8px}
+  .progress{height:14px;border-radius:999px;background:#0f131a;border:1px solid #31394a;overflow:hidden;margin:10px 0}.bar{height:100%;width:0%;background:#8b5cf6;transition:width .2s}.preptext{font-size:13px;color:#c7d0dd;min-height:20px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:620px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>DBO Dev Bridge <span class="muted">Alpha 0.1.1</span></h1>
-  <p class="muted">Roda o DBO/TFS no seu PC e cria um túnel de saída. Não precisa abrir porta na Claro.</p>
+  <h1>DBO Dev Bridge <span class="muted">Alpha 0.2</span></h1>
+  <p class="muted">Prepara o DBO Rox no seu PC, inicia banco + TFS e cria o túnel de saída. Não precisa abrir porta no modem.</p>
   <div class="grid">
     <div class="card"><div class="muted">Relay</div><h2 id="relay">—</h2></div>
+    <div class="card"><div class="muted">Base DBO</div><h2 id="prepared">—</h2></div>
+    <div class="card"><div class="muted">Banco local</div><h2 id="db">—</h2></div>
     <div class="card"><div class="muted">TFS / processo</div><h2 id="proc">—</h2></div>
     <div class="card"><div class="muted">Porta 7172</div><h2 id="port">—</h2></div>
     <div class="card"><div class="muted">RAM do PC</div><h2 id="ram">—</h2></div>
 
     <div class="card wide">
-      <h3>Servidor local</h3>
-      <div class="field"><label>Executável TFS/DBO</label><input id="serverExe" readonly placeholder="Selecione o .exe do servidor" /></div>
-      <div class="row"><button id="pick">Selecionar servidor</button><button id="start">INICIAR DBO</button><button id="stop" class="danger">PARAR</button><button id="openClient" class="primary">ABRIR CLIENTE WEB</button></div>
-      <p class="muted">Quando Relay e Porta 7172 estiverem verdes, abra o cliente web. Ele entra como Guest automaticamente.</p>
+      <h3>1. Preparar servidor</h3>
+      <p class="muted">Baixa a base original DBO Rox V2 8.60, a database e MariaDB portátil. Não instala serviço no Windows e não mexe no seu roteador.</p>
+      <div class="row"><button id="prepare" class="prepare">PREPARAR DBO AUTOMATICAMENTE</button><button id="pick" class="secondary">Selecionar .exe manualmente</button></div>
+      <div class="progress"><div id="bar" class="bar"></div></div><div id="preptext" class="preptext">Ainda não iniciado.</div>
+      <div class="field"><label>Executável detectado</label><input id="serverExe" readonly placeholder="Será preenchido automaticamente" /></div>
+      <p class="muted">A base é um pacote comunitário antigo. A Bridge só executa o servidor quando você clicar em “INICIAR DBO”.</p>
+    </div>
+
+    <div class="card wide">
+      <h3>2. Rodar e testar</h3>
+      <div class="row"><button id="start">INICIAR DBO</button><button id="stop" class="danger">PARAR DBO</button><button id="openClient" class="primary">ABRIR CLIENTE WEB</button><button id="diagnostic" class="secondary">ENVIAR DIAGNÓSTICO</button></div>
+      <p class="muted">Quando Relay, Banco e Porta 7172 estiverem verdes, abra o cliente web. O modo Guest tenta entrar automaticamente.</p>
     </div>
 
     <div class="card wide">
       <h3>Túnel</h3>
       <div class="field"><label>Relay</label><input id="relayUrl" /></div>
       <div class="row"><button id="save">Salvar e reconectar</button><button id="connect" class="secondary">Conectar</button><button id="disconnect" class="secondary">Desconectar</button></div>
-      <p class="muted">URL WSS autenticada de diagnóstico</p><div id="gameWs" class="url">—</div><br/><button id="copyWs" class="secondary">Copiar WSS</button>
+      <p class="muted">WSS autenticado</p><div id="gameWs" class="url">—</div><br/><button id="copyWs" class="secondary">Copiar WSS</button>
       <p class="muted">Status remoto</p><div id="statusUrl" class="url">—</div><br/><button id="copyStatus" class="secondary">Copiar status</button>
     </div>
 
@@ -40,11 +56,23 @@
 <script>
 let current={};
 const $=id=>document.getElementById(id);
-const fmt=b=>{if(!b)return '—'; const u=['B','KB','MB','GB'];let i=0;while(b>1024&&i<u.length-1){b/=1024;i++}return b.toFixed(i?1:0)+' '+u[i]};
+const fmt=b=>{if(!b)return '—';const u=['B','KB','MB','GB'];let i=0;while(b>1024&&i<u.length-1){b/=1024;i++}return b.toFixed(i?1:0)+' '+u[i]};
 function status(el,ok,labelOk,labelBad){el.textContent=ok?labelOk:labelBad;el.className=ok?'ok':'bad'}
-function render(s){current=s||{}; status($('relay'),s.relayConnected,'CONECTADO','OFFLINE'); status($('proc'),s.serverRunning,'RODANDO','PARADO'); status($('port'),s.gameReady,'ABERTA','FECHADA'); $('ram').textContent=s.memory?`${fmt(s.memory.used)} / ${fmt(s.memory.total)}`:'—'; if(s.settings){$('serverExe').value=s.settings.serverExe||'';$('relayUrl').value=s.settings.relayUrl||''} $('gameWs').textContent=s.urls?.gameWs||'—'; $('statusUrl').textContent=s.urls?.statusUrl||'—'; if(Array.isArray(s.logs)){$('logs').textContent=s.logs.join('\n');$('logs').scrollTop=$('logs').scrollHeight}}
-window.bridgeApi.onState(render); window.bridgeApi.onLog(line=>{const l=$('logs');l.textContent+=(l.textContent?'\n':'')+line;l.scrollTop=l.scrollHeight});
-$('pick').onclick=()=>window.bridgeApi.pickServer(); $('start').onclick=()=>window.bridgeApi.startServer(); $('stop').onclick=()=>window.bridgeApi.stopServer(); $('connect').onclick=()=>window.bridgeApi.connectRelay(); $('disconnect').onclick=()=>window.bridgeApi.disconnectRelay(); $('save').onclick=()=>window.bridgeApi.saveSettings({relayUrl:$('relayUrl').value.trim(),autoConnect:true}); $('copyWs').onclick=()=>window.bridgeApi.copy(current.urls?.gameWs||''); $('copyStatus').onclick=()=>window.bridgeApi.copy(current.urls?.statusUrl||''); $('openClient').onclick=()=>window.bridgeApi.openExternal(current.urls?.clientUrl||'https://dbo-rox-local-web-alpha01.onrender.com');
+function render(s){
+  current=s||{};
+  status($('relay'),s.relayConnected,'CONECTADO','OFFLINE');status($('prepared'),s.prepared,'PRONTA','NÃO PREPARADA');status($('db'),s.dbReady,'ONLINE','OFFLINE');status($('proc'),s.serverRunning,'RODANDO','PARADO');status($('port'),s.gameReady,'ABERTA','FECHADA');
+  $('ram').textContent=s.memory?`${fmt(s.memory.used)} / ${fmt(s.memory.total)}`:'—';
+  if(s.settings){$('serverExe').value=s.settings.serverExe||'';$('relayUrl').value=s.settings.relayUrl||''}
+  $('gameWs').textContent=s.urls?.gameWs||'—';$('statusUrl').textContent=s.urls?.statusUrl||'—';$('prepare').disabled=!!s.prepRunning;
+  if(Array.isArray(s.logs)){$('logs').textContent=s.logs.join('\n');$('logs').scrollTop=$('logs').scrollHeight}
+}
+window.bridgeApi.onState(render);window.bridgeApi.onLog(line=>{const l=$('logs');l.textContent+=(l.textContent?'\n':'')+line;l.scrollTop=l.scrollHeight});
+window.bridgeApi.onPrepProgress(info=>{if(typeof info.percent==='number')$('bar').style.width=Math.max(0,Math.min(100,info.percent))+'%';$('preptext').textContent=info.text||''});
+$('prepare').onclick=async()=>{if(!confirm('A Bridge vai baixar a base comunitária original DBO Rox e MariaDB portátil para uma pasta local do aplicativo. Continuar?'))return;$('prepare').disabled=true;const r=await window.bridgeApi.prepareDbo();if(!r?.ok)alert('Preparação falhou: '+(r?.error||'erro desconhecido'));};
+$('pick').onclick=()=>window.bridgeApi.pickServer();$('start').onclick=async()=>{const r=await window.bridgeApi.startServer();if(!r?.ok)alert(r?.error||'Falha ao iniciar.');};$('stop').onclick=()=>window.bridgeApi.stopServer();
+$('diagnostic').onclick=async()=>{const r=await window.bridgeApi.sendDiagnostic();alert(r?.ok?'Diagnóstico enviado.':'Não foi possível enviar: '+(r?.error||''));};
+$('connect').onclick=()=>window.bridgeApi.connectRelay();$('disconnect').onclick=()=>window.bridgeApi.disconnectRelay();$('save').onclick=()=>window.bridgeApi.saveSettings({relayUrl:$('relayUrl').value.trim(),autoConnect:true});
+$('copyWs').onclick=()=>window.bridgeApi.copy(current.urls?.gameWs||'');$('copyStatus').onclick=()=>window.bridgeApi.copy(current.urls?.statusUrl||'');$('openClient').onclick=()=>window.bridgeApi.openExternal(current.urls?.clientUrl||'https://dbo-rox-web-alpha01.onrender.com');
 window.bridgeApi.getState().then(render);
 </script>
 </body>

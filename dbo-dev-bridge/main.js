@@ -6,6 +6,7 @@ const net = require('net');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const WebSocket = require('ws');
+const { createDboManager } = require('./autoprep');
 
 let win;
 let agentWs = null;
@@ -16,11 +17,12 @@ let probeTimer = null;
 const tcpPeers = new Map();
 const logs = [];
 let lastState = {};
+let dboManager = null;
 
 function log(line) {
   const msg = `[${new Date().toLocaleTimeString('pt-BR')}] ${String(line)}`;
   logs.push(msg);
-  if (logs.length > 500) logs.shift();
+  if (logs.length > 800) logs.shift();
   if (win && !win.isDestroyed()) win.webContents.send('log-line', msg);
 }
 
@@ -38,6 +40,11 @@ function defaults() {
     serverCwd: '',
     serverArgs: '',
     autoConnect: true,
+    dbPort: 3307,
+    dbPassword: '',
+    mariadbRoot: '',
+    mariadbData: '',
+    databaseSql: '',
     deviceId: crypto.randomUUID(),
     deviceSecret: crypto.randomBytes(32).toString('hex')
   };
@@ -48,6 +55,7 @@ function loadSettings() {
   try {
     if (fs.existsSync(settingsPath())) s = { ...s, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) };
   } catch (e) { log(`Falha ao ler configurações: ${e.message}`); }
+  if (!s.dbPassword) s.dbPassword = crypto.randomBytes(18).toString('hex');
   saveSettings(s);
   return s;
 }
@@ -55,6 +63,21 @@ function loadSettings() {
 function saveSettings(s) {
   fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
   fs.writeFileSync(settingsPath(), JSON.stringify(s, null, 2));
+}
+
+function manager() {
+  if (!dboManager) {
+    dboManager = createDboManager({
+      app,
+      log,
+      onProgress: info => {
+        if (win && !win.isDestroyed()) win.webContents.send('prep-progress', info);
+      },
+      getSettings: loadSettings,
+      saveSettings
+    });
+  }
+  return dboManager;
 }
 
 function wsBaseToHttp(url) {
@@ -89,17 +112,23 @@ function probePort(host, port, timeout = 800) {
 
 async function buildState() {
   const s = loadSettings();
-  const gameReady = await probePort(s.gameHost, s.gamePort);
+  const [gameReady, dbReady] = await Promise.all([
+    probePort(s.gameHost, s.gamePort),
+    manager().isDbReady()
+  ]);
   const memTotal = os.totalmem();
   const memFree = os.freemem();
   lastState = {
     settings: s,
     relayConnected: agentWs && agentWs.readyState === WebSocket.OPEN,
     gameReady,
+    dbReady,
+    prepared: manager().isPrepared(),
+    prepRunning: manager().isPreparing(),
     serverRunning: !!serverProc && !serverProc.killed,
     memory: { total: memTotal, used: memTotal - memFree, free: memFree },
     urls: getUrls(s),
-    logs: logs.slice(-120)
+    logs: logs.slice(-160)
   };
   if (win && !win.isDestroyed()) win.webContents.send('state', lastState);
   return lastState;
@@ -134,7 +163,14 @@ function connectRelay() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = setInterval(async () => {
       const st = await buildState();
-      sendAgent({ op: 'heartbeat', status: { gameReady: st.gameReady, serverRunning: st.serverRunning, memory: st.memory, hostname: os.hostname() } });
+      sendAgent({ op: 'heartbeat', status: {
+        gameReady: st.gameReady,
+        serverRunning: st.serverRunning,
+        dbReady: st.dbReady,
+        prepared: st.prepared,
+        memory: st.memory,
+        hostname: os.hostname()
+      }});
     }, 10000);
     buildState();
   });
@@ -142,6 +178,10 @@ function connectRelay() {
   agentWs.on('message', raw => {
     let msg;
     try { msg = JSON.parse(String(raw)); } catch { return; }
+    if (msg?.op === 'diagnostic-ack') {
+      log('Diagnóstico recebido pelo relay.');
+      return;
+    }
     if (!msg || !msg.op || !msg.id) return;
     if (msg.op === 'open') {
       closePeer(msg.id);
@@ -180,13 +220,25 @@ function disconnectRelay() {
   buildState();
 }
 
-function startServer() {
+async function prepareDbo() {
+  const result = await manager().prepare();
+  await buildState();
+  return result;
+}
+
+async function startServer() {
   const s = loadSettings();
   if (!s.serverExe || !fs.existsSync(s.serverExe)) {
-    log('Selecione primeiro o executável do servidor DBO/TFS.');
-    return { ok: false, error: 'Executável do servidor não configurado.' };
+    log('Servidor não preparado. Clique em PREPARAR DBO AUTOMATICAMENTE.');
+    return { ok: false, error: 'Servidor não preparado.' };
   }
   if (serverProc && !serverProc.killed) return { ok: true };
+  try {
+    await manager().ensureDbRunning();
+  } catch (e) {
+    log(`Banco local: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
   const cwd = s.serverCwd || path.dirname(s.serverExe);
   const args = String(s.serverArgs || '').match(/(?:[^\s"]+|"[^"]*")+/g)?.map(x => x.replace(/^"|"$/g, '')) || [];
   log(`Iniciando servidor: ${path.basename(s.serverExe)}`);
@@ -201,15 +253,40 @@ function startServer() {
 
 function stopServer() {
   if (!serverProc) return { ok: true };
+  const pid = serverProc.pid;
   try { serverProc.kill(); } catch {}
-  setTimeout(() => { if (serverProc && !serverProc.killed) { try { spawn('taskkill', ['/PID', String(serverProc.pid), '/T', '/F']); } catch {} } }, 1500);
+  setTimeout(() => {
+    if (serverProc && serverProc.pid === pid) {
+      try { spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }); } catch {}
+    }
+  }, 1500);
   return { ok: true };
+}
+
+async function sendDiagnostic() {
+  const state = await buildState();
+  if (!agentWs || agentWs.readyState !== WebSocket.OPEN) return { ok: false, error: 'Relay offline.' };
+  const id = crypto.randomUUID();
+  sendAgent({
+    op: 'diagnostic',
+    id,
+    state: {
+      gameReady: state.gameReady,
+      serverRunning: state.serverRunning,
+      dbReady: state.dbReady,
+      prepared: state.prepared,
+      memory: state.memory
+    },
+    logs: logs.slice(-100)
+  });
+  log('Diagnóstico enviado ao relay.');
+  return { ok: true, id };
 }
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1050, height: 720, minWidth: 900, minHeight: 620,
-    title: 'DBO Dev Bridge Alpha 0.1.1',
+    width: 1120, height: 780, minWidth: 920, minHeight: 650,
+    title: 'DBO Dev Bridge Alpha 0.2',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   win.loadFile('index.html');
@@ -223,6 +300,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  manager();
   createWindow();
   ipcMain.handle('state', buildState);
   ipcMain.handle('save-settings', (_e, patch) => {
@@ -241,8 +319,10 @@ app.whenReady().then(() => {
     saveSettings(s);
     return buildState();
   });
-  ipcMain.handle('start-server', () => startServer());
+  ipcMain.handle('prepare-dbo', prepareDbo);
+  ipcMain.handle('start-server', startServer);
   ipcMain.handle('stop-server', () => stopServer());
+  ipcMain.handle('send-diagnostic', sendDiagnostic);
   ipcMain.handle('connect-relay', () => { connectRelay(); return { ok: true }; });
   ipcMain.handle('disconnect-relay', () => { disconnectRelay(); return { ok: true }; });
   ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return true; });
@@ -254,8 +334,15 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => {
+  clearInterval(probeTimer);
+  clearInterval(heartbeatTimer);
+  clearTimeout(reconnectTimer);
+  stopServer();
+  manager().stopDatabase();
+});
+
 app.on('window-all-closed', () => {
-  clearInterval(probeTimer); clearInterval(heartbeatTimer); clearTimeout(reconnectTimer);
   disconnectRelay();
   if (process.platform !== 'darwin') app.quit();
 });

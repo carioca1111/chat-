@@ -1,7 +1,7 @@
 {
   "name": "dbo-dev-bridge",
-  "version": "0.1.1",
-  "description": "Windows development bridge for local DBO Rox testing behind CGNAT",
+  "version": "0.2.0",
+  "description": "Windows one-click development bridge for local DBO Rox testing behind CGNAT",
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
@@ -9,6 +9,8 @@
     "dist": "electron-builder --win portable"
   },
   "dependencies": {
+    "extract-zip": "^2.0.1",
+    "node-unrar-js": "^2.0.2",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -18,8 +20,9 @@
   "build": {
     "appId": "io.dborox.devbridge",
     "productName": "DBO Dev Bridge",
-    "files": ["main.js", "preload.js", "index.html", "package.json"],
+    "files": ["main.js", "autoprep.js", "preload.js", "index.html", "package.json"],
+    "asar": false,
     "win": {"target": ["portable"]},
-    "artifactName": "DBO-Dev-Bridge-Alpha-0.1.1-${version}-portable.${ext}"
+    "artifactName": "DBO-Dev-Bridge-Alpha-0.2-${version}-portable.${ext}"
   }
 }
