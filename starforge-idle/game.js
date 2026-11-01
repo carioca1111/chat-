@@ -2,573 +2,88 @@
 'use strict';
 
 const $=id=>document.getElementById(id);
-const canvas=$('spaceCanvas'), ctx=canvas.getContext('2d',{alpha:false});
-const panelContent=$('panelContent'), mineButton=$('mineButton');
+const canvas=$('spaceCanvas'),ctx=canvas.getContext('2d',{alpha:false});
+const panelContent=$('panelContent'),mineButton=$('mineButton');
+const TAU=Math.PI*2;
 
-const SAVE_KEY='starforge-alpha-0.8';
-const OLD_KEYS=['starforge-alpha-0.7','starforge-alpha-0.6','starforge-alpha-0.1'];
-const RES={
-  iron:['Iron Ore',3,1],
-  nickel:['Nickel',7,2],
-  cobalt:['Cobalt',13,3],
-  titanium:['Titanium',28,4],
-  crystal:['Crystal',65,6]
-};
+const SAVE_KEY='starforge-alpha-0.9';
+const OLD_KEYS=['starforge-alpha-0.8','starforge-alpha-0.7','starforge-alpha-0.6','starforge-alpha-0.1'];
+const RES={iron:{name:'Iron Ore',value:3,size:1},nickel:{name:'Nickel',value:7,size:2},cobalt:{name:'Cobalt',value:13,size:3},titanium:{name:'Titanium',value:28,size:4},crystal:{name:'Crystal',value:65,size:6}};
 const SECTORS=[
-  ['sol','Sol Belt',0,1,'Órbita segura · minérios básicos'],
-  ['red','Red Veil',1400,1.7,'Nebulosa hostil · mais Titanium'],
-  ['void','Void Reach',5200,2.8,'Fronteira profunda · Crystal abundante']
+{id:'sol',name:'Sol Belt',x:22,y:77,color:'#ffb83e',subs:[{id:'sol-a',name:'Helios Fringe',x:16,y:80,pirates:0,drops:{iron:68,nickel:22,cobalt:8,titanium:2,crystal:0}},{id:'sol-b',name:'Cinder Ring',x:24,y:72,pirates:.04,drops:{iron:58,nickel:25,cobalt:12,titanium:4,crystal:1}},{id:'sol-c',name:'Trojan Drift',x:30,y:80,pirates:0,drops:{iron:72,nickel:16,cobalt:8,titanium:3,crystal:1}},{id:'sol-d',name:'Aurora Belt',x:21,y:68,pirates:.02,drops:{iron:51,nickel:28,cobalt:14,titanium:6,crystal:1}}]},
+{id:'red',name:'Red Veil',x:18,y:48,color:'#ff4a52',subs:[{id:'red-a',name:'Ember Gate',x:11,y:49,pirates:.10,drops:{iron:39,nickel:28,cobalt:18,titanium:12,crystal:3}},{id:'red-b',name:'Ash Belt',x:18,y:40,pirates:.04,drops:{iron:33,nickel:27,cobalt:20,titanium:16,crystal:4}},{id:'red-c',name:'Crimson Rift',x:25,y:46,pirates:.20,drops:{iron:28,nickel:24,cobalt:21,titanium:21,crystal:6}},{id:'red-d',name:'Scarlet Core',x:26,y:55,pirates:.30,drops:{iron:25,nickel:23,cobalt:20,titanium:25,crystal:7}}]},
+{id:'crystal',name:'Crystal Reach',x:27,y:19,color:'#45e8ff',subs:[{id:'crystal-a',name:'Glass Shoals',x:21,y:19,pirates:0,drops:{iron:37,nickel:24,cobalt:16,titanium:13,crystal:10}},{id:'crystal-b',name:'Prism Fields',x:28,y:12,pirates:.05,drops:{iron:28,nickel:22,cobalt:18,titanium:15,crystal:17}},{id:'crystal-c',name:'Blue Spires',x:34,y:21,pirates:.12,drops:{iron:24,nickel:20,cobalt:18,titanium:17,crystal:21}},{id:'crystal-d',name:'Silent Lattice',x:26,y:28,pirates:0,drops:{iron:31,nickel:22,cobalt:18,titanium:14,crystal:15}}]},
+{id:'void',name:'Void Reach',x:51,y:17,color:'#a66cff',subs:[{id:'void-a',name:'Null Crossing',x:45,y:14,pirates:.08,drops:{iron:25,nickel:21,cobalt:20,titanium:24,crystal:10}},{id:'void-b',name:'Violet Wake',x:52,y:10,pirates:.16,drops:{iron:20,nickel:19,cobalt:20,titanium:27,crystal:14}},{id:'void-c',name:'Eventide',x:58,y:18,pirates:.22,drops:{iron:18,nickel:18,cobalt:21,titanium:28,crystal:15}},{id:'void-d',name:'Quiet Maw',x:51,y:25,pirates:.04,drops:{iron:23,nickel:20,cobalt:22,titanium:24,crystal:11}}]},
+{id:'dark',name:'Dark Expanse',x:79,y:18,color:'#ff4cbb',subs:[{id:'dark-a',name:'Umbra Line',x:73,y:15,pirates:.18,drops:{iron:18,nickel:18,cobalt:22,titanium:29,crystal:13}},{id:'dark-b',name:'Black Current',x:80,y:10,pirates:.32,drops:{iron:15,nickel:17,cobalt:22,titanium:30,crystal:16}},{id:'dark-c',name:'Night Spiral',x:86,y:18,pirates:.38,drops:{iron:13,nickel:16,cobalt:22,titanium:31,crystal:18}},{id:'dark-d',name:'Dusk Anchorage',x:78,y:27,pirates:.12,drops:{iron:20,nickel:19,cobalt:22,titanium:26,crystal:13}}]},
+{id:'deep',name:'Deep Frontier',x:68,y:43,color:'#4c9dff',subs:[{id:'deep-a',name:'Long Drift',x:61,y:42,pirates:0,drops:{iron:38,nickel:24,cobalt:19,titanium:14,crystal:5}},{id:'deep-b',name:'Far Lantern',x:69,y:35,pirates:.08,drops:{iron:33,nickel:23,cobalt:20,titanium:18,crystal:6}},{id:'deep-c',name:'Blue March',x:75,y:43,pirates:.15,drops:{iron:28,nickel:22,cobalt:21,titanium:21,crystal:8}},{id:'deep-d',name:'Cold Meridian',x:68,y:51,pirates:0,drops:{iron:35,nickel:24,cobalt:20,titanium:16,crystal:5}}]},
+{id:'grave',name:'Graveyard',x:69,y:74,color:'#9f63ff',subs:[{id:'grave-a',name:'Broken Convoy',x:62,y:71,pirates:.20,drops:{iron:32,nickel:23,cobalt:23,titanium:18,crystal:4}},{id:'grave-b',name:'Wreck Halo',x:70,y:66,pirates:.28,drops:{iron:27,nickel:22,cobalt:25,titanium:21,crystal:5}},{id:'grave-c',name:'Ghost Dock',x:77,y:75,pirates:.35,drops:{iron:24,nickel:21,cobalt:26,titanium:23,crystal:6}},{id:'grave-d',name:'Quiet Debris',x:68,y:82,pirates:.06,drops:{iron:38,nickel:24,cobalt:22,titanium:13,crystal:3}}]},
+{id:'relic',name:'Relic Zone',x:88,y:44,color:'#ffbf4c',subs:[{id:'relic-a',name:'Outer Ruins',x:84,y:38,pirates:.08,drops:{iron:25,nickel:22,cobalt:22,titanium:23,crystal:8}},{id:'relic-b',name:'Ringfall',x:91,y:38,pirates:.18,drops:{iron:21,nickel:20,cobalt:23,titanium:26,crystal:10}},{id:'relic-c',name:'Ancient Gate',x:92,y:49,pirates:.25,drops:{iron:18,nickel:19,cobalt:23,titanium:28,crystal:12}},{id:'relic-d',name:'Dust Archive',x:85,y:51,pirates:0,drops:{iron:29,nickel:23,cobalt:22,titanium:20,crystal:6}}]}
 ];
-const SVG={
-  ship:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 92"><g stroke="#07101a" stroke-width="5" stroke-linejoin="round"><path fill="#273241" d="M50 7 66 35 86 45 73 68 60 61 57 82 43 82 40 61 27 68 14 45 34 35Z"/><path fill="#364455" d="M50 14 59 39 50 55 41 39Z"/><path fill="#5ee9ff" d="M50 21 55 39 50 47 45 39Z"/><path fill="#45ddff" d="M18 45h16v6H18zm48 0h16v6H66z"/></g></svg>`,
-  rock:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 112"><path fill="#303846" stroke="#121820" stroke-width="6" d="M21 14 48 5 79 9 105 28 114 56 103 85 78 105 44 107 14 91 5 61 9 35Z"/><path fill="#424b59" d="m21 14 30 9 20-14 22 22-18 20-28-6-18 18-20-28Z"/><g fill="#171d25"><ellipse cx="81" cy="35" rx="12" ry="9"/><ellipse cx="37" cy="74" rx="11" ry="9"/><ellipse cx="84" cy="78" rx="8" ry="6"/></g></svg>`,
-  crystal:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 104"><path fill="#303946" stroke="#111820" stroke-width="6" d="M18 12 48 5 78 11 103 31 107 61 91 88 61 99 28 92 7 69 6 39Z"/><path fill="#404b59" d="m18 12 30 9 17-10 24 21-14 19-24-2-18 18-24-17 5-19Z"/><path d="M24 75 38 57 51 61 62 43 78 48 93 27" fill="none" stroke="#3ee9ff" stroke-width="5"/><g fill="#4de7ff"><path d="m76 25 10-14 7 18-9 9Z"/><path d="m31 73 8-12 7 14-8 9Z"/><path d="m66 70 9-14 8 18-10 8Z"/></g></svg>`,
-  frag:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 46"><path fill="#3a4452" stroke="#141b24" stroke-width="4" d="m7 11 19-7 16 12-4 20-18 6L5 30Z"/><path fill="#505b69" d="m10 13 16-5 7 10-12 10-12-4Z"/></svg>`,
-  hit:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><path fill="#4de7ff" stroke="#dffcff" stroke-width="3" d="m40 5 7 22 20-9-12 19 20 8-22 5 7 21-16-15-12 19 1-23-23 3 19-13-17-15 22 6Z"/><circle cx="40" cy="41" r="8" fill="#fff"/></svg>`
-};
-
-let assets={}, activeTab='cargo', toastTimer=0, audio=null, last=performance.now(), nextId=1;
-const defaults=()=>({
-  credits:260,gems:35,inventory:{iron:0,nickel:0,cobalt:0,titanium:0,crystal:0},
-  cargo:0,shipLevel:1,laserLevel:1,cargoLevel:1,efficiencyLevel:1,
-  sector:'sol',mining:false,shield:100,sound:true,lastSeen:Date.now()
-});
-function load(){
-  try{
-    let raw=localStorage.getItem(SAVE_KEY);
-    if(!raw) for(const k of OLD_KEYS){ raw=localStorage.getItem(k); if(raw) break; }
-    if(!raw) return defaults();
-    const p=JSON.parse(raw), d=defaults(), s={...d,...p,inventory:{...d.inventory,...(p.inventory||{})}};
-    s.cargo=Object.entries(s.inventory).reduce((n,[k,q])=>n+(RES[k]?.[2]||1)*Math.max(0,q||0),0);
-    s.shield=Number.isFinite(p.shield)?p.shield:100;
-    return s;
-  }catch{return defaults();}
-}
-let state=load();
-
-const world={
-  w:innerWidth,h:innerHeight,dpr:1,time:0,shake:0,zoom:1,targetZoom:1,
-  asteroids:[],fragments:[],particles:[],exhaust:[],target:null,
-  spawnTimer:0,laser:false,particleTimer:0,exhaustTimer:0,dangerText:'ROTA SEGURA',
-  camera:{x:0,y:0,vx:0,vy:0},
-  ship:{x:0,y:0,vx:0,vy:0,angle:-Math.PI/2,avoidX:0,avoidY:0,dodgeHold:0,threatId:0,dodgeSide:0,hitTimer:0,recoveryTimer:0}
-};
-
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const rand=(a,b)=>a+Math.random()*(b-a);
-const dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by);
-const fmt=n=>Math.floor(n).toLocaleString('pt-BR');
-const sec=()=>SECTORS.find(x=>x[0]===state.sector)||SECTORS[0];
-const cap=()=>100+(state.cargoLevel-1)*40;
-const mineRate=()=>1+(state.laserLevel-1)*.35;
-const efficiency=()=>1+(state.efficiencyLevel-1)*.05;
-const asteroidCount=()=>Math.round(clamp(world.w*world.h/52000,innerWidth<700?11:18,innerWidth<700?16:28)*(0.9+sec()[3]*.08));
-
-const cameraLeft=()=>world.camera.x-world.w/(2*world.zoom);
-const cameraTop=()=>world.camera.y-world.h/(2*world.zoom);
-const sx=wx=>(wx-cameraLeft())*world.zoom;
-const sy=wy=>(wy-cameraTop())*world.zoom;
-function visible(o,margin=120){
-  const x=sx(o.x),y=sy(o.y),r=o.r*world.zoom;
-  return x>-margin-r&&x<world.w+margin+r&&y>-margin-r&&y<world.h+margin+r;
-}
-function save(){ state.lastSeen=Date.now(); localStorage.setItem(SAVE_KEY,JSON.stringify(state)); }
-function upgradeCost(t){
-  const lv=t==='laser'?state.laserLevel:t==='cargo'?state.cargoLevel:state.efficiencyLevel;
-  return Math.round((t==='laser'?150:t==='cargo'?200:300)*1.62**(lv-1));
-}
-function weightedResource(){
-  const id=sec()[0];
-  const w=id==='red'?{iron:43,nickel:25,cobalt:15,titanium:14,crystal:3}:id==='void'?{iron:24,nickel:22,cobalt:20,titanium:24,crystal:10}:{iron:62,nickel:23,cobalt:10,titanium:4,crystal:1};
-  let r=Math.random()*100,c=0;
-  for(const k in w){ c+=w[k]; if(r<=c) return k; }
-  return 'iron';
-}
-function asteroidLoot(r,crystal=false){
-  const units=Math.max(2,Math.round((r*r)/620*rand(.7,1.25)));
-  const out={iron:0,nickel:0,cobalt:0,titanium:0,crystal:0};
-  for(let i=0;i<units;i++){ let k=weightedResource(); if(crystal&&Math.random()<.38) k='crystal'; out[k]++; }
-  return out;
-}
-function addLoot(bundle,announce=true){
-  let added=0,rejected=0; const gained={};
-  for(const [k,q] of Object.entries(bundle)){
-    const size=RES[k][2]; let take=0;
-    for(let i=0;i<q;i++){
-      if(state.cargo+size>cap()){ rejected+=q-i; break; }
-      state.inventory[k]++; state.cargo+=size; take++; added++;
-    }
-    if(take) gained[k]=take;
-  }
-  if(announce&&added){
-    const text=Object.entries(gained).map(([k,n])=>`${n} ${RES[k][0]}`).join(' · ');
-    toast(`Asteroide coletado: ${text}${rejected?' · carga sem espaço para o resto':''}`);
-  }else if(announce&&rejected) toast('Asteroide quebrado, mas o cargueiro está sem espaço.');
-  if(state.cargo>=cap()) state.mining=false;
-  return added;
-}
-function offline(){
-  const e=Math.max(0,Date.now()-(state.lastSeen||Date.now()))/1000;
-  if(!state.mining||e<20)return;
-  const completed=Math.min(24,Math.floor(e/Math.max(22,42/(mineRate()*Math.sqrt(sec()[3])))));
-  let collected=0;
-  for(let i=0;i<completed;i++){
-    collected+=addLoot(asteroidLoot(rand(24,46),Math.random()<.08*sec()[3]),false);
-    if(state.cargo>=cap())break;
-  }
-  if(collected)setTimeout(()=>toast(`Expedição offline: ${completed} asteroides processados · +${collected} itens`),450);
-}
-function loadAssets(){
-  return Promise.all(Object.entries(SVG).map(([k,v])=>new Promise(resolve=>{
-    const img=new Image();
-    img.onload=()=>{ assets[k]=img; resolve(); };
-    img.onerror=resolve;
-    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(v);
-  })));
-}
-function resize(){
-  world.dpr=Math.min(2,devicePixelRatio||1);
-  world.w=Math.max(320,innerWidth); world.h=Math.max(320,innerHeight);
-  canvas.width=world.w*world.dpr; canvas.height=world.h*world.dpr;
-  canvas.style.width=world.w+'px'; canvas.style.height=world.h+'px';
-  ctx.setTransform(world.dpr,0,0,world.dpr,0,0);
-  while(world.asteroids.length<asteroidCount()) spawnAsteroid();
-}
-function spawnAsteroid(){
-  const r=Math.random()<.18?rand(48,76):Math.random()<.5?rand(28,47):rand(14,27);
-  const density=rand(.75,1.4), mass=Math.max(8,r*r*density);
-  const visibleHalf=Math.hypot(world.w/(2*world.zoom),world.h/(2*world.zoom));
-  const radius=visibleHalf+rand(280,Math.max(520,visibleHalf*.8));
-  const a=rand(0,Math.PI*2);
-  const x=world.camera.x+Math.cos(a)*radius, y=world.camera.y+Math.sin(a)*radius;
-  const drift=a+Math.PI+rand(-1.15,1.15), speed=rand(7,26)*(.92+sec()[3]*.08);
-  const chance=sec()[0]==='void'?.28:sec()[0]==='red'?.14:.055, crystal=Math.random()<chance;
-  const body={id:nextId++,x,y,vx:Math.cos(drift)*speed,vy:Math.sin(drift)*speed,r,mass,density,rot:rand(0,Math.PI*2),spin:rand(-.42,.42),crystal};
-  body.maxHp=body.hp=Math.round(55+r*1.75);
-  body.loot=asteroidLoot(r,crystal);
-  world.asteroids.push(body);
-  return body;
-}
-function chooseTarget(){
-  if(!state.mining||state.cargo>=cap()){ world.target=null; return; }
-  const sh=world.ship; let best=null,score=Infinity;
-  for(const a of world.asteroids){
-    const d=dist(sh.x,sh.y,a.x,a.y); if(d<90) continue;
-    const rel=Math.hypot(a.vx-sh.vx,a.vy-sh.vy);
-    const value=Object.entries(a.loot).reduce((s,[k,n])=>s+RES[k][1]*n,0);
-    const sc=d+rel*5-Math.min(700,value*.35)-a.r*3;
-    if(sc<score){ score=sc; best=a; }
-  }
-  world.target=best;
-}
-function burst(x,y,n,color){
-  for(let i=0;i<n;i++){
-    const a=rand(0,Math.PI*2),v=rand(30,180);
-    world.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:rand(.25,.85),maxLife:.85,size:rand(1,4),color});
-  }
-}
-function destroyAsteroid(a){
-  const i=world.asteroids.indexOf(a); if(i>=0) world.asteroids.splice(i,1);
-  for(let j=0,n=Math.floor(rand(4,8));j<n;j++){
-    const ang=rand(0,Math.PI*2),v=rand(42,128),r=rand(6,Math.min(16,a.r*.32));
-    world.fragments.push({id:nextId++,x:a.x,y:a.y,vx:a.vx+Math.cos(ang)*v,vy:a.vy+Math.sin(ang)*v,r,mass:Math.max(1,r*r*.55),rot:rand(0,Math.PI*2),spin:rand(-2.5,2.5),life:rand(7,12),dangerous:true});
-  }
-  burst(a.x,a.y,32,a.crystal?'#4de7ff':'#c8d0dd');
-  world.shake=7; sound('break'); addLoot(a.loot,true);
-  if(world.target===a) world.target=null;
-  if(state.mining&&state.cargo<cap()) chooseTarget();
-}
-function resolveBodyCollision(a,b){
-  const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy),minD=a.r+b.r;
-  if(d<=0||d>=minD)return;
-  const nx=dx/d,ny=dy/d,overlap=minD-d,invA=1/Math.max(1,a.mass),invB=1/Math.max(1,b.mass),invSum=invA+invB;
-  a.x-=nx*overlap*(invA/invSum); a.y-=ny*overlap*(invA/invSum);
-  b.x+=nx*overlap*(invB/invSum); b.y+=ny*overlap*(invB/invSum);
-  const rvx=b.vx-a.vx,rvy=b.vy-a.vy,vel=rvx*nx+rvy*ny;
-  if(vel>0)return;
-  const j=-(1+.82)*vel/invSum,ix=j*nx,iy=j*ny;
-  a.vx-=ix*invA; a.vy-=iy*invA; b.vx+=ix*invB; b.vy+=iy*invB;
-  const tangent=rvx*-ny+rvy*nx;
-  a.spin-=tangent*invA*.018; b.spin+=tangent*invB*.018;
-  if(Math.abs(vel)>24) burst((a.x+b.x)/2,(a.y+b.y)/2,4,'#aeb8c8');
-}
-function solveAsteroidPhysics(){
-  const list=world.asteroids;
-  for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++) resolveBodyCollision(list[i],list[j]);
-}
-function predictThreat(h){
-  const sh=world.ship,dx=h.x-sh.x,dy=h.y-sh.y,rvx=h.vx-sh.vx,rvy=h.vy-sh.vy,sq=rvx*rvx+rvy*rvy;
-  if(sq<9)return null;
-  const t=-(dx*rvx+dy*rvy)/sq;
-  if(t<=.02||t>2.2)return null;
-  const cx=dx+rvx*t,cy=dy+rvy*t,miss=Math.hypot(cx,cy);
-  const mf=clamp(Math.log10(Math.max(10,h.mass||h.r*h.r))/4,.65,1.35);
-  const safe=(38+h.r*1.12)*mf;
-  if(miss>=safe||Math.hypot(dx,dy)>430+h.r)return null;
-  return{hazard:h,rvx,rvy,cx,cy,miss,urgency:(1-t/2.2)*(.35+.65*(1-miss/safe))*mf};
-}
-function updateAvoidance(dt){
-  const sh=world.ship;
-  const hazards=[...world.fragments.filter(f=>f.dangerous),...world.asteroids.filter(a=>a!==world.target||dist(a.x,a.y,sh.x,sh.y)>a.r+70)];
-  let best=null;
-  for(const h of hazards){ const t=predictThreat(h); if(t&&(!best||t.urgency>best.urgency)) best=t; }
-  let tx=0,ty=0;
-  if(best){
-    const h=best.hazard,rel=Math.max(1,Math.hypot(best.rvx,best.rvy)),px=-best.rvy/rel,py=best.rvx/rel;
-    if(sh.threatId!==h.id||!sh.dodgeSide){ sh.dodgeSide=(px*best.cx+py*best.cy)>0?-1:1; sh.threatId=h.id; }
-    const miss=Math.max(1,best.miss),ax=-best.cx/miss,ay=-best.cy/miss;
-    const lateral=90+best.urgency*90,away=20+best.urgency*50;
-    tx=px*sh.dodgeSide*lateral+ax*away; ty=py*sh.dodgeSide*lateral+ay*away;
-    const mag=Math.hypot(tx,ty); if(mag>165){ tx=tx/mag*165; ty=ty/mag*165; }
-    sh.dodgeHold=.32; world.dangerText='DESVIO PREDITIVO';
-  }else{
-    sh.dodgeHold=Math.max(0,sh.dodgeHold-dt);
-    if(sh.dodgeHold<=0){ sh.threatId=0; sh.dodgeSide=0; world.dangerText='ROTA SEGURA'; }
-    else{ tx=sh.avoidX*.76; ty=sh.avoidY*.76; world.dangerText='DESVIO PREDITIVO'; }
-  }
-  const response=1-Math.exp(-dt*(best?7.5:3.6));
-  sh.avoidX+=(tx-sh.avoidX)*response; sh.avoidY+=(ty-sh.avoidY)*response;
-}
-function handleShipCollisions(){
-  const sh=world.ship; if(sh.hitTimer>0)return;
-  for(const h of [...world.fragments,...world.asteroids]){
-    const minD=22+h.r*.82;
-    if(dist(sh.x,sh.y,h.x,h.y)>=minD)continue;
-    const rel=Math.hypot(h.vx-sh.vx,h.vy-sh.vy);
-    state.shield=clamp(state.shield-clamp(5+rel*.19+h.r*.12,7,31),0,100);
-    sh.hitTimer=.65;
-    const dx=sh.x-h.x,dy=sh.y-h.y,d=Math.max(1,Math.hypot(dx,dy));
-    sh.vx+=dx/d*70; sh.vy+=dy/d*70; h.vx-=dx/d*14; h.vy-=dy/d*14;
-    burst(sh.x,sh.y,15,'#ff89a2'); world.shake=10; world.dangerText='IMPACTO NO ESCUDO'; sound('hit');
-    if(state.shield<=0){ state.mining=false; world.laser=false; sh.recoveryTimer=3.2; world.target=null; toast('Escudo colapsou. Recuo automático.'); }
-    break;
-  }
-}
-function updateShip(dt){
-  const sh=world.ship; sh.hitTimer=Math.max(0,sh.hitTimer-dt);
-  if(sh.recoveryTimer>0){
-    sh.recoveryTimer-=dt;
-    if(sh.recoveryTimer<=0){ state.shield=38; toast('Escudo reiniciado em 38%.'); }
-  }else if(state.shield<100&&sh.hitTimer<=0) state.shield=clamp(state.shield+dt*4.2,0,100);
-
-  if(state.mining&&(!world.target||!world.asteroids.includes(world.target))) chooseTarget();
-  updateAvoidance(dt);
-
-  let tx=sh.x,ty=sh.y;
-  if(sh.recoveryTimer>0){
-    const fx=Math.sin(sh.angle),fy=-Math.cos(sh.angle);
-    tx=sh.x-fx*180; ty=sh.y-fy*180;
-  }else if(state.mining&&world.target){
-    const t=world.target,dx=sh.x-t.x,dy=sh.y-t.y,d=Math.max(1,Math.hypot(dx,dy));
-    const ux=dx/d,uy=dy/d,stand=t.r+clamp(world.w*.085,90,135);
-    tx=t.x+ux*stand; ty=t.y+uy*stand;
-  }
-  tx+=sh.avoidX; ty+=sh.avoidY;
-
-  const dx=tx-sh.x,dy=ty-sh.y,d=Math.hypot(dx,dy);
-  const dodging=Math.hypot(sh.avoidX,sh.avoidY)>12,travelling=state.mining&&world.target&&d>75;
-  const maxSpeed=dodging?160:travelling?118:82;
-  const speed=Math.min(maxSpeed,d*(travelling?1.35:2));
-  const dvx=d>1?dx/d*speed:0,dvy=d>1?dy/d*speed:0;
-  const response=1-Math.exp(-dt*(dodging?4.8:3.2));
-  sh.vx+=(dvx-sh.vx)*response; sh.vy+=(dvy-sh.vy)*response;
-  sh.x+=sh.vx*dt; sh.y+=sh.vy*dt;
-
-  const faceX=world.target?world.target.x:sh.x+(Math.abs(sh.vx)>2?sh.vx:1);
-  const faceY=world.target?world.target.y:sh.y+sh.vy;
-  const desired=Math.atan2(faceY-sh.y,faceX-sh.x)+Math.PI/2;
-  const diff=((desired-sh.angle+Math.PI)%(Math.PI*2))-Math.PI;
-  sh.angle+=diff*Math.min(1,dt*6.2);
-
-  const td=world.target?dist(sh.x,sh.y,world.target.x,world.target.y):Infinity,range=clamp(world.w*.31,250,510);
-  world.laser=!!(state.mining&&world.target&&sh.recoveryTimer<=0&&state.cargo<cap()&&td<=range&&Math.abs(diff)<.78);
-}
-function emitExhaust(dt){
-  const sh=world.ship,speed=Math.hypot(sh.vx,sh.vy);
-  if(speed<8||sh.recoveryTimer>0)return;
-  world.exhaustTimer-=dt;
-  const interval=clamp(.05-speed/5500,.018,.05);
-  if(world.exhaustTimer>0)return;
-  world.exhaustTimer=interval;
-
-  const fx=Math.sin(sh.angle),fy=-Math.cos(sh.angle),px=-fy,py=fx;
-  const rearX=sh.x-fx*28,rearY=sh.y-fy*28,power=clamp(speed/120,.2,1);
-  for(const side of [-1,1]){
-    const nx=rearX+px*side*7,ny=rearY+py*side*7;
-    const backX=-fx,backY=-fy,v=rand(14,28)+speed*.07;
-    world.exhaust.push({
-      x:nx,y:ny,
-      vx:sh.vx*.16+backX*v+px*rand(-3,3),
-      vy:sh.vy*.16+backY*v+py*rand(-3,3),
-      life:rand(.42,.78),maxLife:.78,size:rand(1.4,3.1)*(.65+power*.45)
-    });
-  }
-}
-function updateCamera(dt){
-  const sh=world.ship,c=world.camera,speed=Math.hypot(sh.vx,sh.vy);
-  let dirX=Math.sin(sh.angle),dirY=-Math.cos(sh.angle);
-  if(speed>5){ dirX=sh.vx/speed; dirY=sh.vy/speed; }
-
-  const trail=42+clamp(speed*.82,0,105);
-  const tx=sh.x-dirX*trail,ty=sh.y-dirY*trail;
-  const spring=1.25,damp=3.15;
-  c.vx+=(tx-c.x)*spring*dt; c.vy+=(ty-c.y)*spring*dt;
-  c.vx*=Math.exp(-damp*dt); c.vy*=Math.exp(-damp*dt);
-  c.x+=c.vx*dt*6.2; c.y+=c.vy*dt*6.2;
-
-  world.targetZoom=clamp(1-speed/4800,.97,1);
-  world.zoom+=(world.targetZoom-world.zoom)*(1-Math.exp(-dt*2.1));
-}
-function updateWorld(dt){
-  world.time+=dt; world.shake=Math.max(0,world.shake-dt*22);
-
-  for(const a of world.asteroids){
-    a.x+=a.vx*dt; a.y+=a.vy*dt; a.rot+=a.spin*dt;
-    a.vx*=Math.pow(.9996,dt*60); a.vy*=Math.pow(.9996,dt*60);
-  }
-  solveAsteroidPhysics();
-
-  if(world.laser&&world.target){
-    const t=world.target;
-    t.hp-=(9+mineRate()*8)*sec()[3]*dt;
-    world.particleTimer-=dt;
-    if(world.particleTimer<=0){ world.particleTimer=.04; burst(t.x,t.y,2,Math.random()>.5?'#4de7ff':'#ffd36f'); }
-    if(t.hp<=0) destroyAsteroid(t);
-  }
-
-  for(const f of world.fragments){ f.x+=f.vx*dt; f.y+=f.vy*dt; f.rot+=f.spin*dt; f.life-=dt; }
-  for(const p of world.particles){
-    p.x+=p.vx*dt; p.y+=p.vy*dt;
-    p.vx*=Math.pow(.98,dt*60); p.vy*=Math.pow(.98,dt*60); p.life-=dt;
-  }
-  for(const p of world.exhaust){
-    p.x+=p.vx*dt; p.y+=p.vy*dt;
-    p.vx*=Math.pow(.965,dt*60); p.vy*=Math.pow(.965,dt*60);
-    p.life-=dt; p.size+=dt*2.1;
-  }
-
-  updateShip(dt); emitExhaust(dt); handleShipCollisions(); updateCamera(dt);
-
-  const maxDist=Math.max(world.w,world.h)*2.7/world.zoom;
-  world.fragments=world.fragments.filter(f=>f.life>0&&dist(f.x,f.y,world.camera.x,world.camera.y)<maxDist);
-  world.particles=world.particles.filter(p=>p.life>0);
-  world.exhaust=world.exhaust.filter(p=>p.life>0);
-  world.asteroids=world.asteroids.filter(a=>a===world.target||dist(a.x,a.y,world.camera.x,world.camera.y)<maxDist);
-  if(world.target&&!world.asteroids.includes(world.target)) world.target=null;
-
-  world.spawnTimer-=dt;
-  if(world.spawnTimer<=0){
-    world.spawnTimer=rand(.22,.7);
-    while(world.asteroids.length<asteroidCount()) spawnAsteroid();
-  }
-}
-
-function drawImageRotated(img,x,y,w,h,angle,alpha=1){
-  if(!img)return;
-  ctx.save(); ctx.globalAlpha=alpha; ctx.translate(x,y); ctx.rotate(angle); ctx.drawImage(img,-w/2,-h/2,w,h); ctx.restore();
-}
-function hash2(x,y,seed=0){
-  const n=Math.sin(x*127.1+y*311.7+seed*74.7)*43758.5453;
-  return n-Math.floor(n);
-}
-function drawStarLayer(parallax,cell,alpha,minS,maxS,seed){
-  const camX=world.camera.x*parallax,camY=world.camera.y*parallax;
-  const minX=Math.floor((camX-world.w/2-cell)/cell),maxX=Math.ceil((camX+world.w/2+cell)/cell);
-  const minY=Math.floor((camY-world.h/2-cell)/cell),maxY=Math.ceil((camY+world.h/2+cell)/cell);
-  for(let gx=minX;gx<=maxX;gx++)for(let gy=minY;gy<=maxY;gy++){
-    const h1=hash2(gx,gy,seed); if(h1<.34)continue;
-    const wx=gx*cell+hash2(gx,gy,seed+11)*cell,wy=gy*cell+hash2(gx,gy,seed+29)*cell;
-    const x=wx-camX+world.w/2,y=wy-camY+world.h/2,size=minS+(maxS-minS)*hash2(gx,gy,seed+41);
-    ctx.globalAlpha=alpha*(.72+.28*Math.sin(world.time*1.1+h1*8));
-    ctx.fillStyle=h1>.9?'#c6efff':'#fff'; ctx.fillRect(x,y,size,size);
-  }
-  ctx.globalAlpha=1;
-}
-function drawNebula(){
-  const tint=sec()[0]==='red'?['rgba(120,30,70,.14)','rgba(70,18,55,.08)']:sec()[0]==='void'?['rgba(63,40,140,.16)','rgba(34,22,92,.09)']:['rgba(18,74,120,.14)','rgba(20,55,92,.08)'];
-  const p=.055,cx=world.w*.42-(world.camera.x*p)%(world.w*1.7),cy=world.h*.36-(world.camera.y*p)%(world.h*1.5);
-  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(world.w,world.h)*.72);
-  g.addColorStop(0,tint[0]); g.addColorStop(.55,tint[1]); g.addColorStop(1,'rgba(2,4,10,0)');
-  ctx.fillStyle=g; ctx.fillRect(0,0,world.w,world.h);
-}
-function drawBackground(){
-  ctx.fillStyle='#02040a'; ctx.fillRect(0,0,world.w,world.h); drawNebula();
-  drawStarLayer(.08,92,.34,.5,1,1);
-  drawStarLayer(.22,72,.55,.7,1.35,2);
-  drawStarLayer(.46,58,.8,.9,1.75,3);
-}
-function drawAsteroid(a){
-  if(!visible(a,150))return;
-  const x=sx(a.x),y=sy(a.y),r=a.r*world.zoom,target=a===world.target;
-  drawImageRotated(a.crystal?assets.crystal:assets.rock,x,y,r*2.15,r*2.15,a.rot,target?1:.83);
-  if(target){
-    const hp=clamp(a.hp/a.maxHp,0,1);
-    ctx.save(); ctx.strokeStyle='rgba(77,231,255,.22)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,y,r*.96,0,Math.PI*2); ctx.stroke();
-    ctx.strokeStyle=a.crystal?'#4de7ff':'#90a8c7'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,r*.96,-Math.PI/2,-Math.PI/2+Math.PI*2*hp); ctx.stroke(); ctx.restore();
-  }
-}
-function drawLaser(){
-  if(!world.laser||!world.target)return;
-  const sh=world.ship,t=world.target,x0=sx(sh.x),y0=sy(sh.y),tx=sx(t.x),ty=sy(t.y);
-  const dx=tx-x0,dy=ty-y0,d=Math.max(1,Math.hypot(dx,dy)),ux=dx/d,uy=dy/d;
-  const startX=x0+ux*28*world.zoom,startY=y0+uy*28*world.zoom,endX=tx-ux*t.r*.68*world.zoom,endY=ty-uy*t.r*.68*world.zoom;
-  const pulse=.55+Math.sin(world.time*28)*.3;
-  ctx.save(); ctx.lineCap='round'; ctx.strokeStyle=`rgba(77,231,255,${.22+pulse*.2})`; ctx.lineWidth=9*world.zoom; ctx.shadowBlur=18; ctx.shadowColor='#4de7ff';
-  ctx.beginPath(); ctx.moveTo(startX,startY); ctx.lineTo(endX,endY); ctx.stroke();
-  ctx.strokeStyle='#dfffff'; ctx.lineWidth=(2.1+pulse*1.2)*world.zoom; ctx.beginPath(); ctx.moveTo(startX,startY); ctx.lineTo(endX,endY); ctx.stroke(); ctx.restore();
-  drawImageRotated(assets.hit,endX,endY,(34+pulse*5)*world.zoom,(34+pulse*5)*world.zoom,world.time*2.4,.82);
-}
-function drawParticles(){
-  for(const p of world.particles){
-    const x=sx(p.x),y=sy(p.y); if(x<-20||x>world.w+20||y<-20||y>world.h+20)continue;
-    ctx.save(); ctx.globalAlpha=clamp(p.life/(p.maxLife||.55),0,1); ctx.fillStyle=p.color; ctx.shadowBlur=10; ctx.shadowColor=p.color;
-    ctx.beginPath(); ctx.arc(x,y,p.size*world.zoom,0,Math.PI*2); ctx.fill(); ctx.restore();
-  }
-}
-function drawExhaust(){
-  for(const p of world.exhaust){
-    const x=sx(p.x),y=sy(p.y); if(x<-30||x>world.w+30||y<-30||y>world.h+30)continue;
-    const life=clamp(p.life/p.maxLife,0,1);
-    ctx.save(); ctx.globalAlpha=life*.46; ctx.fillStyle=life>.55?'#b9f4ff':'#84919b';
-    ctx.beginPath(); ctx.arc(x,y,p.size*world.zoom,0,Math.PI*2); ctx.fill(); ctx.restore();
-  }
-}
-function draw(){
-  ctx.setTransform(world.dpr,0,0,world.dpr,0,0);
-  drawBackground();
-  ctx.save();
-  if(world.shake)ctx.translate(rand(-world.shake,world.shake),rand(-world.shake,world.shake));
-  for(const a of world.asteroids)drawAsteroid(a);
-  for(const f of world.fragments){
-    const x=sx(f.x),y=sy(f.y); if(x<-60||x>world.w+60||y<-60||y>world.h+60)continue;
-    drawImageRotated(assets.frag,x,y,f.r*2.3*world.zoom,f.r*2.3*world.zoom,f.rot,.95);
-  }
-  drawLaser(); drawParticles(); drawExhaust();
-
-  const sh=world.ship,x=sx(sh.x),y=sy(sh.y),speed=Math.hypot(sh.vx,sh.vy);
-  const base=clamp(world.w*.055,54,76)*world.zoom,ratio=assets.ship?assets.ship.height/assets.ship.width:1;
-  if(state.shield<100){
-    ctx.save(); ctx.strokeStyle='rgba(77,231,255,.2)'; ctx.shadowBlur=16; ctx.shadowColor='#4de7ff';
-    ctx.beginPath(); ctx.arc(x,y,34*world.zoom,0,Math.PI*2); ctx.stroke(); ctx.restore();
-  }
-  drawImageRotated(assets.ship,x,y,base,base*ratio,sh.angle);
-  if(speed>8){
-    const fx=Math.sin(sh.angle),fy=-Math.cos(sh.angle),px=-fy,py=fx,rearX=x-fx*27*world.zoom,rearY=y-fy*27*world.zoom;
-    ctx.save(); ctx.fillStyle='rgba(170,241,255,.68)';
-    for(const side of [-1,1]){
-      ctx.beginPath(); ctx.arc(rearX+px*side*7*world.zoom,rearY+py*side*7*world.zoom,2.2*world.zoom,0,Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
-function hud(){
-  const capacity=cap(),pct=clamp(state.cargo/capacity*100,0,100);
-  $('credits').textContent=fmt(state.credits); $('gems').textContent=fmt(state.gems); $('sectorName').textContent=sec()[1]; $('rateValue').textContent=mineRate().toFixed(2);
-  $('operationText').textContent=world.laser?(Math.hypot(world.ship.avoidX,world.ship.avoidY)>12?'MINERANDO · DESVIO':'LASER EM OPERAÇÃO'):state.mining?(world.target?'CAÇANDO ASTEROIDE':'PROCURANDO ALVO'):'AGUARDANDO ORDEM';
-  $('shieldBar').style.width=clamp(state.shield,0,100)+'%'; $('shieldText').textContent=Math.round(state.shield)+'%';
-  $('cargoBar').style.width=pct+'%'; $('cargoText').textContent=`${Math.floor(state.cargo)} / ${capacity}`;
-  const d=$('dangerText'); d.textContent=world.dangerText; d.className='danger-text'+(world.dangerText.includes('IMPACTO')?' hit':world.dangerText.includes('DESVIO')?' warn':'');
-  mineButton.textContent=state.mining?'PAUSAR MINERAÇÃO':'INICIAR MINERAÇÃO'; mineButton.classList.toggle('active',state.mining); $('soundButton').textContent=state.sound?'🔊':'🔇';
-}
-function panel(){
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===activeTab));
-  if(activeTab==='cargo'){
-    panelContent.innerHTML=`<div class="panel-title"><h2>Carga</h2><span>${Math.floor(state.cargo)} / ${cap()} espaço</span></div><div class="resource-list">${Object.entries(RES).map(([k,r])=>`<div class="resource-row"><span>${r[0]}</span><strong>${Math.floor(state.inventory[k]||0)}</strong><em>${r[2]} espaço · ${r[1]} C</em></div>`).join('')}</div><button class="panel-action" data-action="sell">Vender carga por Credits</button>`;
-  }else if(activeTab==='ship'){
-    panelContent.innerHTML=`<div class="panel-title"><h2>Rusty Miner I</h2><span>Nível ${state.shipLevel}</span></div><div class="stats-grid"><div class="stat-card"><span>LASER</span><b>${mineRate().toFixed(2)}x</b></div><div class="stat-card"><span>CARGO</span><b>${cap()}</b></div><div class="stat-card"><span>REFINO</span><b>${Math.round(efficiency()*100)}%</b></div></div><div class="upgrade-list">${[['laser','Laser','quebra mais rápido'],['cargo','Cargueiro','+40 espaço'],['efficiency','Refino','+5% valor']].map(a=>`<button class="upgrade" data-upgrade="${a[0]}"><span>${a[1]}</span><small>${a[2]}</small><b>${fmt(upgradeCost(a[0]))} C</b></button>`).join('')}</div>`;
-  }else{
-    panelContent.innerHTML=`<div class="panel-title"><h2>Market P2P</h2><span>SIMULADO</span></div><p class="market-note">Nenhum depósito ou saque real está ativo nesta Alpha.</p><div class="market-card"><div><strong>20 Titanium</strong><span>Ordem de compra</span></div><b>120 Gems</b><button data-action="ms">Vender</button></div><div class="market-card"><div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div><b>85 Gems</b><button data-action="mb">Comprar</button></div><div class="fee-note">Taxa simulada do Market: <b>10%</b>.</div>`;
-  }
-}
-function sectors(){
-  $('sectorList').innerHTML=SECTORS.map(v=>{
-    const unlocked=state.credits>=v[2]||v[0]==='sol'||state.sector===v[0];
-    return `<button class="sector-option" data-sector="${v[0]}" ${unlocked?'':'disabled'}><span><strong>${v[1]}</strong><small>${v[4]}</small></span><b>${unlocked?'x'+v[3].toFixed(1):fmt(v[2])+' C'}</b></button>`;
-  }).join('');
-}
-function sellCargo(){
-  if(state.cargo<=0)return toast('Sua carga está vazia.');
-  let total=0; for(const k in state.inventory) total+=RES[k][1]*state.inventory[k];
-  total=Math.round(total*efficiency()*sec()[3]); state.credits+=total;
-  for(const k in state.inventory)state.inventory[k]=0;
-  state.cargo=0; sound('cash'); toast(`Carga vendida por ${fmt(total)} Credits.`); save(); panel();
-}
-function upgrade(type){
-  const cost=upgradeCost(type); if(state.credits<cost)return toast('Credits insuficientes.');
-  state.credits-=cost; if(type==='laser')state.laserLevel++; if(type==='cargo')state.cargoLevel++; if(type==='efficiency')state.efficiencyLevel++;
-  state.shipLevel=Math.max(1,Math.floor((state.laserLevel+state.cargoLevel+state.efficiencyLevel)/3));
-  sound('up'); toast('Upgrade instalado.'); save(); panel();
-}
-function marketSell(){
-  if(state.inventory.titanium<20)return toast('Você precisa de 20 Titanium.');
-  state.inventory.titanium-=20; state.cargo=Math.max(0,state.cargo-20*RES.titanium[2]); state.gems+=108;
-  sound('cash'); toast('Ordem concluída: +108 Gems após 10% de taxa.'); save(); panel();
-}
-function marketBuy(){
-  if(state.gems<85)return toast('Gems insuficientes. Este saldo é simulado.');
-  state.gems-=85; state.laserLevel+=2; sound('up'); toast('Mining Core Mk-I instalado: Laser +2 níveis.'); save(); panel();
-}
-function toast(message){
-  const q=$('toast'); q.textContent=message; q.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>q.classList.remove('show'),2600);
-}
-function getAudio(){
-  if(!state.sound)return null;
-  if(!audio){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;audio=new C();}
-  if(audio.state==='suspended')audio.resume();
-  return audio;
-}
-function tone(f,d,g=.03,type='sine',slide=0){
-  const ac=getAudio(); if(!ac)return;
-  const o=ac.createOscillator(),n=ac.createGain(),z=ac.currentTime;
-  o.type=type;o.frequency.setValueAtTime(f,z);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),z+d);
-  n.gain.setValueAtTime(g,z);n.gain.exponentialRampToValueAtTime(.0001,z+d);o.connect(n);n.connect(ac.destination);o.start(z);o.stop(z+d);
-}
-function sound(k){
-  if(!state.sound)return;
-  if(k==='start'){tone(180,.08,.03,'sawtooth',120);setTimeout(()=>tone(330,.09,.02,'sine',90),55);}
-  if(k==='break'){tone(90,.18,.05,'sawtooth',-35);tone(460,.12,.02,'triangle',-180);}
-  if(k==='hit')tone(72,.16,.05,'square',-25);
-  if(k==='cash')tone(520,.08,.02,'sine',140);
-  if(k==='up')tone(260,.1,.025,'triangle',180);
-}
-function loop(now){
-  const dt=Math.min(.05,Math.max(.001,(now-last)/1000)); last=now;
-  updateWorld(dt); draw(); hud(); requestAnimationFrame(loop);
-}
-
-mineButton.onclick=()=>{
-  getAudio();
-  if(!state.mining&&state.cargo>=cap())return toast('Carga cheia. Venda ou aumente a capacidade.');
-  if(!state.mining&&world.ship.recoveryTimer>0)return toast('A nave ainda está recuperando o escudo.');
-  state.mining=!state.mining;
-  if(state.mining)chooseTarget(); else{world.target=null;world.laser=false;}
-  sound('start');save();
-};
-$('soundButton').onclick=()=>{state.sound=!state.sound;if(state.sound){getAudio();tone(420,.06,.02,'sine',80);}save();hud();};
-document.querySelector('.tabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(b){activeTab=b.dataset.tab;panel();}};
-panelContent.onclick=e=>{
-  const u=e.target.closest('[data-upgrade]');if(u)return upgrade(u.dataset.upgrade);
-  const action=e.target.closest('[data-action]')?.dataset.action;
-  if(action==='sell')sellCargo();if(action==='ms')marketSell();if(action==='mb')marketBuy();
-};
-$('sectorButton').onclick=()=>{sectors();$('sectorModal').hidden=false;};
-$('closeSector').onclick=()=>{$('sectorModal').hidden=true;};
-$('sectorModal').onclick=e=>{
-  const b=e.target.closest('[data-sector]');
-  if(b&&!b.disabled){
-    state.sector=b.dataset.sector;$('sectorModal').hidden=true;
-    world.asteroids=[];world.fragments=[];world.target=null;
-    while(world.asteroids.length<asteroidCount())spawnAsteroid();
-    if(state.mining)chooseTarget();
-    save();toast('Rota definida: '+sec()[1]);panel();
-  }else if(e.target===$('sectorModal'))$('sectorModal').hidden=true;
-};
-
-addEventListener('resize',resize,{passive:true});
-addEventListener('beforeunload',save);
-document.addEventListener('visibilitychange',()=>{if(document.hidden)save();});
-
-offline();resize();panel();sectors();hud();loadAssets().then(()=>requestAnimationFrame(loop));
+const SECTOR_LINKS=[['sol','red'],['red','crystal'],['crystal','void'],['void','dark'],['dark','deep'],['deep','relic'],['deep','grave'],['grave','sol'],['red','deep'],['void','deep']];
+const sectorById=id=>SECTORS.find(s=>s.id===id)||SECTORS[0];
+const subById=id=>{for(const s of SECTORS){const q=s.subs.find(v=>v.id===id);if(q)return {...q,sector:s.id,sectorName:s.name,color:s.color};}return {...SECTORS[0].subs[0],sector:'sol',sectorName:'Sol Belt',color:SECTORS[0].color};};
+const SVG={ship:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 92"><g stroke="#07101a" stroke-width="5" stroke-linejoin="round"><path fill="#273241" d="M50 7 66 35 86 45 73 68 60 61 57 82 43 82 40 61 27 68 14 45 34 35Z"/><path fill="#364455" d="M50 14 59 39 50 55 41 39Z"/><path fill="#5ee9ff" d="M50 21 55 39 50 47 45 39Z"/><path fill="#45ddff" d="M18 45h16v6H18zm48 0h16v6H66z"/></g></svg>`,rock:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 112"><path fill="#303846" stroke="#121820" stroke-width="6" d="M21 14 48 5 79 9 105 28 114 56 103 85 78 105 44 107 14 91 5 61 9 35Z"/><path fill="#424b59" d="m21 14 30 9 20-14 22 22-18 20-28-6-18 18-20-28Z"/><g fill="#171d25"><ellipse cx="81" cy="35" rx="12" ry="9"/><ellipse cx="37" cy="74" rx="11" ry="9"/><ellipse cx="84" cy="78" rx="8" ry="6"/></g></svg>`,crystal:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 104"><path fill="#303946" stroke="#111820" stroke-width="6" d="M18 12 48 5 78 11 103 31 107 61 91 88 61 99 28 92 7 69 6 39Z"/><path fill="#404b59" d="m18 12 30 9 17-10 24 21-14 19-24-2-18 18-24-17 5-19Z"/><path d="M24 75 38 57 51 61 62 43 78 48 93 27" fill="none" stroke="#3ee9ff" stroke-width="5"/><g fill="#4de7ff"><path d="m76 25 10-14 7 18-9 9Z"/><path d="m31 73 8-12 7 14-8 9Z"/><path d="m66 70 9-14 8 18-10 8Z"/></g></svg>`,frag:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 46"><path fill="#3a4452" stroke="#141b24" stroke-width="4" d="m7 11 19-7 16 12-4 20-18 6L5 30Z"/><path fill="#505b69" d="m10 13 16-5 7 10-12 10-12-4Z"/></svg>`,hit:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><path fill="#4de7ff" stroke="#dffcff" stroke-width="3" d="m40 5 7 22 20-9-12 19 20 8-22 5 7 21-16-15-12 19 1-23-23 3 19-13-17-15 22 6Z"/><circle cx="40" cy="41" r="8" fill="#fff"/></svg>`};
+const defaults=()=>({credits:260,gems:35,inventory:{iron:0,nickel:0,cobalt:0,titanium:0,crystal:0},cargo:0,shipLevel:1,laserLevel:1,cargoLevel:1,efficiencyLevel:1,sector:'sol',subsector:'sol-a',mining:false,shield:100,sound:true,lastSeen:Date.now(),travel:null,killsInSub:0,autoRoam:true});
+function load(){try{let raw=localStorage.getItem(SAVE_KEY);if(!raw)for(const k of OLD_KEYS){raw=localStorage.getItem(k);if(raw)break;}if(!raw)return defaults();const p=JSON.parse(raw),d=defaults(),s={...d,...p,inventory:{...d.inventory,...(p.inventory||{})}};if(!SECTORS.some(v=>v.id===s.sector))s.sector='sol';if(!SECTORS.some(v=>v.subs.some(q=>q.id===s.subsector)))s.subsector=sectorById(s.sector).subs[0].id;const ss=subById(s.subsector);s.sector=ss.sector;s.cargo=Object.entries(s.inventory).reduce((n,[k,q])=>n+(RES[k]?.size||1)*Math.max(0,q||0),0);s.shield=Number.isFinite(s.shield)?s.shield:100;if(s.travel&&Date.now()>=s.travel.endAt){s.sector=s.travel.toSector;s.subsector=s.travel.to;s.travel=null;s.killsInSub=0;}return s;}catch{return defaults();}}
+let state=load(),assets={},activeTab='cargo',toastTimer=0,audio=null,last=performance.now(),nextId=1,selectedSector=state.sector,selectedSub=state.subsector;
+const world={w:innerWidth,h:innerHeight,dpr:1,time:0,shake:0,zoom:1,targetZoom:1,asteroids:[],fragments:[],particles:[],exhaust:[],pirates:[],shots:[],target:null,spawnTimer:0,laser:false,particleTimer:0,exhaustTimer:0,pirateTimer:20,dangerText:'ROTA SEGURA',camera:{x:0,y:0,vx:0,vy:0},ship:{x:0,y:0,vx:0,vy:0,angle:-Math.PI/2,avoidX:0,avoidY:0,dodgeHold:0,threatId:0,dodgeSide:0,hitTimer:0,recoveryTimer:0}};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),rand=(a,b)=>a+Math.random()*(b-a),dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by),fmt=n=>Math.floor(n).toLocaleString('pt-BR'),fmtTime=s=>{s=Math.max(0,Math.ceil(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;};
+const currentSector=()=>sectorById(state.sector),currentSub=()=>subById(state.subsector),cap=()=>100+(state.cargoLevel-1)*40,mineRate=()=>1+(state.laserLevel-1)*.35,efficiency=()=>1+(state.efficiencyLevel-1)*.05,asteroidCount=()=>Math.round(clamp(world.w*world.h/52000,innerWidth<700?11:18,innerWidth<700?16:28));
+const cameraLeft=()=>world.camera.x-world.w/(2*world.zoom),cameraTop=()=>world.camera.y-world.h/(2*world.zoom),sx=x=>(x-cameraLeft())*world.zoom,sy=y=>(y-cameraTop())*world.zoom;
+function save(){state.lastSeen=Date.now();localStorage.setItem(SAVE_KEY,JSON.stringify(state));}
+function visible(o,m=120){const x=sx(o.x),y=sy(o.y),r=(o.r||8)*world.zoom;return x>-m-r&&x<world.w+m+r&&y>-m-r&&y<world.h+m+r;}
+function loadAssets(){return Promise.all(Object.entries(SVG).map(([k,v])=>new Promise(r=>{const i=new Image();i.onload=()=>{assets[k]=i;r();};i.onerror=r;i.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(v);})));}
+function upgradeCost(t){const lv=t==='laser'?state.laserLevel:t==='cargo'?state.cargoLevel:state.efficiencyLevel;return Math.round((t==='laser'?150:t==='cargo'?200:300)*1.62**(lv-1));}
+function weightedResource(){const w=currentSub().drops,total=Object.values(w).reduce((a,b)=>a+b,0);let r=Math.random()*total,c=0;for(const k in w){c+=w[k];if(r<=c)return k;}return'iron';}
+function asteroidLoot(r){const units=Math.max(2,Math.round((r*r)/620*rand(.7,1.25))),out={iron:0,nickel:0,cobalt:0,titanium:0,crystal:0};for(let i=0;i<units;i++)out[weightedResource()]++;return out;}
+function addLoot(bundle,announce=true){let added=0,rejected=0,gained={};for(const[k,q]of Object.entries(bundle)){const size=RES[k].size;let take=0;for(let i=0;i<q;i++){if(state.cargo+size>cap()){rejected+=q-i;break;}state.inventory[k]++;state.cargo+=size;take++;added++;}if(take)gained[k]=take;}if(announce&&added){const t=Object.entries(gained).map(([k,n])=>`${n} ${RES[k].name}`).join(' · ');toast(`Asteroide coletado: ${t}${rejected?' · sem espaço para o resto':''}`);}else if(announce&&rejected)toast('Asteroide quebrado, mas o cargueiro está sem espaço.');if(state.cargo>=cap())state.mining=false;return added;}
+function offline(){const e=Math.max(0,Date.now()-(state.lastSeen||Date.now()))/1000;if(!state.mining||state.travel||e<20)return;const completed=Math.min(24,Math.floor(e/Math.max(22,42/mineRate())));let collected=0;for(let i=0;i<completed;i++){collected+=addLoot(asteroidLoot(rand(24,46)),false);if(state.cargo>=cap())break;}if(collected)setTimeout(()=>toast(`Expedição offline: ${completed} asteroides · +${collected} itens`),450);}
+function resize(){world.dpr=Math.min(2,devicePixelRatio||1);world.w=Math.max(320,innerWidth);world.h=Math.max(320,innerHeight);canvas.width=world.w*world.dpr;canvas.height=world.h*world.dpr;canvas.style.width=world.w+'px';canvas.style.height=world.h+'px';ctx.setTransform(world.dpr,0,0,world.dpr,0,0);while(world.asteroids.length<asteroidCount())spawnAsteroid();}
+function resetField(){world.asteroids=[];world.fragments=[];world.particles=[];world.pirates=[];world.shots=[];world.target=null;world.laser=false;world.pirateTimer=rand(15,32);world.ship.x=0;world.ship.y=0;world.ship.vx=0;world.ship.vy=0;world.camera.x=-40;world.camera.y=0;world.camera.vx=world.camera.vy=0;while(world.asteroids.length<asteroidCount())spawnAsteroid();}
+function spawnAsteroid(){const r=Math.random()<.18?rand(48,76):Math.random()<.5?rand(28,47):rand(14,27),density=rand(.75,1.4),mass=Math.max(8,r*r*density),vh=Math.hypot(world.w/(2*world.zoom),world.h/(2*world.zoom)),radius=vh+rand(280,Math.max(520,vh*.8)),a=rand(0,TAU),x=world.camera.x+Math.cos(a)*radius,y=world.camera.y+Math.sin(a)*radius,drift=a+Math.PI+rand(-1.15,1.15),speed=rand(7,26);const loot=asteroidLoot(r),crystal=loot.crystal>0&&Math.random()<.65,b={id:nextId++,x,y,vx:Math.cos(drift)*speed,vy:Math.sin(drift)*speed,r,mass,density,rot:rand(0,TAU),spin:rand(-.42,.42),crystal,loot};b.maxHp=b.hp=Math.round(55+r*1.75);world.asteroids.push(b);return b;}
+function chooseTarget(){if(!state.mining||state.travel||state.cargo>=cap()){world.target=null;return;}const sh=world.ship;let best=null,score=Infinity;for(const a of world.asteroids){const d=dist(sh.x,sh.y,a.x,a.y);if(d<90)continue;const rel=Math.hypot(a.vx-sh.vx,a.vy-sh.vy),value=Object.entries(a.loot).reduce((s,[k,n])=>s+RES[k].value*n,0),sc=d+rel*5-Math.min(700,value*.35)-a.r*3;if(sc<score){score=sc;best=a;}}world.target=best;}
+function burst(x,y,n,color){for(let i=0;i<n;i++){const a=rand(0,TAU),v=rand(30,180),life=rand(.25,.85);world.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life,maxLife:life,size:rand(1,4),color});}}
+function destroyAsteroid(a){const i=world.asteroids.indexOf(a);if(i>=0)world.asteroids.splice(i,1);for(let j=0,n=Math.floor(rand(4,8));j<n;j++){const ang=rand(0,TAU),v=rand(42,128),r=rand(6,Math.min(16,a.r*.32));world.fragments.push({id:nextId++,x:a.x,y:a.y,vx:a.vx+Math.cos(ang)*v,vy:a.vy+Math.sin(ang)*v,r,mass:Math.max(1,r*r*.55),rot:rand(0,TAU),spin:rand(-2.5,2.5),life:rand(7,12),dangerous:true});}burst(a.x,a.y,32,a.crystal?'#4de7ff':'#c8d0dd');world.shake=7;sound('break');addLoot(a.loot,true);state.killsInSub=(state.killsInSub||0)+1;if(world.target===a)world.target=null;if(state.mining&&state.cargo<cap())chooseTarget();save();}
+function resolveBodyCollision(a,b){const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy),md=a.r+b.r;if(d<=0||d>=md)return;const nx=dx/d,ny=dy/d,ov=md-d,ia=1/Math.max(1,a.mass),ib=1/Math.max(1,b.mass),sum=ia+ib;a.x-=nx*ov*(ia/sum);a.y-=ny*ov*(ia/sum);b.x+=nx*ov*(ib/sum);b.y+=ny*ov*(ib/sum);const rvx=b.vx-a.vx,rvy=b.vy-a.vy,vel=rvx*nx+rvy*ny;if(vel>0)return;const rest=.72,j=-(1+rest)*vel/(ia+ib),ix=j*nx,iy=j*ny;a.vx-=ix*ia;a.vy-=iy*ia;b.vx+=ix*ib;b.vy+=iy*ib;a.spin+=rand(-.18,.18);b.spin+=rand(-.18,.18);}
+function physics(dt){for(const a of world.asteroids){a.x+=a.vx*dt;a.y+=a.vy*dt;a.rot+=a.spin*dt;}for(let i=0;i<world.asteroids.length;i++)for(let j=i+1;j<world.asteroids.length;j++)resolveBodyCollision(world.asteroids[i],world.asteroids[j]);for(const f of world.fragments){f.x+=f.vx*dt;f.y+=f.vy*dt;f.rot+=f.spin*dt;f.life-=dt;}world.fragments=world.fragments.filter(f=>f.life>0&&dist(f.x,f.y,world.camera.x,world.camera.y)<2600);for(let i=world.asteroids.length-1;i>=0;i--){const a=world.asteroids[i];if(a!==world.target&&dist(a.x,a.y,world.camera.x,world.camera.y)>2600)world.asteroids.splice(i,1);}while(world.asteroids.length<asteroidCount())spawnAsteroid();}
+function danger(dt){const sh=world.ship;if(sh.dodgeHold>0){sh.dodgeHold-=dt;return;}let best=null,bestT=99;for(const b of[...world.fragments,...world.asteroids]){const rx=b.x-sh.x,ry=b.y-sh.y,rvx=b.vx-sh.vx,rvy=b.vy-sh.vy,v2=rvx*rvx+rvy*rvy;if(v2<1)continue;const t=clamp(-(rx*rvx+ry*rvy)/v2,0,1.8),px=rx+rvx*t,py=ry+rvy*t,d=Math.hypot(px,py),safe=(b.r||8)+46;if(t<1.5&&d<safe&&t<bestT){best=b;bestT=t;}}if(best){const rx=best.x-sh.x,ry=best.y-sh.y,len=Math.hypot(rx,ry)||1,px=-ry/len,py=rx/len,s1=dist(sh.x+px*120,sh.y+py*120,best.x,best.y),s2=dist(sh.x-px*120,sh.y-py*120,best.x,best.y),side=s1>s2?1:-1;sh.avoidX=px*side;sh.avoidY=py*side;sh.dodgeHold=.7;sh.threatId=best.id;world.dangerText='DESVIO AUTOMÁTICO';}else if(!world.pirates.length)world.dangerText='ROTA SEGURA';}
+function hitShip(dmg){const sh=world.ship;if(sh.hitTimer>0)return;sh.hitTimer=.55;state.shield=clamp(state.shield-dmg,0,100);world.shake=6;burst(sh.x,sh.y,15,'#75dfff');sound('hit');if(state.shield<=0){state.mining=false;sh.recoveryTimer=3.2;toast('Shield colapsou. Sistema em recuperação.');}save();}
+function collideShip(){const sh=world.ship;if(sh.hitTimer>0)return;for(const b of[...world.fragments,...world.asteroids])if(dist(sh.x,sh.y,b.x,b.y)<(b.r||8)+20){hitShip(b.r>40?18:10);sh.vx-=((b.x-sh.x)||1)*.05;sh.vy-=((b.y-sh.y)||1)*.05;break;}}
+function emitExhaust(dt){const sh=world.ship,speed=Math.hypot(sh.vx,sh.vy);if(speed<15)return;world.exhaustTimer-=dt;if(world.exhaustTimer>0)return;world.exhaustTimer=clamp(.045-speed/5000,.018,.045);const back=sh.angle+Math.PI,perp=back+Math.PI/2;for(const side of[-1,1]){const ox=Math.cos(back)*24+Math.cos(perp)*side*7,oy=Math.sin(back)*24+Math.sin(perp)*side*7,a=back+rand(-.28,.28),v=rand(18,44)+speed*.08,life=rand(.35,.75);world.exhaust.push({x:sh.x+ox,y:sh.y+oy,vx:Math.cos(a)*v+sh.vx*.12,vy:Math.sin(a)*v+sh.vy*.12,life,maxLife:life,size:rand(1.8,4.5)});}}
+function updateShip(dt){const sh=world.ship;sh.hitTimer=Math.max(0,sh.hitTimer-dt);sh.recoveryTimer=Math.max(0,sh.recoveryTimer-dt);if(state.travel){const from=subById(state.travel.from),to=subById(state.travel.to),ang=Math.atan2(to.y-from.y,to.x-from.x),desired=58,ax=Math.cos(ang)*desired,ay=Math.sin(ang)*desired;sh.vx+=(ax-sh.vx)*Math.min(1,dt*1.25);sh.vy+=(ay-sh.vy)*Math.min(1,dt*1.25);sh.angle+=(ang-sh.angle)*Math.min(1,dt*2.2);sh.x+=sh.vx*dt;sh.y+=sh.vy*dt;world.laser=false;emitExhaust(dt);return;}if(!state.mining||state.cargo>=cap()||sh.recoveryTimer>0){sh.vx*=Math.exp(-1.6*dt);sh.vy*=Math.exp(-1.6*dt);sh.x+=sh.vx*dt;sh.y+=sh.vy*dt;world.laser=false;emitExhaust(dt);return;}if(!world.target||!world.asteroids.includes(world.target))chooseTarget();if(!world.target)return;danger(dt);const t=world.target,dx=t.x-sh.x,dy=t.y-sh.y,d=Math.hypot(dx,dy)||1,nx=dx/d,ny=dy/d,desiredDist=t.r+118,targetX=t.x-nx*desiredDist,targetY=t.y-ny*desiredDist;let ddx=targetX-sh.x,ddy=targetY-sh.y,dl=Math.hypot(ddx,ddy)||1,mx=ddx/dl,my=ddy/dl;if(sh.dodgeHold>0){mx=mx*.38+sh.avoidX*.95;my=my*.38+sh.avoidY*.95;const ml=Math.hypot(mx,my)||1;mx/=ml;my/=ml;}const maxSpeed=sh.dodgeHold>0?72:58,desiredSpeed=clamp(dl*.42,10,maxSpeed),tvx=mx*desiredSpeed+t.vx*.18,tvy=my*desiredSpeed+t.vy*.18;sh.vx+=(tvx-sh.vx)*Math.min(1,dt*1.7);sh.vy+=(tvy-sh.vy)*Math.min(1,dt*1.7);sh.x+=sh.vx*dt;sh.y+=sh.vy*dt;const aim=Math.atan2(t.y-sh.y,t.x-sh.x),diff=Math.atan2(Math.sin(aim-sh.angle),Math.cos(aim-sh.angle));sh.angle+=diff*Math.min(1,dt*6.5);const td=dist(sh.x,sh.y,t.x,t.y),range=clamp(world.w*.31,250,510);world.laser=td<=range&&Math.abs(diff)<.78;emitExhaust(dt);}
+function updateCamera(dt){const sh=world.ship,c=world.camera,speed=Math.hypot(sh.vx,sh.vy);let tx=sh.x,ty=sh.y;if(speed>8){const nx=sh.vx/speed,ny=sh.vy/speed,trail=clamp(90+speed*.55,90,155);tx=sh.x-nx*trail;ty=sh.y-ny*trail;}const k=1.38,d=2.7;c.vx+=(tx-c.x)*k*dt;c.vy+=(ty-c.y)*k*dt;c.vx*=Math.exp(-d*dt);c.vy*=Math.exp(-d*dt);c.x+=c.vx*dt*6.3;c.y+=c.vy*dt*6.3;world.targetZoom=clamp(1-speed/5200,.955,1);world.zoom+=(world.targetZoom-world.zoom)*Math.min(1,dt*1.5);}
+function updateParticles(dt){for(const p of world.particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=Math.exp(-2.5*dt);p.vy*=Math.exp(-2.5*dt);p.life-=dt;}world.particles=world.particles.filter(p=>p.life>0);for(const p of world.exhaust){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=Math.exp(-1.2*dt);p.vy*=Math.exp(-1.2*dt);p.life-=dt;}world.exhaust=world.exhaust.filter(p=>p.life>0);}
+function mining(dt){if(!world.laser||!world.target)return;const dmg=(18+state.laserLevel*5)*dt;world.target.hp-=dmg;world.particleTimer-=dt;if(world.particleTimer<=0){world.particleTimer=.055;const t=world.target,sh=world.ship,a=Math.atan2(sh.y-t.y,sh.x-t.x)+rand(-.35,.35),r=t.r*.75;world.particles.push({x:t.x+Math.cos(a)*r,y:t.y+Math.sin(a)*r,vx:Math.cos(a)*rand(20,70),vy:Math.sin(a)*rand(20,70),life:.45,maxLife:.45,size:rand(1,3),color:'#7eeeff'});}if(world.target.hp<=0)destroyAsteroid(world.target);}
+function spawnPirates(){const risk=currentSub().pirates;if(!risk||state.travel||!state.mining)return;const count=risk>.24?2:1;for(let i=0;i<count;i++){const a=rand(0,TAU),r=Math.hypot(world.w,world.h)*.65+rand(100,240);world.pirates.push({id:nextId++,x:world.camera.x+Math.cos(a)*r,y:world.camera.y+Math.sin(a)*r,vx:0,vy:0,r:12,angle:a+Math.PI,life:rand(16,24),shot:rand(1.2,3),phase:rand(0,TAU)});}world.dangerText='PIRATAS NO RADAR';toast('Assinatura pirata detectada neste sub-setor.');sound('alert');}
+function updatePirates(dt){if(state.travel){world.pirates=[];world.shots=[];return;}world.pirateTimer-=dt;if(world.pirateTimer<=0){world.pirateTimer=rand(18,38);if(Math.random()<currentSub().pirates)spawnPirates();}const sh=world.ship;for(const p of world.pirates){p.life-=dt;p.shot-=dt;const dx=sh.x-p.x,dy=sh.y-p.y,d=Math.hypot(dx,dy)||1,nx=dx/d,ny=dy/d,orbit=Math.sin(world.time*1.3+p.phase),desired=d>230?1:d<150?-1:0,pvx=nx*desired*70-ny*orbit*28,pvy=ny*desired*70+nx*orbit*28;p.vx+=(pvx-p.vx)*Math.min(1,dt*1.8);p.vy+=(pvy-p.vy)*Math.min(1,dt*1.8);p.x+=p.vx*dt;p.y+=p.vy*dt;p.angle=Math.atan2(dy,dx);if(p.shot<=0&&d<430&&p.life>3){p.shot=rand(1.7,3);const sp=170;world.shots.push({x:p.x,y:p.y,vx:nx*sp,vy:ny*sp,life:3,r:3});}}world.pirates=world.pirates.filter(p=>p.life>0);for(const s of world.shots){s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt;if(s.life>0&&dist(s.x,s.y,sh.x,sh.y)<18){s.life=0;hitShip(rand(5,9));}}world.shots=world.shots.filter(s=>s.life>0);if(world.pirates.length)world.dangerText='PIRATAS NO RADAR';}
+function travelMetrics(destId,manual=true){const from=state.travel?subById(state.travel.to):currentSub(),to=subById(destId),d=Math.hypot(to.x-from.x,to.y-from.y),same=from.sector===to.sector;let seconds=same?25+d*1.8:60+d*3.4;if(!manual)seconds*=1.7;seconds=Math.round(clamp(seconds,same?24:60,same?95:420));const cost=Math.round((same?28:95)+d*(same?2.2:6.2));return{seconds,cost,distance:d,same};}
+function startTravel(destId,manual=true){if(state.travel||destId===state.subsector)return false;const to=subById(destId),m=travelMetrics(destId,manual);if(state.credits<m.cost){toast(`Faltam ${fmt(m.cost-state.credits)} Credits para essa viagem.`);return false;}state.credits-=m.cost;state.mining=false;world.target=null;world.laser=false;const now=Date.now();state.travel={from:state.subsector,fromSector:state.sector,to:destId,toSector:to.sector,startAt:now,endAt:now+m.seconds*1000,cost:m.cost,manual};save();$('sectorModal').hidden=true;toast(`${manual?'Rota manual':'Auto-navegação'} iniciada · ${fmtTime(m.seconds)}.`);sound('start');renderPanel();return true;}
+function completeTravel(notify=true){if(!state.travel)return;const to=subById(state.travel.to);state.sector=to.sector;state.subsector=to.id;state.travel=null;state.killsInSub=0;state.shield=Math.max(state.shield,25);selectedSector=state.sector;selectedSub=state.subsector;resetField();save();if(notify)toast(`Chegamos a ${to.sectorName} · ${to.name}.`);renderPanel();renderMap();}
+function updateTravel(){if(state.travel&&Date.now()>=state.travel.endAt)completeTravel(true);}
+function maybeAutoRoam(){if(!state.autoRoam||state.travel||!state.mining||state.killsInSub<10)return;const s=currentSector(),idx=s.subs.findIndex(v=>v.id===state.subsector),dest=s.subs[(idx+1)%s.subs.length],m=travelMetrics(dest.id,false);if(state.credits<m.cost)return;state.killsInSub=0;startTravel(dest.id,false);}
+function drawBackground(){ctx.fillStyle='#03060d';ctx.fillRect(0,0,world.w,world.h);const c=world.camera,layers=[{p:.09,gap:118,a:.42,size:1},{p:.22,gap:82,a:.55,size:1.15},{p:.42,gap:57,a:.72,size:1.3}];for(const L of layers){const ox=((c.x*L.p)%L.gap+L.gap)%L.gap,oy=((c.y*L.p)%L.gap+L.gap)%L.gap;ctx.fillStyle=`rgba(196,232,255,${L.a})`;for(let x=-L.gap;x<world.w+L.gap;x+=L.gap)for(let y=-L.gap;y<world.h+L.gap;y+=L.gap){const seed=Math.sin((x+ox)*12.9898+(y+oy)*78.233)*43758.5453,rr=(seed-Math.floor(seed))*.9+.2;ctx.beginPath();ctx.arc(x-ox,y-oy,L.size*rr,0,TAU);ctx.fill();}}const g=ctx.createRadialGradient(world.w*.18-(c.x*.03)%260,world.h*.26-(c.y*.03)%180,0,world.w*.18,world.h*.26,world.w*.5);g.addColorStop(0,'rgba(66,68,168,.10)');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.fillRect(0,0,world.w,world.h);}
+function drawSprite(img,x,y,w,h,rot=0){if(!img)return;ctx.save();ctx.translate(sx(x),sy(y));ctx.rotate(rot);ctx.drawImage(img,-w*world.zoom/2,-h*world.zoom/2,w*world.zoom,h*world.zoom);ctx.restore();}
+function drawWorld(){ctx.save();if(world.shake>0){ctx.translate(rand(-world.shake,world.shake),rand(-world.shake,world.shake));world.shake*=.82;if(world.shake<.2)world.shake=0;}for(const p of world.exhaust){if(!visible({...p,r:5},40))continue;const a=clamp(p.life/p.maxLife,0,1),x=sx(p.x),y=sy(p.y);ctx.fillStyle=`rgba(150,168,180,${a*.33})`;ctx.beginPath();ctx.arc(x,y,p.size*world.zoom*(1.15-a*.15),0,TAU);ctx.fill();}for(const a of world.asteroids)if(visible(a))drawSprite(assets[a.crystal?'crystal':'rock'],a.x,a.y,a.r*2,a.r*1.86,a.rot);for(const f of world.fragments)if(visible(f))drawSprite(assets.frag,f.x,f.y,f.r*2,f.r*2,f.rot);if(world.laser&&world.target){const sh=world.ship,t=world.target,x1=sx(sh.x),y1=sy(sh.y),x2=sx(t.x),y2=sy(t.y);ctx.save();ctx.strokeStyle='#4de7ff';ctx.shadowColor='#4de7ff';ctx.shadowBlur=12;ctx.lineWidth=2.1;ctx.globalAlpha=.8+.2*Math.sin(world.time*20);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.restore();drawSprite(assets.hit,t.x,t.y,22,22,world.time*3);}for(const p of world.particles){if(!visible({...p,r:4},30))continue;ctx.globalAlpha=clamp(p.life/p.maxLife,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(sx(p.x),sy(p.y),p.size*world.zoom,0,TAU);ctx.fill();}ctx.globalAlpha=1;for(const p of world.pirates){if(!visible(p,80))continue;const x=sx(p.x),y=sy(p.y);ctx.save();ctx.translate(x,y);ctx.rotate(p.angle);ctx.shadowColor='#ff426d';ctx.shadowBlur=12;ctx.fillStyle='#ff456d';ctx.strokeStyle='#2b0712';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-10,-9);ctx.lineTo(-5,0);ctx.lineTo(-10,9);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}for(const s of world.shots){ctx.fillStyle='#ff5a7d';ctx.shadowColor='#ff315d';ctx.shadowBlur=8;ctx.beginPath();ctx.arc(sx(s.x),sy(s.y),3,0,TAU);ctx.fill();}ctx.shadowBlur=0;drawSprite(assets.ship,world.ship.x,world.ship.y,62,57,world.ship.angle+Math.PI/2);ctx.restore();}
+function renderPanel(){if(activeTab==='cargo'){panelContent.innerHTML=`<div class="panel-title"><h2>Carga</h2><span>${state.cargo} / ${cap()} espaço</span></div><div class="resource-list">${Object.entries(RES).map(([k,r])=>`<div class="resource-row"><span>${r.name}</span><strong>${state.inventory[k]}</strong><em>${r.size} espaço · ${r.value} C</em></div>`).join('')}</div><button class="panel-action" data-action="sell" ${state.cargo<=0?'disabled':''}>VENDER CARGA POR CREDITS</button>`;}else if(activeTab==='ship'){panelContent.innerHTML=`<div class="panel-title"><h2>Rusty Miner I</h2><span>Nível ${state.shipLevel}</span></div><div class="stats-grid"><div class="stat-card"><span>LASER</span><b>${mineRate().toFixed(2)}x</b></div><div class="stat-card"><span>CARGO</span><b>${cap()}</b></div><div class="stat-card"><span>REFINO</span><b>${Math.round(efficiency()*100)}%</b></div></div><div class="upgrade-list">${[['laser','Laser','quebra mais rápido'],['cargo','Cargueiro','+40 espaço'],['efficiency','Refino','+5% valor']].map(a=>`<button class="upgrade" data-upgrade="${a[0]}"><span>${a[1]}</span><small>${a[2]}</small><b>${fmt(upgradeCost(a[0]))} C</b></button>`).join('')}</div>`;}else{panelContent.innerHTML=`<div class="panel-title"><h2>Market P2P</h2><span>SIMULADO</span></div><p class="market-note">Nenhum depósito ou saque real está ativo nesta Alpha.</p><div class="market-card"><div><strong>20 Titanium</strong><span>Ordem de compra</span></div><b>120 Gems</b><button data-action="ms">Vender</button></div><div class="market-card"><div><strong>Mining Core Mk-I</strong><span>Ordem de venda</span></div><b>85 Gems</b><button data-action="mb">Comprar</button></div><div class="fee-note">Taxa simulada do Market: <b>10%</b>.</div>`;}}
+function sellCargo(){if(state.cargo<=0)return;let gross=0;for(const[k,q]of Object.entries(state.inventory)){gross+=q*RES[k].value;state.inventory[k]=0;}const gain=Math.round(gross*efficiency());state.credits+=gain;state.cargo=0;sound('cash');toast(`Carga vendida: +${fmt(gain)} Credits.`);save();renderPanel();}
+function upgrade(t){const c=upgradeCost(t);if(state.credits<c){toast('Credits insuficientes.');return;}state.credits-=c;if(t==='laser')state.laserLevel++;if(t==='cargo')state.cargoLevel++;if(t==='efficiency')state.efficiencyLevel++;sound('upgrade');save();renderPanel();}
+function marketSell(){if(state.inventory.titanium<20){toast('Você precisa de 20 Titanium.');return;}state.inventory.titanium-=20;state.cargo=Math.max(0,state.cargo-20*RES.titanium.size);state.gems+=108;toast('Ordem executada: +108 Gems após taxa.');save();renderPanel();}
+function marketBuy(){if(state.gems<85){toast('Gems insuficientes.');return;}state.gems-=85;state.laserLevel+=2;toast('Mining Core instalado: +2 níveis de Laser.');save();renderPanel();}
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove('show'),2600);}
+function sound(type){if(!state.sound)return;try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();const o=audio.createOscillator(),g=audio.createGain();o.connect(g);g.connect(audio.destination);const f=type==='break'?90:type==='hit'?65:type==='cash'?520:type==='upgrade'?680:type==='alert'?180:240;o.frequency.setValueAtTime(f,audio.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(45,f*(type==='cash'?1.8:.55)),audio.currentTime+.11);g.gain.setValueAtTime(.035,audio.currentTime);g.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+.13);o.start();o.stop(audio.currentTime+.14);}catch{}}
+function renderMap(){const map=$('mapNodes'),routes=$('mapRoutes'),side=$('mapDetails'),button=$('travelButton');if(!map||!routes)return;const sec=sectorById(selectedSector),sub=subById(selectedSub);let lines='';for(const[a,b]of SECTOR_LINKS){const A=sectorById(a),B=sectorById(b);lines+=`<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}"/>`;}for(const q of sec.subs)lines+=`<line x1="${sec.x}" y1="${sec.y}" x2="${q.x}" y2="${q.y}"/>`;if(state.travel){const A=subById(state.travel.from),B=subById(state.travel.to);lines+=`<line class="active" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}"/>`;}else if(selectedSub!==state.subsector){const A=currentSub(),B=sub;lines+=`<line class="active" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}"/>`;}routes.innerHTML=lines;map.innerHTML=SECTORS.map(s=>`<button class="sector-node ${s.id===selectedSector?'selected':''} ${s.id===state.sector?'current':''}" data-map-sector="${s.id}" style="left:${s.x}%;top:${s.y}%;--node-color:${s.color}" aria-label="${s.name}"></button><span class="sector-label" style="left:${s.x}%;top:${s.y}%">${s.name}</span>`).join('')+sec.subs.map(q=>`<button class="sub-node ${q.id===selectedSub?'selected':''} ${q.id===state.subsector?'current':''} ${q.pirates>0?'pirates':''}" data-map-sub="${q.id}" style="left:${q.x}%;top:${q.y}%;--node-color:${sec.color}" aria-label="${q.name}"></button>`).join('');const drops=sub.drops,total=Object.values(drops).reduce((a,b)=>a+b,0),pirate=sub.pirates<=0?'Sem presença detectada':sub.pirates<.1?'Risco baixo':sub.pirates<.25?'Risco moderado':'Risco alto';let travelHtml='';if(state.travel){const dest=subById(state.travel.to),remain=(state.travel.endAt-Date.now())/1000,all=(state.travel.endAt-state.travel.startAt)/1000,prog=clamp(1-remain/all,0,1);travelHtml=`<div class="map-card"><h4>VIAGEM EM CURSO</h4><div class="map-row"><span>Destino</span><b>${dest.sectorName} · ${dest.name}</b></div><div class="map-row"><span>ETA</span><b>${fmtTime(remain)}</b></div><div class="travel-progress"><i style="width:${prog*100}%"></i></div></div>`;}const m=travelMetrics(sub.id,true);side.innerHTML=`<div class="map-details"><div class="map-sector-title" style="--swatch:${sec.color}"><i class="sector-swatch"></i><div><h3>${sec.name}</h3><small>${sub.name}</small></div></div><div class="map-card"><h4>SUB-SETOR SELECIONADO</h4><div class="map-row"><span>Piratas</span><b class="${sub.pirates?'pirate-risk':'pirate-safe'}">${pirate}</b></div><div class="map-row"><span>Auto-navegação</span><b>${state.autoRoam?'ATIVA':'DESATIVADA'}</b></div><button class="panel-action" data-toggle-roam style="margin-top:7px">${state.autoRoam?'DESATIVAR':'ATIVAR'} AUTO-NAVEGAÇÃO</button></div><div class="map-card"><h4>TAXA DE DROPS</h4><div class="drop-grid">${Object.entries(drops).map(([k,v])=>`<span>${RES[k].name}</span><b>${Math.round(v/total*100)}%</b>`).join('')}</div></div><div class="map-card subsector-card"><h4>SUB-SETORES DE ${sec.name.toUpperCase()}</h4><div class="sub-list">${sec.subs.map(q=>`<button data-map-sub-list="${q.id}" class="${q.id===selectedSub?'active':''}"><span><strong>${q.name}</strong><small>${q.pirates?'☠ atividade pirata':'rota limpa'}</small></span><em>${q.id===state.subsector?'ATUAL':'ver'}</em></button>`).join('')}</div></div>${travelHtml}</div>`;if(state.travel){button.disabled=true;button.textContent=`EM VIAGEM · ${fmtTime((state.travel.endAt-Date.now())/1000)}`;}else if(sub.id===state.subsector){button.disabled=true;button.textContent='VOCÊ ESTÁ NESTE SUB-SETOR';}else{button.disabled=state.credits<m.cost;button.textContent=`ENVIAR NAVE · ${fmt(m.cost)} C · ${fmtTime(m.seconds)}`;}}
+function openMap(){selectedSector=state.travel?state.travel.toSector:state.sector;selectedSub=state.travel?state.travel.to:state.subsector;$('sectorModal').hidden=false;renderMap();}
+function updateHUD(){const s=currentSector(),sub=currentSub(),travel=state.travel,remain=travel?(travel.endAt-Date.now())/1000:0;$('credits').textContent=fmt(state.credits);$('gems').textContent=fmt(state.gems);$('sectorName').textContent=travel?`${sub.sectorName} → ${subById(travel.to).sectorName}`:`${s.name} · ${sub.name}`;$('sectorButton').classList.toggle('traveling',!!travel);$('shieldBar').style.width=state.shield+'%';$('shieldText').textContent=Math.round(state.shield)+'%';$('cargoBar').style.width=clamp(state.cargo/cap()*100,0,100)+'%';$('cargoText').textContent=`${state.cargo} / ${cap()}`;$('rateValue').textContent=mineRate().toFixed(2);const danger=$('dangerText');danger.textContent=travel?'CRUZEIRO INTERSETORIAL':world.dangerText;danger.className='danger-text '+(world.pirates.length?'hit':world.dangerText!=='ROTA SEGURA'||travel?'warn':'');if(travel){$('operationText').textContent=`VIAJANDO · ETA ${fmtTime(remain)}`;mineButton.disabled=true;mineButton.classList.add('active');mineButton.textContent=`EM VIAGEM · ${fmtTime(remain)}`;}else{mineButton.disabled=false;mineButton.classList.toggle('active',state.mining);mineButton.textContent=state.mining?'PAUSAR MINERAÇÃO':'INICIAR MINERAÇÃO';$('operationText').textContent=state.mining?(world.laser?(world.ship.dodgeHold>0?'MINERANDO · DESVIO':'MINERANDO ASTEROIDE'):'CAÇANDO ASTEROIDE'):'AGUARDANDO ORDEM';}}
+function update(dt){world.time+=dt;updateTravel();physics(dt);updateShip(dt);updateCamera(dt);updateParticles(dt);updatePirates(dt);if(!state.travel){collideShip();mining(dt);maybeAutoRoam();if(state.shield<100&&world.ship.hitTimer<=0)state.shield=clamp(state.shield+dt*3.2,0,100);}updateHUD();if(!$('sectorModal').hidden&&Math.floor(world.time*4)%2===0)renderMap();}
+function frame(t){const dt=Math.min(.033,Math.max(.001,(t-last)/1000));last=t;update(dt);drawBackground();drawWorld();requestAnimationFrame(frame);}
+for(const tab of document.querySelectorAll('.tab'))tab.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===tab));activeTab=tab.dataset.tab;renderPanel();};
+panelContent.onclick=e=>{const u=e.target.closest('[data-upgrade]');if(u)return upgrade(u.dataset.upgrade);const a=e.target.closest('[data-action]')?.dataset.action;if(a==='sell')sellCargo();if(a==='ms')marketSell();if(a==='mb')marketBuy();};
+$('sectorButton').onclick=openMap;$('closeSector').onclick=()=>{$('sectorModal').hidden=true;};
+$('sectorMap').onclick=e=>{const s=e.target.closest('[data-map-sector]');if(s){selectedSector=s.dataset.mapSector;const sec=sectorById(selectedSector);selectedSub=sec.subs.some(q=>q.id===state.subsector)?state.subsector:sec.subs[0].id;renderMap();return;}const q=e.target.closest('[data-map-sub]');if(q){selectedSub=q.dataset.mapSub;selectedSector=subById(selectedSub).sector;renderMap();}};
+$('mapDetails').onclick=e=>{const q=e.target.closest('[data-map-sub-list]');if(q){selectedSub=q.dataset.mapSubList;selectedSector=subById(selectedSub).sector;renderMap();return;}if(e.target.closest('[data-toggle-roam]')){state.autoRoam=!state.autoRoam;save();renderMap();toast(`Auto-navegação ${state.autoRoam?'ativada':'desativada'}.`);}};
+$('travelButton').onclick=()=>startTravel(selectedSub,true);
+mineButton.onclick=()=>{if(state.travel)return;if(state.cargo>=cap()){toast('Cargueiro cheio. Venda a carga.');return;}state.mining=!state.mining;if(state.mining){chooseTarget();sound('start');}else world.laser=false;save();};
+$('soundButton').onclick=()=>{state.sound=!state.sound;$('soundButton').textContent=state.sound?'🔊':'🔇';save();};
+window.addEventListener('resize',resize);window.addEventListener('beforeunload',save);document.addEventListener('visibilitychange',()=>{if(document.hidden)save();});
+(async()=>{offline();await loadAssets();resize();resetField();renderPanel();$('soundButton').textContent=state.sound?'🔊':'🔇';updateHUD();requestAnimationFrame(frame);})();
 })();
