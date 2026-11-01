@@ -1,6 +1,6 @@
 {
   "name": "dbo-dev-bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Windows one-click development bridge for local DBO Rox testing behind CGNAT",
   "main": "main.js",
   "type": "commonjs",
@@ -23,6 +23,6 @@
     "files": ["main.js", "autoprep.js", "preload.js", "index.html", "package.json"],
     "asar": false,
     "win": {"target": ["portable"]},
-    "artifactName": "DBO-Dev-Bridge-Alpha-0.2-${version}-portable.${ext}"
+    "artifactName": "DBO-Dev-Bridge-Alpha-0.2.1-${version}-portable.${ext}"
   }
 }
