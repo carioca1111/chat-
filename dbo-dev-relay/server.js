@@ -14,11 +14,15 @@ function safeEq(a, b) {
   return crypto.timingSafeEqual(aa, bb);
 }
 
+function shortDevice(id) {
+  return String(id || '').slice(0, 8);
+}
+
 function getDevice(device, secret, create = false) {
   if (!device || !secret || device.length > 128 || secret.length < 32 || secret.length > 256) return null;
   let d = devices.get(device);
   if (!d && create) {
-    d = { id: device, secret, agent: null, clients: new Map(), heartbeat: null, lastSeen: Date.now() };
+    d = { id: device, secret, agent: null, clients: new Map(), heartbeat: null, lastSeen: Date.now(), lastStatusKey: '' };
     devices.set(device, d);
   }
   if (!d || !safeEq(d.secret, secret)) return null;
@@ -41,6 +45,7 @@ function attachGameClient(ws, d) {
   d.clients.set(id, ws);
   d.lastSeen = Date.now();
   json(d.agent, { op: 'open', id });
+  console.log(`[game] client connected device=${shortDevice(d.id)} clients=${d.clients.size}`);
 
   ws.on('message', data => {
     if (!d.agent || d.agent.readyState !== WebSocket.OPEN) return ws.close(1012, 'agent offline');
@@ -50,6 +55,7 @@ function attachGameClient(ws, d) {
   ws.on('close', () => {
     d.clients.delete(id);
     json(d.agent, { op: 'close', id });
+    console.log(`[game] client disconnected device=${shortDevice(d.id)} clients=${d.clients.size}`);
   });
   ws.on('error', () => {
     d.clients.delete(id);
@@ -82,7 +88,7 @@ const server = http.createServer((req, res) => {
     }));
   }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><meta charset="utf-8"><title>DBO Dev Relay</title><body style="font-family:Segoe UI;background:#10131a;color:#eee;padding:30px"><h1>DBO Dev Relay</h1><p>Relay ativo. Agentes conectados: ${activeDevices().length}</p><p>O OTClient Web usa o WebSocket na raiz deste domínio durante a Alpha 0.1.</p></body>`);
+  res.end(`<!doctype html><meta charset="utf-8"><title>DBO Dev Relay</title><body style="font-family:Segoe UI;background:#10131a;color:#eee;padding:30px"><h1>DBO Dev Relay</h1><p>Relay ativo. Agentes conectados: ${activeDevices().length}</p><p>O OTClient Web usa o WebSocket na raiz deste domínio durante a Alpha.</p></body>`);
 });
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD, perMessageDeflate: false });
@@ -108,6 +114,7 @@ wss.on('connection', (ws, req, u) => {
     }
     d.agent = ws;
     d.lastSeen = Date.now();
+    console.log(`[agent] connected device=${shortDevice(d.id)}`);
 
     ws.on('message', raw => {
       let msg;
@@ -115,6 +122,25 @@ wss.on('connection', (ws, req, u) => {
       d.lastSeen = Date.now();
       if (msg.op === 'heartbeat') {
         d.heartbeat = msg.status || null;
+        const statusKey = JSON.stringify({
+          gameReady: !!d.heartbeat?.gameReady,
+          serverRunning: !!d.heartbeat?.serverRunning,
+          hostname: String(d.heartbeat?.hostname || '').slice(0, 80)
+        });
+        if (statusKey !== d.lastStatusKey) {
+          d.lastStatusKey = statusKey;
+          const mem = d.heartbeat?.memory || {};
+          console.log(`[status] device=${shortDevice(d.id)} gameReady=${!!d.heartbeat?.gameReady} serverRunning=${!!d.heartbeat?.serverRunning} usedMB=${Math.round(Number(mem.used || 0) / 1048576)} totalMB=${Math.round(Number(mem.total || 0) / 1048576)}`);
+        }
+        return;
+      }
+      if (msg.op === 'diagnostic') {
+        const state = msg.state && typeof msg.state === 'object' ? msg.state : {};
+        const lines = Array.isArray(msg.logs) ? msg.logs.slice(-100).map(x => String(x).slice(0, 600)) : [];
+        console.log(`[diagnostic] START device=${shortDevice(d.id)} gameReady=${!!state.gameReady} serverRunning=${!!state.serverRunning} relayConnected=true`);
+        for (const line of lines) console.log(`[diagnostic] ${shortDevice(d.id)} ${line}`);
+        console.log(`[diagnostic] END device=${shortDevice(d.id)}`);
+        json(ws, { op: 'diagnostic-ack', id: msg.id || null });
         return;
       }
       if (!msg.id) return;
@@ -133,6 +159,7 @@ wss.on('connection', (ws, req, u) => {
 
     ws.on('close', () => {
       if (d.agent === ws) d.agent = null;
+      console.log(`[agent] disconnected device=${shortDevice(d.id)}`);
       for (const [id, c] of d.clients) {
         try { c.close(1012, 'agent disconnected'); } catch {}
         d.clients.delete(id);
