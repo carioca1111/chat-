@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+if [ -n "${RELAY_ONLY_URL:-}" ]; then
+  echo "[boot] relay-only mode enabled -> ${RELAY_ONLY_URL}"
+  exec node "$ROOT/bridge-proxy.mjs"
+fi
+
 RUNTIME="$ROOT/runtime"
 SERVER="$RUNTIME/server"
 DB_SQL="$RUNTIME/database.sql"
