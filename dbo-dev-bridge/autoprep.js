@@ -300,7 +300,7 @@ function createDboManager({ app, log, onProgress, getSettings, saveSettings }) {
       const guestSql = "UPDATE accounts SET name='guest', password=SHA1('guest'), premdays=65535 WHERE id=1; UPDATE players SET name='Guest', account_id=1, online=0, lastlogin=0, posx=655, posy=399, posz=7, town_id=1 WHERE id=3;";
       runCapture(mariadbCli, [...auth, 'dborox', '-e', guestSql], { cwd: mariaRoot });
       patchConfig(configPath, s);
-      await fsp.writeFile(manifestPath(), JSON.stringify({ preparedAt: new Date().toISOString(), base: 'DBO Rox V2 8.60', serverExe, serverRoot, configPath, databaseSql, mariadbVersion: '11.4.13', mariadbSource, dbPort: DB_PORT }, null, 2));
+      await fsp.writeFile(manifestPath(), JSON.stringify({ preparedAt: new Date().toISOString(), base: 'DBO Rox V2 8.60', serverExe, serverRoot, configPath, databaseSql, mariadbVersion: '11.4.13', mariadbSource: mariaSource, dbPort: DB_PORT }, null, 2));
       emit('PRONTO. Agora clique em INICIAR DBO.', 100);
       return { ok: true, serverExe };
     } catch (e) {
