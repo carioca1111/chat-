@@ -52,7 +52,12 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const [granularity, setGranularity] = useState<PanelGranularity>('hour')
   const online = accounts.filter((account) => account.status === 'ready').length
   const accountBars = accounts.map((account) => ({ account, value: account.panelAnalytics?.capturesLastHour ?? 0 }))
+  const [rareAccount, setRareAccount] = useState('all')
   const rare = useMemo(() => combineRare(analytics), [revisions])
+  const rareChart = rare.map(item => ({
+    name: item.name,
+    quantity: rareAccount === 'all' ? item.quantity : item.accounts[accounts.findIndex(a => String(a.id) === rareAccount)] ?? 0
+  }))
   const events = combineEvents(accounts)
   const xpSeries = useMemo(() => buildSeries(analytics, granularity, 'pokemonXp'), [revisions, granularity])
   const captureSeries = useMemo(() => buildSeries(analytics, granularity, 'captures'), [revisions, granularity])
@@ -88,6 +93,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
 
     <section class="poke-card rare-counts">
       <h2>ITENS RAROS RECEBIDOS</h2>
+      <button onClick={() => exportRareDiagnostics(accounts)}>Exportar diagnóstico de itens</button>
       <p>Unidades recebidas desde o início do registro · aumentos de estoque observados</p>
       <table><thead><tr><th>Item</th>{accounts.map(a => <th key={a.id}>Conta {a.id}</th>)}<th>Total</th></tr></thead>
       <tbody>{rare.map(item => <tr key={item.name}><th scope="row">{item.name}</th>{item.accounts.map((quantity, i) => <td key={i}>{fmt(quantity)}</td>)}<td>{fmt(item.quantity)}</td></tr>)}</tbody>
@@ -123,6 +129,15 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
     </section>
 
     <section class="panel-chart-grid">
+      <ChartCard title="ITENS RAROS RECEBIDOS" subtitle="Quantidades registradas por item" wide>
+        <label>Conta <select value={rareAccount} onChange={event => setRareAccount(event.currentTarget.value)}>
+          <option value="all">Todas as contas</option>
+          {accounts.map(account => <option key={account.id} value={String(account.id)}>Conta {account.id}</option>)}
+        </select></label>
+        <div class="rare-chart-scroll"><div style={{ minWidth: Math.max(300, rareChart.length * 95) }}>
+          <ColumnChart labels={rareChart.map(item => item.name)} values={rareChart.map(item => item.quantity)} classes={rareChart.map(() => 'rare')} />
+        </div></div>
+      </ChartCard>
       <ChartCard title="CAPTURAS POR POTÊNCIA" subtitle={`${fmt(total.capturesTotal)} capturas confirmadas`}>
         <ColumnChart labels={['P1','P2','P3','P4','P5']} values={total.capturesByPotency} classes={['p1','p2','p3','p4','p5']} />
       </ChartCard>
@@ -362,4 +377,18 @@ function relative(at:number):string {
   const hours = Math.floor(minutes/60)
   if (hours < 24) return `${hours} h atrás`
   return `${Math.floor(hours/24)} d atrás`
+}
+
+function exportRareDiagnostics(accounts: AccountSnapshot[]): void {
+  const report = accounts.map(account => ({
+    account: account.id,
+    protocol: account.huntProtocolStatus,
+    diagnostics: account.panelAnalytics?.rareItemDiagnostics
+  }))
+  const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = 'gridium-diagnostico-itens.json'
+  anchor.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

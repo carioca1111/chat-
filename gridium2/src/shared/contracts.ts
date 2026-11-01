@@ -151,6 +151,11 @@ export interface PanelHistoryBucket {
 }
 
 export interface PanelAnalyticsSnapshot {
+  rareItemDiagnostics?: {
+    packetShapes: string[]
+    inventory: Array<{ id: string; name: string; quantity: number }>
+    catalogSize: number
+  }
   revision: number
   sessionStartedAt: number
   capturesTotal: number

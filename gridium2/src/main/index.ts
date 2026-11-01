@@ -203,7 +203,7 @@ async function createWindow(): Promise<void> {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#a65745',
-    title: 'Gridium 2 — Alpha 1.3.15.2 Rare Items',
+    title: 'Gridium 2 — Alpha 1.3.15.3 Rare Items',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

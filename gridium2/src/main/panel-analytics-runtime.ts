@@ -3,7 +3,7 @@ import type { PanelAnalyticsSnapshot, PanelEventSnapshot, PanelHistoryBucket, Pa
 
 type JsonRecord = Record<string, unknown>
 
-const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bolsa', 'bag', 'consumables', 'consumiveis']
+const INVENTORY_KEYS = ['items', 'itens', 'inventory', 'inventario', 'mochila', 'bolsa', 'bag', 'consumables', 'consumiveis', 'itemBag', 'inventoryItems', 'itensInventario', 'backpack', 'backpackItems', 'supplies', 'suprimentos', 'itemQuantities', 'quantidadesItens']
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
@@ -93,6 +93,8 @@ function noteBand(note: number): number | undefined {
 function inventoryRows(estado: JsonRecord): InventoryRow[] {
   const rows = new Map<string, InventoryRow>()
   const add = (idRaw: unknown, value: unknown, fallbackName = ''): void => {
+    const nested = isRecord(value) && isRecord(value.item) ? value.item : undefined
+    if (isRecord(value)) idRaw = first(value.itemId, value.id, value.item_id, value.i, nested?.id, nested?.itemId, value.key, value.slug, idRaw)
     const id = idRaw === undefined || idRaw === null ? '' : String(idRaw)
     if (!id) return
     if (typeof value === 'number' || typeof value === 'string') {
@@ -101,16 +103,19 @@ function inventoryRows(estado: JsonRecord): InventoryRow[] {
       return
     }
     if (!isRecord(value)) return
-    const quantity = finite(first(value.qtd, value.quantidade, value.qty, value.quantity, value.count, value.amount, value.total, value.estoque))
+    const quantity = finite(first(value.qtd, value.quantidade, value.qty, value.quantity, value.count, value.amount, value.total, value.estoque, value.stock, value.q, value.qt, value.quant))
     if (quantity === undefined || quantity < 0) return
-    const name = text(first(value.nome, value.name, value.itemNome, value.label)) || fallbackName || `Item #${id}`
+    const name = text(first(value.nome, value.name, value.itemNome, value.itemName, value.label, nested?.nome, nested?.name, value.key, value.slug)) || fallbackName || `Item #${id}`
     rows.set(id, { id, name, quantity: Math.floor(quantity) })
   }
 
   for (const key of INVENTORY_KEYS) {
     const container = estado[key]
     if (Array.isArray(container)) {
-      for (const row of container) if (isRecord(row)) add(first(row.itemId, row.id, row.item_id), row)
+      for (const row of container) {
+        if (Array.isArray(row) && row.length === 2) add(row[0], row[1], String(row[0]))
+        else if (isRecord(row)) add(first(row.itemId, row.id, row.item_id, row.i), row)
+      }
     } else if (isRecord(container)) {
       for (const [mapKey, value] of Object.entries(container)) {
         if (isRecord(value)) add(first(value.itemId, value.id, value.item_id, mapKey), value, /^\d+$/.test(mapKey) ? '' : mapKey)
@@ -147,7 +152,7 @@ function safeTuple(value: unknown, size: 5|8): number[] {
 }
 
 export function isRareItemName(name: string): boolean {
-  const normalized = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const normalized = name.replace(/[_-]/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   if (isBossToken(name)) return true
   return /(boss\s*token|\btm\b|rare|raro|stone|pedra|fossil|ticket|shard|fragment|caixa|box|especial|special|egg|ovo)/i.test(normalized)
 }
@@ -164,6 +169,7 @@ export class PanelAnalyticsTracker {
   private readonly catalog = new Map<string, string>()
   private inventoryReady = false
   private bossBalance: number | undefined
+  private readonly itemPacketShapes = new Set<string>()
   private readonly rareItems = new Map<string, PanelRareItemSnapshot>()
   private readonly historyMinute = new Map<number, PanelHistoryBucket>()
   private readonly historyHour = new Map<number, PanelHistoryBucket>()
@@ -199,6 +205,7 @@ export class PanelAnalyticsTracker {
     this.pokemonXpState.clear()
     this.inventory.clear()
     this.bossBalance = undefined
+    this.itemPacketShapes.clear()
     this.catalog.clear()
     this.inventoryReady = false
     this.rareItems.clear()
@@ -287,7 +294,7 @@ export class PanelAnalyticsTracker {
     let sawTokens = false
     for (const row of rows) {
       const previous = this.inventory.get(row.id)
-      if (row.name.startsWith('Item #')) row.name = this.catalog.get(row.id) || previous?.name || row.name
+      if (row.name.startsWith('Item #') || row.name === row.id) row.name = this.catalog.get(row.id) || previous?.name || row.name
       const token = isBossToken(row.name)
       if (token) {
         if (sawTokens) continue
@@ -313,25 +320,51 @@ export class PanelAnalyticsTracker {
   }
 
   learnCatalog(packet: JsonRecord): void {
-    const catalog = packet.catalogoItens ?? packet.itemCatalog
-    if (!Array.isArray(catalog) && !isRecord(catalog)) return
-    for (const [key, entry] of Object.entries(catalog)) {
-      const id = isRecord(entry) ? first(entry.itemId, entry.id, Array.isArray(catalog) ? undefined : key) : key
-      const name = isRecord(entry) ? text(first(entry.nome, entry.name, entry.label)) : text(entry)
-      if (id != null && name) this.catalog.set(String(id), name)
+    for (const key of ['catalogoItens', 'itemCatalog', 'itemsCatalog', 'itensCatalogo']) {
+      const catalog = packet[key]
+      if (!Array.isArray(catalog) && !isRecord(catalog)) continue
+      for (const [mapKey, entry] of Object.entries(catalog)) {
+        const id = isRecord(entry) ? first(entry.itemId, entry.id, entry.i, Array.isArray(catalog) ? undefined : mapKey) : mapKey
+        const name = isRecord(entry) ? text(first(entry.nome, entry.name, entry.itemName, entry.label)) : text(entry)
+        if (id != null && name) this.catalog.set(String(id), name)
+      }
     }
+    if (isRecord(packet.estado)) this.learnCatalog(packet.estado)
+  }
+
+  // Retain field structure only, never packet values, chat, cookies or credentials.
+  private observePacketShape(packet: JsonRecord): void {
+    const paths: string[] = []
+    const visit = (value: unknown, path: string, depth: number): void => {
+      if (depth > 4 || paths.length >= 80) return
+      if (Array.isArray(value)) {
+        for (const child of value.slice(0, 2)) visit(child, path + '[]', depth + 1)
+      } else if (isRecord(value)) {
+        for (const [key, child] of Object.entries(value).slice(0, 40)) {
+          if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,39}$/.test(key) || /auth|secret|cookie|password|email|session|chat/i.test(key)) continue
+          const next = path ? path + '.' + key : key
+          paths.push(next + ':' + (Array.isArray(child) ? 'array' : typeof child))
+          visit(child, next, depth + 1)
+        }
+      }
+    }
+    visit(packet, '', 0)
+    this.itemPacketShapes.add(paths.join(', '))
+    while (this.itemPacketShapes.size > 20) this.itemPacketShapes.delete(this.itemPacketShapes.values().next().value!)
   }
 
   ingestPacket(packet: unknown, at = Date.now()): boolean {
     if (!isRecord(packet)) return false
+    this.observePacketShape(packet)
     if (packet.t !== 'welcome' && packet.t !== 'estado') this.learnCatalog(packet)
-    if (packet.t === 'inventario' || packet.t === 'inventory') {
+    let inventoryChanged = false
+    if (packet.t !== 'welcome' && packet.t !== 'estado') {
       const changed = this.observeInventory(isRecord(packet.estado) ? packet.estado : packet, at)
       if (changed) this.touch(true)
-      return changed
+      inventoryChanged = changed
     }
-    if (String(packet.t || '') !== 'batalha' || !Array.isArray(packet.ev)) return false
-    let changed = false
+    if (String(packet.t || '') !== 'batalha' || !Array.isArray(packet.ev)) return inventoryChanged
+    let changed = inventoryChanged
     for (const rawEvent of packet.ev) {
       if (!isRecord(rawEvent)) continue
       const eventKind = String(rawEvent.k || '')
@@ -396,6 +429,11 @@ export class PanelAnalyticsTracker {
     const pokemonXpLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
     const goldEarnedLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.goldEarned, 0)
     return {
+      rareItemDiagnostics: {
+        packetShapes: [...this.itemPacketShapes],
+        inventory: [...this.inventory.values()].slice(0, 200),
+        catalogSize: this.catalog.size
+      },
       revision: this.revision,
       sessionStartedAt: this.sessionStartedAt,
       capturesTotal: this.capturesTotal,

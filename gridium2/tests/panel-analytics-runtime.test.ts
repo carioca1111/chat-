@@ -83,3 +83,24 @@ it('counts a scalar Boss Token balance once when the bag reports the same balanc
   tracker.ingestPacket({ t: 'inventario', bolsa: { 'boss-token': 9 } })
   expect(tracker.snapshot().rareItemsTotal).toBe(1)
 })
+
+it('counts compact i/q and nested item records and inventory attached to battle packets', () => {
+  const tracker = new PanelAnalyticsTracker()
+  tracker.learnCatalog({ estado: { catalogoItens: [{ i: 73, nome: 'Bronze Boss Token' }] } })
+  tracker.ingestState({ bolsa: [{ i: 73, q: 4 }] }, true)
+  tracker.ingestPacket({ t: 'batalha', bolsa: [[73, 5]], ev: [] })
+  tracker.ingestState({ bolsa: [{ item: { id: 73, nome: 'Bronze Boss Token' }, qt: 5 }] }, false)
+  expect(tracker.snapshot().rareItemsTotal).toBe(1)
+  tracker.ingestState({ bolsa: [{ item: { id: 73, nome: 'Bronze Boss Token' }, qt: 6 }] }, false)
+  expect(tracker.snapshot().rareItemsTotal).toBe(2)
+})
+
+it('does not export packet values or authentication fields in item diagnostics', () => {
+  const tracker = new PanelAnalyticsTracker()
+  tracker.ingestPacket({ t: 'unrecognized', auth: 'credential-example', chat: { text: 'private-message-example' }, foo: 'value-example' })
+  const report = JSON.stringify(tracker.snapshot().rareItemDiagnostics)
+  expect(report).not.toContain('credential-example')
+  expect(report).not.toContain('private-message-example')
+  expect(report).not.toContain('value-example')
+  expect(report).toContain('foo:string')
+})

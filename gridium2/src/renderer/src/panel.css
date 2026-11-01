@@ -7,3 +7,5 @@
 .rare-counts th, .rare-counts td { padding: 6px; text-align: right; }
 .rare-counts th:first-child { text-align: left; }
 .rare-counts tfoot { border-top: 1px solid currentColor; font-weight: bold; }
+
+.rare-chart-scroll { overflow-x: auto; }
