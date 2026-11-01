@@ -16,8 +16,12 @@ function send(res, status, body, type = 'text/plain; charset=utf-8', headers = {
 }
 
 function page(origin, manifest) {
-  const gameData = `${origin}/dbo-rox-game-data.zip`;
-  const play = `https://webclient.otarchive.com/?gameData=${encodeURIComponent(gameData)}&version=dbo-rox-v2-alpha01`;
+  const cacheKey = encodeURIComponent(manifest.builtAt || 'dbo-rox-v2');
+  const gameData = `${origin}/dbo-rox-game-data.zip?v=${cacheKey}`;
+  // OTArchive's `version` query string selects a build of the web client itself.
+  // Do not put our game version there. Remote game-data installation only needs
+  // the gameData parameter.
+  const play = `https://webclient.otarchive.com/?gameData=${encodeURIComponent(gameData)}`;
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -26,10 +30,10 @@ function page(origin, manifest) {
 <style>
 body{margin:0;background:#0b0f14;color:#edf4fb;font:15px system-ui,Segoe UI,Arial;min-height:100vh;display:grid;place-items:center}
 main{width:min(760px,92vw);background:#151c25;border:1px solid #293645;border-radius:16px;padding:24px;box-shadow:0 18px 60px #0008}
-h1{margin:0 0 6px;font-size:26px}.muted{color:#9aabba}code{background:#0c1218;padding:3px 6px;border-radius:5px}
+h1{margin:0 0 6px;font-size:26px}.muted{color:#9aabba}code{background:#0c1218;padding:3px 6px;border-radius:5px;word-break:break-all}
 a.btn{display:inline-block;margin-top:18px;padding:12px 18px;background:#d47b24;color:white;text-decoration:none;border-radius:9px;font-weight:800}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}.card{padding:12px;background:#0f151c;border-radius:9px}.ok{color:#78e6a6}
-@media(max-width:620px){.grid{grid-template-columns:1fr}}
+a.secondary{background:#263544;margin-left:8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}.card{padding:12px;background:#0f151c;border-radius:9px}.ok{color:#78e6a6}
+@media(max-width:620px){.grid{grid-template-columns:1fr}a.secondary{margin-left:0}}
 </style></head>
 <body><main>
 <h1>Dragon Ball OT — DBO Rox V2 8.60</h1>
@@ -40,8 +44,9 @@ a.btn{display:inline-block;margin-top:18px;padding:12px 18px;background:#d47b24;
 <div class="card"><b>Cliente</b><br>${manifest.packages?.client?.extractedFiles ?? '?'} arquivos extraídos</div>
 <div class="card"><b>Servidor/source/DB</b><br><span class="ok">baixados e validados no build</span></div>
 </div>
-<a class="btn" href="${play}">ABRIR CLIENTE DBO NO NAVEGADOR</a>
-<p class="muted">Esta etapa carrega os arquivos do cliente DBO Rox dentro do OTClient Web modular. A conexão com o servidor próprio entra na próxima etapa.</p>
+<a class="btn" href="${play}">INSTALAR E ABRIR CLIENTE DBO</a>
+<a class="btn secondary" href="${gameData}">BAIXAR ZIP DO CLIENTE</a>
+<p class="muted">O primeiro botão envia o ZIP remoto diretamente para o OTClient Web. Se o navegador já estava com a tela antiga aberta, feche a aba do OTArchive e abra por este botão novamente.</p>
 <p class="muted">Game data: <code>${gameData}</code></p>
 </main></body></html>`;
 }
@@ -66,7 +71,11 @@ const server = http.createServer(async (req, res) => {
       'content-length': stat.size,
       'access-control-allow-origin': 'https://webclient.otarchive.com',
       'access-control-allow-methods': 'GET,HEAD,OPTIONS',
-      'cache-control': 'public, max-age=3600',
+      'access-control-allow-headers': 'content-type, range',
+      'access-control-expose-headers': 'content-length, content-type',
+      'cross-origin-resource-policy': 'cross-origin',
+      'vary': 'Origin',
+      'cache-control': 'public, max-age=300',
     };
     if (req.method === 'OPTIONS') { res.writeHead(204, headers); return res.end(); }
     if (req.method === 'HEAD') { res.writeHead(200, headers); return res.end(); }
