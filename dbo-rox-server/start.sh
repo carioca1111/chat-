@@ -31,8 +31,7 @@ if ! mariadb -uroot -Nse "SELECT 1 FROM dborox.accounts LIMIT 1" >/dev/null 2>&1
   mariadb -uroot dborox < "$DB_SQL"
 fi
 
-# Local-only game DB account. MariaDB itself is bound to 127.0.0.1 inside this
-# container and is not exposed publicly by Render.
+# Local-only database user. MariaDB is bound to loopback and is not exposed by Render.
 mariadb -uroot <<SQL
 CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1';
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost';
@@ -41,8 +40,8 @@ GRANT ALL PRIVILEGES ON dborox.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 
-# Disposable development Guest. Reuses the original sample account/character so
-# all vocation/outfit/server-specific columns remain compatible with the mod.
+# Disposable development Guest. Reuse the original sample rows so all custom
+# DBO Rox vocation/outfit columns remain intact.
 mariadb -uroot dborox <<'SQL'
 UPDATE accounts
 SET name='guest', password=SHA1('guest'), premdays=65535
@@ -54,12 +53,21 @@ SQL
 
 echo "[db] Guest ready"
 
-# Modern MariaDB authenticates local root over a Unix socket. TFS connects over
-# TCP, so point the legacy config at the dedicated local game account.
-sed -i -E "s|^[[:space:]]*sqlUser[[:space:]]*=.*$|sqlUser = \"${DB_USER}\"|" "$SERVER/config.lua"
-sed -i -E 's|^[[:space:]]*sqlPass[[:space:]]*=.*$|sqlPass = ""|' "$SERVER/config.lua"
-echo "[db] effective TFS DB settings:"
-grep -E '^[[:space:]]*(sqlHost|sqlUser|sqlDatabase)[[:space:]]*=' "$SERVER/config.lua" || true
+# TFS 0.4 loads config.lua from its working directory. Append explicit values
+# so these final Lua assignments override any legacy SQL settings earlier in the file.
+cat >> "$SERVER/config.lua" <<'LUA'
+
+-- Render development database override (must stay last)
+sqlType = "mysql"
+sqlHost = "127.0.0.1"
+sqlUser = "dborox"
+sqlPass = ""
+sqlDatabase = "dborox"
+LUA
+
+echo "[db] config path: $SERVER/config.lua"
+echo "[db] final config override:"
+tail -n 8 "$SERVER/config.lua"
 
 cd "$SERVER"
 chmod +x ./theforgottenserver
