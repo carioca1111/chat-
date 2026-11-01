@@ -40,15 +40,14 @@ RUN cd /app/source && \
     chmod +x /app/runtime/server/theforgottenserver && \
     chown -R otserver:otserver /app/runtime/server
 
-# Keep jemalloc available for diagnostics/future use, though the current
-# memory-critical boot path relies on the native OTServ allocator only.
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && \
     rm -rf /var/lib/apt/lists/*
 
-# Render requires a public port during startup. Build the listener statically
-# so it does not map glibc shared libraries while the 2000x2000 map is at peak RAM.
-COPY dbo-rox-server/boot-listener.c ./boot-listener.c
-RUN gcc -Os -static -s ./boot-listener.c -o /usr/local/bin/dbo-boot-listener
+# During the map peak, one tiny static process replaces both Bash and the old
+# separate health listener. It owns Render's HTTP port, starts TFS, pauses DB,
+# detects port 7172, restores DB, then hands the public port to Node/WSS.
+COPY dbo-rox-server/boot-supervisor.c ./boot-supervisor.c
+RUN gcc -Os -static -s ./boot-supervisor.c -o /usr/local/bin/dbo-boot-supervisor
 
 COPY dbo-rox-server/bridge.mjs ./bridge.mjs
 COPY dbo-rox-server/start.sh ./start.sh
