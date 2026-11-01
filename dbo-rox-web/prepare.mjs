@@ -204,6 +204,8 @@ const manifest = {
   protocol: 860,
   provenance: 'TibiaKing / original community MediaFire links',
   clientRuntime: 'OTClient Redemption browser-compatible runtime',
+  guestMode: true,
+  gameServer: 'dbo-rox-game-alpha01.onrender.com:443',
   packages: {},
 };
 
@@ -223,9 +225,6 @@ manifest.runtimeCommit = await cloneWebRuntime();
 const staging = path.join(WORK, 'game-data');
 await fsp.mkdir(staging, { recursive: true });
 
-// Use the known browser-compatible Redemption Lua/data/modules as the runtime.
-// The old DBO Rox OTClient fork remains our source of Dragon Ball assets/content,
-// but its legacy client modules are intentionally not booted in WebAssembly.
 for (const name of ['init.lua', 'data', 'modules', 'mods']) {
   const src = path.join(RUNTIME, name);
   if (!fs.existsSync(src)) throw new Error(`Redemption runtime missing ${name}`);
@@ -237,17 +236,24 @@ for (const name of ['init.lua', 'data', 'modules', 'mods']) {
 
 manifest.dboAssets = await installDboAssets(dboClientRoot, staging);
 
-// Brand the compatible runtime without changing its module-loading contract.
+// Development mode: bypass account/character screens and connect straight to
+// the disposable Guest character through the DBO Rox game protocol.
+const guestModSrc = path.join(ROOT, 'guest-mod');
+const guestModDest = path.join(staging, 'mods', 'guest_autologin');
+if (!fs.existsSync(guestModSrc)) throw new Error('Guest auto-login module missing');
+await copyDir(guestModSrc, guestModDest);
+console.log('[guest] automatic Guest entry module installed');
+
 const initPath = path.join(staging, 'init.lua');
 let initLua = await fsp.readFile(initPath, 'utf8');
-initLua = initLua.replace('g_app.setName("OTClient - Redemption");', 'g_app.setName("DBO Rox Web");');
+initLua = initLua.replace('g_app.setName("OTClient - Redemption");', 'g_app.setName("DBO Rox Web - Guest");');
 await fsp.writeFile(initPath, initLua);
 
 await fsp.writeFile(path.join(staging, 'DBO_ROX_BASE.txt'), [
   'DBO Rox V2 8.60',
   'Dragon Ball DAT/SPR assets: original DBO Rox client package.',
   'Browser runtime: OTClient Redemption browser branch.',
-  'Reason: the legacy DBO Rox client fork is not WebAssembly-compatible as-is.',
+  'Development login: automatic disposable Guest character.',
   'Server/source/database remain the original DBO Rox packages.',
   '',
 ].join('\n'));
@@ -264,5 +270,5 @@ for (const name of ['server', 'source', 'database']) {
 }
 
 await fsp.writeFile(path.join(DIST, 'manifest.json'), JSON.stringify(manifest, null, 2));
-console.log('[build] DBO Rox Web-compatible bundle prepared:', manifest.gameDataZipBytes, 'bytes');
+console.log('[build] DBO Rox Web-compatible Guest bundle prepared:', manifest.gameDataZipBytes, 'bytes');
 console.log('[build] Redemption runtime commit:', manifest.runtimeCommit);
