@@ -1,0 +1,35 @@
+name: Validate DBO Rox Web 8.54 bundle
+
+on:
+  push:
+    branches: [dbo-rox-web-base]
+    paths:
+      - 'dbo-rox-web/**'
+      - '.github/workflows/test-dbo-web-854.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: dbo-rox-web
+        run: npm install
+      - name: Build web bundle
+        working-directory: dbo-rox-web
+        run: npm run build
+      - name: Validate 8.54 assets and manifest
+        working-directory: dbo-rox-web
+        run: |
+          unzip -l dist/dbo-rox-game-data-webcompat.zip | tee /tmp/bundle.txt
+          grep -q 'data/things/854/Tibia.dat' /tmp/bundle.txt
+          grep -q 'data/things/854/Tibia.spr' /tmp/bundle.txt
+          if grep -q 'data/things/860/Tibia.dat' /tmp/bundle.txt; then
+            echo 'Unexpected 8.60 DAT still present' >&2
+            exit 1
+          fi
+          node -e "const m=require('./dist/manifest.json'); if(m.clientVersion!==854||m.assetVersion!==854) throw new Error(JSON.stringify(m)); console.log('clientVersion='+m.clientVersion,'assetVersion='+m.assetVersion,'zipBytes='+m.gameDataZipBytes)"
