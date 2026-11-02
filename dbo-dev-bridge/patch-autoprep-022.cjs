@@ -1,6 +1,6 @@
 const fs = require('fs');
 const p = 'autoprep.js';
-let s = fs.readFileSync(p, 'utf8');
+let s = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 
 const oldRun = "    if (result.error) throw result.error;\n    if (result.status !== 0) throw new Error(`${path.basename(exe)} terminou com código ${result.status}`);\n    return result;";
 const newRun = "    if (result.error) throw result.error;\n    if (result.status !== 0) {\n      const detail = [result.stderr, result.stdout].filter(Boolean).map(x => String(x).trim()).filter(Boolean).join(' | ').slice(-3500);\n      throw new Error(`${path.basename(exe)} terminou com código ${result.status}${detail ? `: ${detail}` : ''}`);\n    }\n    return result;";
