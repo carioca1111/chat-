@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = Number(process.env.PORT || 10000);
+const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '');
 const devices = new Map();
 const MAX_CLIENTS = 4;
 const MAX_PAYLOAD = 2 * 1024 * 1024;
@@ -22,7 +23,7 @@ function getDevice(device, secret, create = false) {
   if (!device || !secret || device.length > 128 || secret.length < 32 || secret.length > 256) return null;
   let d = devices.get(device);
   if (!d && create) {
-    d = { id: device, secret, agent: null, clients: new Map(), heartbeat: null, lastSeen: Date.now(), lastStatusKey: '' };
+    d = { id: device, secret, agent: null, clients: new Map(), heartbeat: null, lastSeen: Date.now(), lastStatusKey: '', lastDiagnostic: null };
     devices.set(device, d);
   }
   if (!d || !safeEq(d.secret, secret)) return null;
@@ -72,6 +73,25 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ ok: true, activeAgents: activeDevices().length }));
   }
+
+  if (u.pathname === '/admin/state') {
+    const supplied = String(u.searchParams.get('token') || '');
+    if (!ADMIN_TOKEN || !safeEq(supplied, ADMIN_TOKEN)) {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
+    }
+    const snapshot = [...devices.values()].map(d => ({
+      device: shortDevice(d.id),
+      agentConnected: !!d.agent && d.agent.readyState === WebSocket.OPEN,
+      gameClients: d.clients.size,
+      lastSeen: d.lastSeen,
+      heartbeat: d.heartbeat,
+      lastDiagnostic: d.lastDiagnostic
+    }));
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ ok: true, devices: snapshot }));
+  }
+
   if (u.pathname === '/status') {
     const d = getDevice(u.searchParams.get('device'), u.searchParams.get('secret'));
     if (!d) {
@@ -137,6 +157,7 @@ wss.on('connection', (ws, req, u) => {
       if (msg.op === 'diagnostic') {
         const state = msg.state && typeof msg.state === 'object' ? msg.state : {};
         const lines = Array.isArray(msg.logs) ? msg.logs.slice(-100).map(x => String(x).slice(0, 600)) : [];
+        d.lastDiagnostic = { receivedAt: Date.now(), state, logs: lines };
         console.log(`[diagnostic] START device=${shortDevice(d.id)} gameReady=${!!state.gameReady} serverRunning=${!!state.serverRunning} relayConnected=true`);
         for (const line of lines) console.log(`[diagnostic] ${shortDevice(d.id)} ${line}`);
         console.log(`[diagnostic] END device=${shortDevice(d.id)}`);
