@@ -1,0 +1,46 @@
+name: Test portable MariaDB bootstrap on Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dbo-dev-bridge-alpha01]
+    paths:
+      - 'dbo-dev-bridge/autoprep.js'
+      - '.github/workflows/test-mariadb-portable-windows.yml'
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download MariaDB 11.4.13 portable
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://archive.mariadb.org/mariadb-11.4.13/winx64-packages/mariadb-11.4.13-winx64.zip' -OutFile maria.zip
+          Expand-Archive maria.zip -DestinationPath maria
+          $root=(Get-ChildItem maria -Directory | Select-Object -First 1).FullName
+          "MARIA_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Bootstrap with same Alpha 0.2.1 arguments
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'DBO Dev Bridge Test\mariadb-data'
+          New-Item -ItemType Directory -Force -Path $data | Out-Null
+          $exe = Join-Path $env:MARIA_ROOT 'bin\mariadb-install-db.exe'
+          & $exe "--datadir=$data" '--password=0123456789abcdef0123456789abcdef0123' '--port=3307' '--verbose-bootstrap'
+          $code=$LASTEXITCODE
+          Write-Host "EXIT=$code"
+          Get-ChildItem $data -Force | Select-Object Name,Length,Mode
+          if ($code -ne 0) { exit $code }
+      - name: Start MariaDB and probe port
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'DBO Dev Bridge Test\mariadb-data'
+          $exe = Join-Path $env:MARIA_ROOT 'bin\mariadbd.exe'
+          $ini = Join-Path $data 'my.ini'
+          $p = Start-Process -FilePath $exe -ArgumentList "--defaults-file=$ini",'--console','--port=3307','--bind-address=127.0.0.1','--skip-name-resolve','--max-connections=20','--innodb-buffer-pool-size=64M' -PassThru -RedirectStandardOutput mariadb.out -RedirectStandardError mariadb.err
+          $ok=$false
+          1..40 | ForEach-Object { Start-Sleep -Milliseconds 250; if (Test-NetConnection 127.0.0.1 -Port 3307 -InformationLevel Quiet -WarningAction SilentlyContinue) { $ok=$true; break } }
+          Get-Content mariadb.out -ErrorAction SilentlyContinue
+          Get-Content mariadb.err -ErrorAction SilentlyContinue
+          if (-not $ok) { if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }; exit 1 }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
