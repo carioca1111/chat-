@@ -1,0 +1,44 @@
+name: Test portable MariaDB auth on Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dbo-dev-bridge-alpha01]
+    paths:
+      - '.github/workflows/test-mariadb-auth-windows.yml'
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download MariaDB portable
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://archive.mariadb.org/mariadb-11.4.13/winx64-packages/mariadb-11.4.13-winx64.zip' -OutFile maria.zip
+          Expand-Archive maria.zip -DestinationPath maria
+          $root=(Get-ChildItem maria -Directory | Select-Object -First 1).FullName
+          "MARIA_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Initialize and test auth
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'maria-data'
+          New-Item -ItemType Directory -Force -Path $data | Out-Null
+          $install = Join-Path $env:MARIA_ROOT 'bin\mariadb-install-db.exe'
+          $server = Join-Path $env:MARIA_ROOT 'bin\mariadbd.exe'
+          $client = Join-Path $env:MARIA_ROOT 'bin\mariadb.exe'
+          & $install "--datadir=$data" '--password=BridgeTest123456789' '--port=3307' '--verbose-bootstrap'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $ini = Join-Path $data 'my.ini'
+          $p = Start-Process -FilePath $server -ArgumentList @("--defaults-file=$ini",'--console','--port=3307','--bind-address=127.0.0.1','--max-connections=20','--innodb-buffer-pool-size=64M') -PassThru
+          $ok=$false
+          1..80 | ForEach-Object { Start-Sleep -Milliseconds 250; if (Test-NetConnection 127.0.0.1 -Port 3307 -InformationLevel Quiet -WarningAction SilentlyContinue) { $ok=$true; break } }
+          if (-not $ok) { if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }; exit 2 }
+          & $client '--protocol=TCP' '-h127.0.0.1' '-P3307' '-uroot' '-pBridgeTest123456789' '-e' 'SELECT USER(), CURRENT_USER(), VERSION();'
+          $code127=$LASTEXITCODE
+          Write-Host "AUTH_127_EXIT=$code127"
+          & $client '--protocol=TCP' '-hlocalhost' '-P3307' '-uroot' '-pBridgeTest123456789' '-e' 'SELECT USER(), CURRENT_USER();'
+          $codeLocal=$LASTEXITCODE
+          Write-Host "AUTH_LOCALHOST_EXIT=$codeLocal"
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          if ($code127 -ne 0 -or $codeLocal -ne 0) { exit 3 }
