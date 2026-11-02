@@ -37,8 +37,8 @@ replaceOnce(anchor, repair, 'partial-db anchor');
 
 replaceOnce(
 "      const auth = ['-h127.0.0.1', `-P${DB_PORT}`, '-uroot', `-p${s.dbPassword}`];\n      runCapture(mariadbCli, [...auth, '-e', 'CREATE DATABASE IF NOT EXISTS dborox CHARACTER SET latin1 COLLATE latin1_swedish_ci;'], { cwd: mariaRoot });",
-"      const rootAuth = ['-hlocalhost', `-P${DB_PORT}`, '-uroot', `-p${s.dbPassword}`];\n      const provisionSql = `CREATE DATABASE IF NOT EXISTS dborox CHARACTER SET latin1 COLLATE latin1_swedish_ci; CREATE USER IF NOT EXISTS 'dborox'@'127.0.0.1' IDENTIFIED BY '${s.dbPassword}'; ALTER USER 'dborox'@'127.0.0.1' IDENTIFIED BY '${s.dbPassword}'; GRANT ALL PRIVILEGES ON dborox.* TO 'dborox'@'127.0.0.1'; FLUSH PRIVILEGES;`;\n      runCapture(mariadbCli, [...rootAuth, '-e', provisionSql], { cwd: mariaRoot });\n      const auth = ['-h127.0.0.1', `-P${DB_PORT}`, '-udborox', `-p${s.dbPassword}`];",
-'provision dedicated db user'
+"      let rootAuth = ['--protocol=TCP', '-h127.0.0.1', `-P${DB_PORT}`, '-uroot', `-p${s.dbPassword}`];\n      try {\n        runCapture(mariadbCli, [...rootAuth, '-e', 'SELECT 1;'], { cwd: mariaRoot });\n      } catch (authError) {\n        emit('Credenciais antigas detectadas; reconstruindo apenas o banco local...', 78);\n        log(`[PREPARAR] Banco antigo rejeitou a senha atual: ${authError.message}`);\n        await stopDatabase();\n        await new Promise(resolve => setTimeout(resolve, 1200));\n        if (await probePort('127.0.0.1', DB_PORT, 300)) throw new Error('A porta 3307 continua ocupada. Feche versões antigas da Bridge e tente novamente.');\n        await fsp.rm(mariaData, { recursive: true, force: true });\n        await fsp.rm(importedMarker, { force: true });\n        await fsp.rm(manifestPath(), { force: true });\n        await fsp.mkdir(mariaData, { recursive: true });\n        runCapture(installDb, [`--datadir=${mariaData}`, `--password=${s.dbPassword}`, `--port=${DB_PORT}`, '--verbose-bootstrap'], { cwd: mariaRoot });\n        await ensureDbRunning();\n        runCapture(mariadbCli, [...rootAuth, '-e', 'SELECT 1;'], { cwd: mariaRoot });\n        log('[PREPARAR] Banco local reconstruído com a senha atual.');\n      }\n      const provisionSql = `CREATE DATABASE IF NOT EXISTS dborox CHARACTER SET latin1 COLLATE latin1_swedish_ci; CREATE USER IF NOT EXISTS 'dborox'@'127.0.0.1' IDENTIFIED BY '${s.dbPassword}'; ALTER USER 'dborox'@'127.0.0.1' IDENTIFIED BY '${s.dbPassword}'; GRANT ALL PRIVILEGES ON dborox.* TO 'dborox'@'127.0.0.1'; FLUSH PRIVILEGES;`;\n      runCapture(mariadbCli, [...rootAuth, '-e', provisionSql], { cwd: mariaRoot });\n      const auth = ['--protocol=TCP', '-h127.0.0.1', `-P${DB_PORT}`, '-udborox', `-p${s.dbPassword}`];",
+'provision dedicated db user with rebuild fallback'
 );
 
 replaceOnce(
@@ -48,4 +48,4 @@ replaceOnce(
 );
 
 fs.writeFileSync(p, s);
-console.log('autoprep.js patched for Alpha 0.2.3');
+console.log('autoprep.js patched for Alpha 0.2.4');
