@@ -1,0 +1,54 @@
+name: Gridium 2 Farm Intelligence - Windows validation
+
+on:
+  push:
+    branches:
+      - fix/farm-rare-item-count-and-account-state
+    paths:
+      - 'gridium2/**'
+      - '.github/workflows/gridium2-farm-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: gridium2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+          cache-dependency-path: gridium2/package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript typecheck
+        run: npm run typecheck
+      - name: Unit regression tests
+        run: npm test
+      - name: Build Electron app
+        run: npm run build
+      - name: Package Windows installer
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $path = "release/Gridium-2-Alpha-1.3.15.5-Farm-Setup.exe"
+          if (-not (Test-Path $path)) { throw "Missing installer: $path" }
+          $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "SHA256 $hash"
+      - name: Upload experimental installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridium-2-Alpha-1.3.15.5-Farm-Windows
+          path: gridium2/release/Gridium-2-Alpha-1.3.15.5-Farm-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
