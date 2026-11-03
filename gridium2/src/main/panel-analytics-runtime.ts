@@ -153,8 +153,11 @@ function safeTuple(value: unknown, size: 5|8): number[] {
 
 export function isRareItemName(name: string): boolean {
   const normalized = name.replace(/[_-]/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  // Stones are deliberately excluded from the farm's rare-drop totals,
+  // even when they are valuable or have "rare" in the same name.
+  if (/stone|pedra/i.test(normalized)) return false
   if (isBossToken(name)) return true
-  return /(boss\s*token|\btm\b|rare|raro|stone|pedra|fossil|ticket|shard|fragment|caixa|box|especial|special|egg|ovo)/i.test(normalized)
+  return /(boss\s*token|\btm\b|rare|raro|fossil|ticket|shard|fragment|caixa|box|especial|special|egg|ovo)/i.test(normalized)
 }
 
 function isBossToken(name: string): boolean {
@@ -428,6 +431,9 @@ export class PanelAnalyticsTracker {
     const rollingMinute = minute.filter((bucket) => bucket.at + MINUTE > at - HOUR && bucket.at <= at)
     const pokemonXpLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.pokemonXp, 0)
     const goldEarnedLastHour = rollingMinute.reduce((sum, bucket) => sum + bucket.goldEarned, 0)
+    // Historical records can contain stones from older app versions.
+    // Keep the raw history intact, but never include them in rare-drop metrics.
+    const rareItems = [...this.rareItems.values()].filter((item) => isRareItemName(item.name))
     return {
       rareItemDiagnostics: {
         packetShapes: [...this.itemPacketShapes],
@@ -443,8 +449,8 @@ export class PanelAnalyticsTracker {
       note35Plus: this.noteBands.slice(4).reduce((sum, value) => sum + value, 0),
       shiniesSeen: this.shiniesSeen,
       shiniesCaught: this.shiniesCaught,
-      rareItems: [...this.rareItems.values()].sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)),
-      rareItemsTotal: [...this.rareItems.values()].reduce((sum, item) => sum + item.quantity, 0),
+      rareItems: rareItems.sort((a,b) => b.quantity - a.quantity || a.name.localeCompare(b.name)),
+      rareItemsTotal: rareItems.reduce((sum, item) => sum + item.quantity, 0),
       lastCaptureAt: this.lastCaptureAt,
       pokemonXpTotal: this.pokemonXpTotal,
       pokemonXpLastHour,
