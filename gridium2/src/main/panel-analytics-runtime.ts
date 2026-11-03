@@ -37,7 +37,18 @@ const speciesId = (row: JsonRecord): number | undefined => {
   return value !== undefined && value > 0 ? Math.floor(value) : undefined
 }
 
-interface InventoryRow { id: string; name: string; quantity: number }
+// Only display icon URLs delivered by the official PokeIdle host.
+export function verifiedPokeIdleIcon(input: unknown): string | undefined {
+  if (typeof input !== 'string' || !input.trim() || input.length > 400) return undefined
+  try {
+    const url = new URL(input.trim(), 'https://pokeidle.io/')
+    if (url.protocol !== 'https:' || !['pokeidle.io', 'www.pokeidle.io'].includes(url.hostname)) return undefined
+    if (!/\.(?:png|gif|jpe?g|webp|svg)$/i.test(url.pathname)) return undefined
+    return url.href
+  } catch { return undefined }
+}
+
+interface InventoryRow { id: string; name: string; quantity: number; iconUrl?: string }
 interface PokemonXpState { xp: number; level?: number; xpLevelStart?: number; xpNext?: number }
 type HistoryDelta = Partial<Omit<PanelHistoryBucket, 'at'>>
 
@@ -106,7 +117,8 @@ function inventoryRows(estado: JsonRecord): InventoryRow[] {
     const quantity = finite(first(value.qtd, value.quantidade, value.qty, value.quantity, value.count, value.amount, value.total, value.estoque, value.stock, value.q, value.qt, value.quant))
     if (quantity === undefined || quantity < 0) return
     const name = text(first(value.nome, value.name, value.itemNome, value.itemName, value.label, nested?.nome, nested?.name, value.key, value.slug)) || fallbackName || `Item #${id}`
-    rows.set(id, { id, name, quantity: Math.floor(quantity) })
+    const iconUrl = verifiedPokeIdleIcon(first(value.iconUrl, value.icon, value.icone, value.imageUrl, value.imagem, value.image, value.img, value.sprite, nested?.icon, nested?.image))
+    rows.set(id, { id, name, quantity: Math.floor(quantity), ...(iconUrl ? { iconUrl } : {}) })
   }
 
   for (const key of INVENTORY_KEYS) {
@@ -170,6 +182,7 @@ export class PanelAnalyticsTracker {
   private readonly pokemonXpState = new Map<string, PokemonXpState>()
   private readonly inventory = new Map<string, InventoryRow>()
   private readonly catalog = new Map<string, string>()
+  private readonly icons = new Map<string, string>()
   private inventoryReady = false
   private bossBalance: number | undefined
   private readonly itemPacketShapes = new Set<string>()
@@ -210,6 +223,7 @@ export class PanelAnalyticsTracker {
     this.bossBalance = undefined
     this.itemPacketShapes.clear()
     this.catalog.clear()
+    this.icons.clear()
     this.inventoryReady = false
     this.rareItems.clear()
     this.historyMinute.clear()
@@ -298,6 +312,7 @@ export class PanelAnalyticsTracker {
     for (const row of rows) {
       const previous = this.inventory.get(row.id)
       if (row.name.startsWith('Item #') || row.name === row.id) row.name = this.catalog.get(row.id) || previous?.name || row.name
+      row.iconUrl = row.iconUrl || this.icons.get(row.id) || previous?.iconUrl
       const token = isBossToken(row.name)
       if (token) {
         if (sawTokens) continue
@@ -313,7 +328,7 @@ export class PanelAnalyticsTracker {
       const gained = row.quantity - baseline
       if (!isRareItemName(row.name)) continue
       const current = this.rareItems.get(row.id)
-      this.rareItems.set(row.id, { itemId: row.id, name: row.name, quantity: (current?.quantity ?? 0) + gained })
+      this.rareItems.set(row.id, { itemId: row.id, name: row.name, quantity: (current?.quantity ?? 0) + gained, ...(row.iconUrl || current?.iconUrl ? { iconUrl: row.iconUrl || current?.iconUrl } : {}) })
       this.pushEvent({ at, accountEvent: 'rare-item', label: `${row.name} +${gained}`, detail: 'Aumento confirmado no inventário do servidor' })
       changed = true
     }
@@ -330,6 +345,8 @@ export class PanelAnalyticsTracker {
         const id = isRecord(entry) ? first(entry.itemId, entry.id, entry.i, Array.isArray(catalog) ? undefined : mapKey) : mapKey
         const name = isRecord(entry) ? text(first(entry.nome, entry.name, entry.itemName, entry.label)) : text(entry)
         if (id != null && name) this.catalog.set(String(id), name)
+        const icon = isRecord(entry) ? verifiedPokeIdleIcon(first(entry.iconUrl, entry.icon, entry.icone, entry.imageUrl, entry.imagem, entry.img, entry.sprite)) : undefined
+        if (id != null && icon) this.icons.set(String(id), icon)
       }
     }
     if (isRecord(packet.estado)) this.learnCatalog(packet.estado)
@@ -515,7 +532,8 @@ export class PanelAnalyticsTracker {
         const itemId = text(raw.itemId)
         const name = text(raw.name)
         const quantity = Math.max(0, Math.floor(finite(raw.quantity) ?? 0))
-        if (itemId && name && quantity > 0) this.rareItems.set(itemId, { itemId, name, quantity })
+        const iconUrl = verifiedPokeIdleIcon(raw.iconUrl)
+        if (itemId && name && quantity > 0) this.rareItems.set(itemId, { itemId, name, quantity, ...(iconUrl ? { iconUrl } : {}) })
       }
     }
     this.restoreHistory(this.historyMinute, initial.historyMinute)
