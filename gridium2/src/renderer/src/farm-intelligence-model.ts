@@ -29,6 +29,8 @@ export function officialItemImage(item: Pick<PanelRareItemSnapshot, 'name' | 'ic
       if (url.protocol === 'https:' && ['pokeidle.io', 'www.pokeidle.io'].includes(url.hostname) && /\.(png|gif|jpe?g|webp|svg)$/i.test(url.pathname)) return url.href
     } catch { /* ignore untrusted or malformed icons */ }
   }
+  // Verified official PokeIdle pixel-art asset, not a generic sprite or another game's catalog.
+  if (/^bronze[\s_-]*boss[\s_-]*tokens?$/i.test(item.name)) return 'https://pokeidle.io/assets/site/assets/items/bronze_boss_token.png'
   // Officially published image at pokeidle.io/app; no speculative IDs/assets.
   if (/^safari[\s_-]*ticket$/i.test(item.name)) return 'https://pokeidle.io/img/itens/safari-ticket.png'
   return undefined
