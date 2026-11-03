@@ -50,7 +50,7 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
   const revisions = analytics.map((row) => row.revision).join('|')
   const total = useMemo(() => combine(analytics), [revisions])
   const [granularity, setGranularity] = useState<PanelGranularity>('hour')
-  const online = accounts.filter((account) => account.status === 'ready').length
+  const loaded = accounts.filter((account) => account.status === 'ready').length
   const accountBars = accounts.map((account) => ({ account, value: account.panelAnalytics?.capturesLastHour ?? 0 }))
   const [rareAccount, setRareAccount] = useState('all')
   const rare = useMemo(() => combineRare(analytics), [revisions])
@@ -76,11 +76,11 @@ export function PanelView({ snapshot }: { snapshot: GridiumSnapshot }) {
         <h1>VISÃO GERAL DAS 4 CONTAS</h1>
         <p>Dados compactos, persistentes e sincronizados pelo horário de Brasília.</p>
       </div>
-      <span class="panel-live"><i class="status-ok" /> SERVIDOR · {online}/4 ONLINE</span>
+      <span class="panel-live"><i class="status-ok" /> TELAS · {loaded}/4 CARREGADAS</span>
     </section>
 
     <section class="panel-metrics">
-      <PanelMetric icon="●" label="CONTAS ONLINE" value={`${online}/4`} sub="sessões ativas" tone="green" />
+      <PanelMetric icon="●" label="CONTAS CARREGADAS" value={`${loaded}/4`} sub="navegadores preparados" tone="green" />
       <PanelMetric icon="↗" label="XP/H POKÉMON" value={compact(total.pokemonXpLastHour)} sub="últimos 60 min" tone="cyan" />
       <PanelMetric icon="◉" label="CAPTURAS/H" value={fmt(total.capturesLastHour)} sub="últimos 60 min" tone="cyan" />
       <PanelMetric icon="⌁" label="CAPTURAS" value={fmt(total.capturesTotal)} sub="histórico salvo" tone="purple" />
@@ -165,9 +165,11 @@ function AccountPanel({ account }: { account: AccountSnapshot }) {
   const profile = account.huntProfile
   const stats = account.panelAnalytics ?? EMPTY
   const ready = account.status === 'ready'
+  const accountState = ready ? 'ONLINE' : account.status === 'offline' ? 'DESCONECTADA' : account.status === 'crashed' ? 'FALHA' : 'CARREGANDO'
+  const stateClass = ready ? 'online' : account.status === 'offline' || account.status === 'crashed' ? 'offline' : 'pending'
   const name = profile?.speciesName || (profile?.speciesId !== undefined ? `Espécie #${profile.speciesId}` : 'Pokémon ativo')
-  return <article class={`panel-account poke-card ${ready ? 'online' : 'offline'}`}>
-    <div class="panel-account-head"><span class="panel-account-number">{account.id}</span><b>CONTA {account.id}</b><small><i class={`status-dot ${account.status}`} /> {ready ? 'ONLINE' : 'OFFLINE'}</small></div>
+  return <article class={`panel-account poke-card ${stateClass}`}>
+    <div class="panel-account-head"><span class="panel-account-number">{account.id}</span><b>CONTA {account.id}</b><small><i class={`status-dot ${account.status}`} /> {accountState}</small></div>
     <div class="panel-pokemon panel-pokemon-text"><div><strong>{name}</strong><span>Nv {profile?.pokemonLevel ?? '—'} · P{profile?.potency ?? '—'}{profile?.shiny ? ' · ✦ SHINY' : ''}</span><small>{profile?.huntSlug ? `Hunt: ${profile.huntSlug}` : 'Hunt aguardando servidor'}</small></div></div>
     <div class="panel-account-stats"><Stat label="XP/H" value={compact(stats.pokemonXpLastHour)} /><Stat label="CAPTURAS/H" value={fmt(stats.capturesLastHour)} /><Stat label="GOLD/H" value={compact(stats.goldEarnedLastHour)} /><Stat label="NOTA ≥3,5" value={fmt(stats.note35Plus)} /></div>
     <div class="panel-account-foot"><span>Última captura</span><b>{stats.lastCaptureAt ? relative(stats.lastCaptureAt) : '—'}</b></div>

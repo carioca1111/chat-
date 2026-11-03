@@ -328,7 +328,10 @@ export class AccountRuntime {
       this.requestVisualMode(account, account.desiredVisualMode)
       this.requestPowerState(account, account.desiredPowerState)
     })
-    view.webContents.on('did-fail-load', (_event, code) => { if (code !== -3) this.patchAccount(account, { status: 'offline' }) })
+    // Failures in embedded frames do not imply the account's main game is offline.
+    view.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
+      if (isMainFrame && code !== -3) this.patchAccount(account, { status: 'offline' })
+    })
     view.webContents.on('page-title-updated', (_event, title) => this.patchAccount(account, { title }))
     view.webContents.on('render-process-gone', () => {
       this.resetServerState(account)

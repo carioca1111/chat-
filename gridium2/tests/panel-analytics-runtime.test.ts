@@ -52,6 +52,33 @@ describe('PanelAnalyticsTracker', () => {
     expect(isRareItemName('TM Rara')).toBe(true)
   })
 
+  it('excludes ordinary and shiny stones from rare totals and persisted history', () => {
+    const tracker = new PanelAnalyticsTracker()
+    tracker.ingestState({ items: [
+      { id: 10, name: 'Bronze Boss Token', qtd: 3 },
+      { id: 109, name: 'Rock Stone', qtd: 7 },
+      { id: 110, name: 'Shiny Stone', qtd: 2 }
+    ] }, true, 1_000)
+    tracker.ingestState({ items: [
+      { id: 10, name: 'Bronze Boss Token', qtd: 4 },
+      { id: 109, name: 'Rock Stone', qtd: 9 },
+      { id: 110, name: 'Shiny Stone', qtd: 3 }
+    ] }, false, 2_000)
+    expect(tracker.snapshot(2_000).rareItems).toEqual([{ itemId: '10', name: 'Bronze Boss Token', quantity: 1 }])
+    for (const name of ['Rock Stone', 'Shiny Stone', 'Fire Stone', 'Pedra da Lua']) {
+      expect(isRareItemName(name)).toBe(false)
+    }
+    const legacy = new PanelAnalyticsTracker({ initial: {
+      rareItems: [
+        { itemId: '109', name: 'Rock Stone', quantity: 22 },
+        { itemId: '10', name: 'Bronze Boss Token', quantity: 3 }
+      ]
+    } })
+    expect(legacy.snapshot().rareItemsTotal).toBe(3)
+    expect(legacy.snapshot().rareItems.map(item => item.name)).toEqual(['Bronze Boss Token'])
+    expect(legacy.persisted().rareItems).toHaveLength(2)
+  })
+
   it('counts only captures inside the last hour for capturesLastHour', () => {
     const tracker = new PanelAnalyticsTracker()
     tracker.ingestState({ pokemons: [] }, true, 0)

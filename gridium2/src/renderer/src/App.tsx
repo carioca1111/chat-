@@ -3,6 +3,7 @@ import type { AccountCommand, AccountId, AppModule, GridiumSnapshot, LayoutMode,
 import { HuntAssistPanel } from './HuntAssistPanel'
 import { HuntView } from './HuntView'
 import { PanelView } from './PanelView'
+import { FarmIntelligenceView } from './FarmIntelligenceView'
 import { SettingsView } from './SettingsView'
 import { WorthItPanel } from './WorthItPanel'
 
@@ -25,7 +26,8 @@ const modules: NavEntry[] = [
   { icon: '⚔', label: 'HUNT', module: 'hunt', huntSurface: 'route' },
   { icon: '◆', label: 'HUNT CTRL', module: 'hunt', huntSurface: 'control' },
   { icon: '⚖', label: 'VALE A PENA', module: 'worth' },
-  { icon: '▥', label: 'PAINEL', module: 'panel' }
+  { icon: '▥', label: 'PAINEL', module: 'panel' },
+  { icon: '✦', label: 'FARM', module: 'farm' }
 ]
 
 export function App() {
@@ -56,7 +58,7 @@ export function App() {
   return <div class="shell">
     <aside class="sidebar poke-frame">
       <div class="brand-panel"><div class="brand-ball"><span /></div><div class="brand-copy"><strong>GRIDIIUM <em>2</em></strong><span>POKEIDLE MANAGER</span></div></div>
-      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 1.3.15.4</span></div>
+      <div class="section-label"><span>CONTAS ({onlineCount}/4)</span><span class="tiny-chip">ALPHA 1.3.15.5</span></div>
       <div class="accounts">
         {snapshot.accounts.length === 0 ? <div class="skeleton-card poke-card">Preparando as 4 sessões…</div> : snapshot.accounts.map((account) => <div class={`account-block ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} key={account.id}>
           <button class={`account-card poke-card ${account.id === snapshot.selectedAccount ? 'selected' : ''}`} onClick={() => select(account.id)}>
@@ -83,7 +85,7 @@ export function App() {
           <div class="layout-picker poke-toggle">{([1,2,4] as LayoutMode[]).map((mode) => <button class={snapshot.layout === mode ? 'active' : ''} onClick={() => setLayout(mode)} key={mode}>{mode === 1 ? '1×1' : mode === 2 ? '1×2' : '2×2'}</button>)}</div>
           <div class="performance-picker poke-toggle"><button class={snapshot.performanceMode === 'auto' ? 'active' : ''} onClick={() => setPerformance('auto')}>⚡ ECO</button><button class={snapshot.performanceMode === 'full' ? 'active' : ''} onClick={() => setPerformance('full')}>FULL</button></div>
           <div class="account-controls"><Control label="←" title="Voltar" onClick={() => command(snapshot.selectedAccount,'back')} /><Control label="→" title="Avançar" onClick={() => command(snapshot.selectedAccount,'forward')} /><Control label="⌂" title="PokeIdle.io" onClick={() => command(snapshot.selectedAccount,'home')} /><Control label="↻" title="Recarregar" onClick={() => command(snapshot.selectedAccount,'reload')} /><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div>
-        </> : snapshot.activeModule === 'hunt' && huntSurface === 'control' ? <div class="hunt-top-status"><span>◆ HUNT CONTROL</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SESSÃO AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'hunt' ? <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'worth' ? <div class="hunt-top-status"><span>⚖ VALE A PENA?</span><b>COMPARADOR · CONTA × CONTA · FICHA EXTERNA</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class="hunt-top-status"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class="settings-top-status"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}
+        </> : snapshot.activeModule === 'hunt' && huntSurface === 'control' ? <div class="hunt-top-status"><span>◆ HUNT CONTROL</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SESSÃO AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'hunt' ? <div class="hunt-top-status"><span>⚔ HUNT INTELLIGENCE</span><b>CONTA {snapshot.selectedAccount} · {selected?.huntProtocolStatus === 'live' ? 'SERVIDOR AO VIVO' : selected?.huntProtocolStatus === 'unavailable' ? 'PROTOCOLO INDISPONÍVEL' : 'AGUARDANDO SERVIDOR'}</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'worth' ? <div class="hunt-top-status"><span>⚖ VALE A PENA?</span><b>COMPARADOR · CONTA × CONTA · FICHA EXTERNA</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'farm' ? <div class="hunt-top-status"><span>✦ FARM INTELLIGENCE</span><b>4 CONTAS · DROPS CONFIRMADOS</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : snapshot.activeModule === 'panel' ? <div class="hunt-top-status"><span>▥ PAINEL ANALYTICS</span><b>4 CONTAS · DADOS DO SERVIDOR</b><Control label="⚙" title="Configurações" onClick={() => void window.gridium2.setModule('settings')} /></div> : <div class="settings-top-status"><span>⚙ CONFIGURAÇÕES</span><b>CONTROLE DE CONTA</b></div>}
       </div>
     </header>
 
@@ -95,11 +97,13 @@ export function App() {
           : <HuntView accountId={snapshot.selectedAccount} serverProfile={selected?.huntProfile} protocolStatus={selected?.huntProtocolStatus ?? 'waiting'} />
         : snapshot.activeModule === 'worth'
           ? <WorthItPanel snapshot={snapshot} />
+          : snapshot.activeModule === 'farm'
+            ? <FarmIntelligenceView snapshot={snapshot} />
           : snapshot.activeModule === 'panel'
             ? <PanelView snapshot={snapshot} />
             : <SettingsView snapshot={snapshot} />}
 
-    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' && huntSurface === 'control' ? '◆ HUNT CONTROL · SESSÃO' : snapshot.activeModule === 'hunt' ? '⚔ HUNT · ROTA' : snapshot.activeModule === 'worth' ? '⚖ VALE A PENA · COMPARADOR' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{selected ? powerFooter(selected.effectivePowerState) : 'CARREGANDO'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
+    <footer class="statusbar poke-frame"><span><i class="status-ok" /> GRIDIIUM CORE ATIVO</span><span>CONTA {snapshot.selectedAccount}</span><span>{snapshot.activeModule === 'hunt' && huntSurface === 'control' ? '◆ HUNT CONTROL · SESSÃO' : snapshot.activeModule === 'hunt' ? '⚔ HUNT · ROTA' : snapshot.activeModule === 'worth' ? '⚖ VALE A PENA · COMPARADOR' : snapshot.activeModule === 'farm' ? '✦ FARM · ITENS RAROS' : snapshot.activeModule === 'panel' ? '▥ PAINEL · ANALYTICS DO SERVIDOR' : snapshot.activeModule === 'settings' ? '⚙ CONFIGURAÇÕES' : `ZOOM ${selected?.zoomPercent ?? 100}%`}</span><span>{selected ? powerFooter(selected.effectivePowerState) : 'CARREGANDO'}</span><span>LOOP MÁX. {snapshot.telemetry.mainEventLoopMaxMs.toFixed(1)} ms</span></footer>
   </div>
 }
 
