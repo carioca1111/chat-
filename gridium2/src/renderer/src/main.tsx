@@ -14,5 +14,5 @@ import './worth-it.css'
 import './farm-intelligence.css'
 import './worth-it-decision.css'
 
-document.title = 'Gridium 2 — Alpha 1.3.7 Vale a Pena'
+document.title = 'Gridium 2 — Alpha 1.3.15.5 Farm Intelligence'
 render(<App />, document.getElementById('app')!)
