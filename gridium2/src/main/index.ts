@@ -126,7 +126,7 @@ function registerIpc(): void {
     performanceMode = next; applyLayout(); publish()
   })
   ipcMain.handle('gridium2:set-module', (_event, next: AppModule) => {
-    if (!['accounts', 'hunt', 'worth', 'panel', 'settings'].includes(next)) return
+    if (!['accounts', 'hunt', 'worth', 'panel', 'farm', 'settings'].includes(next)) return
     activeModule = next
     applyLayout(); publish()
   })
