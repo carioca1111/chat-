@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks'
 import type { GridiumSnapshot, PanelEventSnapshot } from '../../shared/contracts'
-import { farmConnectionLabel, farmOverview, isStone } from './farm-intelligence-model'
+import { farmConnectionLabel, farmOverview, isStone, isBossToken } from './farm-intelligence-model'
 
 const number = (n: number) => n.toLocaleString('pt-BR')
 const compact = (n: number) => Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
@@ -13,7 +13,7 @@ export function FarmIntelligenceView({ snapshot }: { snapshot: GridiumSnapshot }
   const [selected, setSelected] = useState('all')
   const visibleItems = summary.items.filter(item => selected === 'all' || item.accounts[accounts.findIndex(a => String(a.id) === selected)] > 0)
   const tokenByAccount = accounts.map((account, index) => ({
-    account, count: summary.items.filter(item => /boss[\\s_-]*tokens?/i.test(item.name)).reduce((sum, item) => sum + item.accounts[index], 0)
+    account, count: summary.items.filter(item => isBossToken(item.name)).reduce((sum, item) => sum + item.accounts[index], 0)
   }))
   const events: DropEvent[] = accounts.flatMap(account =>
     (account.panelAnalytics?.events ?? [])
