@@ -14,7 +14,7 @@ function account(id: number, rareItems: Array<{ itemId:string; name:string; quan
       rareItems,
       rareItemDiagnostics: { packetShapes: [], catalogSize: 0, inventory: [{ id: '109', name: 'Item #109', quantity: 10 }] }
     }
-  } as GridiumSnapshot['accounts'][number]
+  } as unknown as GridiumSnapshot['accounts'][number]
 }
 
 describe('Farm Intelligence summary', () => {
