@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows:
@@ -52,3 +52,19 @@ jobs:
           path: gridium2/release/Gridium-2-Alpha-1.3.15.5-Farm-Setup.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish direct-download experimental release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gridium2-v2.0.0-alpha.13.15.5-farm
+          target_commitish: ${{ github.sha }}
+          name: Gridium 2 Alpha 1.3.15.5 - Farm Intelligence (teste)
+          prerelease: true
+          make_latest: false
+          body: |
+            Build experimental da Farm Intelligence.
+            Testes automatizados e typecheck executados antes da publicação.
+            Não substitui automaticamente a instalação atual.
+            Código e discussão: https://github.com/carioca1111/chat-/pull/23
+          files: gridium2/release/Gridium-2-Alpha-1.3.15.5-Farm-Setup.exe
+          fail_on_unmatched_files: true
