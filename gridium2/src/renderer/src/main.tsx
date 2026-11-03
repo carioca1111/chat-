@@ -11,6 +11,7 @@ import './panel.css'
 import './hunt-assist.css'
 import './hunt-control-separation.css'
 import './worth-it.css'
+import './farm-intelligence.css'
 import './worth-it-decision.css'
 
 document.title = 'Gridium 2 — Alpha 1.3.7 Vale a Pena'
