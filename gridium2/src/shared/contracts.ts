@@ -138,6 +138,7 @@ export interface PanelRareItemSnapshot {
   itemId: string
   name: string
   quantity: number
+  iconUrl?: string
 }
 
 export interface PanelHistoryBucket {
