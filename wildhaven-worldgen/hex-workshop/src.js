@@ -7,11 +7,13 @@ const ROOT = import.meta.env.BASE_URL;
 const el=(id)=>document.getElementById(id);
 const canvas=el('atlas');const ctx=canvas.getContext('2d');
 const mapImg=new Image();
-let regions=[],progress={visual_preview_ready:[],regions:{}},hover=null,selected='H_5_7';
+let regions=[],progress={completed:[],in_development:[],regions:{}},hover=null,selected='H_5_7';
 const frame=el('three-view');let mapScale=1,panX=0,panY=0,zoom=1,drag=null,mapReady=false;
 let normalScale=1, imgX=0,imgY=0;
 const W=6400000,H=8000000;
-function isReady(id){return progress.visual_preview_ready?.includes(id)}
+function isReady(id){return Boolean(progress.regions?.[id]?.glb)}
+function isComplete(id){return progress.regions?.[id]?.status==='completed'&&progress.regions?.[id]?.approved===true}
+function stateName(id){return isComplete(id)?'Concluído':isReady(id)?'Em desenvolvimento':'Pendente'}
 function beginMap(){
  const rect=canvas.getBoundingClientRect();const dpr=Math.min(2,window.devicePixelRatio||1);
  canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);paint();
@@ -38,14 +40,14 @@ function paint(){
  normalScale=Math.min(ww/mapImg.width,hh/mapImg.height);mapScale=normalScale*zoom;
  imgX=(ww-mapImg.width*normalScale)/2+panX;imgY=(hh-mapImg.height*normalScale)/2+panY;
  ctx.drawImage(mapImg,imgX,imgY,mapImg.width*mapScale,mapImg.height*mapScale);
- // Discovered geography is colored; finished scenes gain a warm, luminous perimeter.
- const set=new Set(progress.visual_preview_ready||[]);
+ // Only APPROVED exports get the warm completion glow.
+ const set=new Set((progress.completed||[]).filter(id=>isComplete(id)));
  for(const r of regions){
   if(!r.polygon_m||r.polygon_m.length<3)continue;
   const pts=r.polygon_m.map(p=>imgToScreen(...worldToImg(...p)));
   if(pts.every(p=>p[0]<-40)||pts.every(p=>p[0]>ww+40)||pts.every(p=>p[1]<-40)||pts.every(p=>p[1]>hh+40))continue;
   ctx.save();ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();
-  const ready=set.has(r.id);const active=selected===r.id;
+  const ready=set.has(r.id);const active=selected===r.id;const developing=stateName(r.id)==='Em desenvolvimento';
   if(ready){
    ctx.fillStyle='rgba(228,248,175,.22)';ctx.fill();
    ctx.strokeStyle='#f1f7c4';ctx.lineWidth=active?2.8:2.1;ctx.shadowColor='#d8ed9d';ctx.shadowBlur=24;ctx.stroke();
@@ -54,7 +56,11 @@ function paint(){
    const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,24);grad.addColorStop(0,'rgba(246,255,193,.42)');grad.addColorStop(1,'rgba(215,241,157,0)');ctx.fillStyle=grad;ctx.beginPath();ctx.arc(cx,cy,24,0,Math.PI*2);ctx.fill();
    ctx.fillStyle='#edffbe';ctx.beginPath();ctx.arc(cx,cy,4.1,0,Math.PI*2);ctx.fill();
   }else{
-   ctx.strokeStyle=active?'rgba(228,220,151,.85)':'rgba(187,211,195,.20)';ctx.lineWidth=active?1.8:.6;ctx.stroke();
+   ctx.strokeStyle=developing?'rgba(218,175,103,.88)':active?'rgba(228,220,151,.85)':'rgba(187,211,195,.20)';
+   ctx.lineWidth=developing?2:active?1.8:.6;ctx.stroke();
+   if(developing){
+    ctx.fillStyle='rgba(220,163,83,.09)';ctx.fill();
+   }
   }
   if(hover===r.id&&!ready){ctx.fillStyle='rgba(229,239,212,.12)';ctx.fill();}
   ctx.restore();
@@ -78,7 +84,7 @@ canvas.addEventListener('pointermove',ev=>{
  if(next!==hover){hover=next;paint()}
  const tip=el('map-tooltip');if(r){
   const top=(r.biomes||[]).filter(x=>x.id!==0).sort((a,b)=>b.fraction-a.fraction)[0];
-  tip.hidden=false;tip.innerHTML=`<b>${r.id}</b><br>${top?top.name:'Oceano'}<br>${isReady(r.id)?'✦ Cena 3D preparada':'◯ Não modelado'}`;
+  tip.hidden=false;tip.innerHTML=`<b>${r.id}</b><br>${top?top.name:'Oceano'}<br>${stateName(r.id)}`;
   tip.style.left=Math.min(canvas.clientWidth-178,x+14)+'px';tip.style.top=Math.min(canvas.clientHeight-75,y+15)+'px';
  }else tip.hidden=true;
 });
@@ -100,21 +106,33 @@ el('map-reset').onclick=resetAtlas;
 el('focus-hex').onclick=()=>focusRegion(selected||'H_5_7');
 function updateSelection(){
  const r=regions.find(z=>z.id===selected);if(!r)return;
- const done=isReady(selected);const major=(r.biomes||[]).filter(b=>b.id!==0).sort((a,b)=>b.fraction-a.fraction)[0];
- el('atlas-title').textContent=done?(progress.regions[selected]?.name||selected):`Região ${selected}`;
- el('atlas-info').textContent=`${selected} · ${major?.name||'Oceano'} · ${done?'Cena 3D preparada':'Aguardando modelagem'}`;
+ const ready=isReady(selected);const major=(r.biomes||[]).filter(b=>b.id!==0).sort((a,b)=>b.fraction-a.fraction)[0];
+ el('atlas-title').textContent=ready?(progress.regions[selected]?.name||selected):`Região ${selected}`;
+ el('atlas-info').textContent=`${selected} · ${major?.name||'Oceano'} · ${stateName(selected)}`;
  el('focus-hex').disabled=!r;
 }
 Promise.all([
  fetch(ROOT+'regions.json').then(r=>{if(!r.ok)throw Error('Regiões indisponíveis');return r.json()}),
  fetch(ROOT+'progress.json').then(r=>r.json()),
  new Promise((resolve,reject)=>{mapImg.onload=resolve;mapImg.onerror=()=>reject(Error('Mapa de biomas indisponível'));mapImg.src=ROOT+'biomes.png'})
-]).then(([data,p])=>{regions=data.regions||[];progress=p;el('counter').textContent=`${p.visual_preview_ready.length} / ${regions.length}`;mapReady=true;beginMap();updateSelection()}).catch(err=>{el('atlas-info').textContent='Não foi possível carregar o atlas: '+err.message});
+]).then(([data,p])=>{regions=data.regions||[];progress=p;el('counter').textContent=`${(p.completed||[]).filter(id=>isComplete(id)).length} / ${regions.length} · ${(p.in_development||[]).length} em desenvolvimento`;mapReady=true;beginMap();updateSelection()}).catch(err=>{el('atlas-info').textContent='Não foi possível carregar o atlas: '+err.message});
 new ResizeObserver(beginMap).observe(canvas);
 
 // REAL MESH VIEWER — GLB geometry, not a photograph, with individual named scene groups.
 const scene=new THREE.Scene();scene.background=new THREE.Color('#111d24');
 const camera=new THREE.PerspectiveCamera(38,1,.1,950);camera.position.set(170,175,215);camera.lookAt(0,6,0);
+const cameraPresets={
+ overview:{pos:[170,175,215],target:[0,6,0]},
+ river:{pos:[84,94,118],target:[7,6,5]},
+ cliffs:{pos:[55,108,-91],target:[5,19,-42]},
+ camp:{pos:[-125,85,98],target:[-56,8,24]}
+};
+function placeCamera(name){
+ const view=cameraPresets[name]||cameraPresets.overview;
+ camera.position.set(...view.pos);
+ controls.target.set(...view.target);
+ controls.update();
+}
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.65));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -123,12 +141,30 @@ renderer.toneMappingExposure=1.40;
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.setSize(frame.clientWidth,frame.clientHeight,false);frame.appendChild(renderer.domElement);
-const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,6,0);controls.enableDamping=true;controls.dampingFactor=.09;controls.minDistance=93;controls.maxDistance=420;controls.maxPolarAngle=Math.PI*.48;controls.enablePan=true;
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,6,0);controls.enableDamping=true;controls.dampingFactor=.09;controls.minDistance=35;controls.maxDistance=440;controls.maxPolarAngle=Math.PI*.48;controls.enablePan=true;
 scene.add(new THREE.HemisphereLight(0xdfeeff,0x4a5446,2.15));
 const sun=new THREE.DirectionalLight(0xffeac2,3.55);sun.position.set(-75,130,100);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-130;sun.shadow.camera.right=130;sun.shadow.camera.top=130;sun.shadow.camera.bottom=-130;sun.shadow.camera.near=1;sun.shadow.camera.far=400;sun.shadow.bias=-.0003;scene.add(sun);
 const rim=new THREE.DirectionalLight(0xaed2ff,.95);rim.position.set(75,90,-95);scene.add(rim);
 const fireLight=new THREE.PointLight(0xff9d45,24,25,2);fireLight.position.set(-55,11,47);scene.add(fireLight);
 let spin=false;let water=[];let model=null;const loader=new GLTFLoader();
+function makeAnimatedWater(obj){
+ obj.material=obj.material.clone(); // do not change shared rock/foam materials
+ obj.material.roughness=.22;
+ obj.material.metalness=.04;
+ obj.material.onBeforeCompile=(shader)=>{
+  shader.uniforms.uFlowTime={value:0};
+  shader.vertexShader=shader.vertexShader.replace('#include <common>',
+   '#include <common>\\nvarying vec3 vFlowPosition;');
+  shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
+   '#include <begin_vertex>\\nvFlowPosition=position;');
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
+   '#include <common>\\nuniform float uFlowTime;\\nvarying vec3 vFlowPosition;');
+  shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
+   '#include <color_fragment>\\nfloat ripples=sin(vFlowPosition.z*.52-uFlowTime*2.3+sin(vFlowPosition.x*.37)*1.6);\\ndiffuseColor.rgb*=.944+.056*ripples;');
+  obj.userData.flowShader=shader;
+ };
+ water.push(obj);
+}
 loader.load(ROOT+'forest-temperate.glb',({scene:gltf})=>{
  model=gltf;scene.add(gltf);let tris=0,meshes=0;
  gltf.traverse(obj=>{
@@ -138,20 +174,28 @@ loader.load(ROOT+'forest-temperate.glb',({scene:gltf})=>{
   obj.castShadow=['trees-trunks','broadleaf-canopies','pine-needles','rocks','ruins'].some(s=>obj.name.includes(s));
   obj.receiveShadow=true;
   if(obj.name.includes('river')||obj.name.includes('pond')||obj.name.includes('waterfalls')){
-   water.push(obj);
-   if(obj.material){obj.material.roughness=.24;obj.material.metalness=.05;}
+   if(obj.material)makeAnimatedWater(obj);
   }
   if(obj.name.includes('fire')&&obj.material){obj.material.emissive=new THREE.Color('#a74c08');obj.material.emissiveIntensity=.62;}
  });
  el('tris').textContent=Math.round(tris).toLocaleString('pt-BR');el('meshes').textContent=meshes.toLocaleString('pt-BR');el('scene-loading').style.display='none';
 },undefined,err=>{el('scene-loading').innerHTML='<strong>Não foi possível abrir a cena 3D.</strong><span>'+String(err.message||err)+'</span>'});
-el('reset-camera').onclick=()=>{camera.position.set(170,175,215);controls.target.set(0,6,0);controls.update();};
+el('reset-camera').onclick=()=>placeCamera('overview');
+const startView=new URLSearchParams(window.location.search).get('view');
+placeCamera(startView);
+window.addEventListener('keydown',(event)=>{
+ const target=event.target?.tagName?.toLowerCase();
+ if(target==='input'||target==='textarea')return;
+ const names={Digit1:'overview',Digit2:'river',Digit3:'cliffs',Digit4:'camp'};
+ if(names[event.code])placeCamera(names[event.code]);
+});
+
 el('toggle-spin').onclick=()=>{spin=!spin;el('toggle-spin').classList.toggle('active',spin);el('toggle-spin').textContent=spin?'◼ Parar rotação':'↻ Girar automaticamente'};
 const resize=()=>{const w=frame.clientWidth,h=frame.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false)};new ResizeObserver(resize).observe(frame);
 const clock=new THREE.Clock();
 function tick(){requestAnimationFrame(tick);const t=clock.getElapsedTime();if(spin)controls.autoRotate=true;else controls.autoRotate=false;controls.autoRotateSpeed=.6;
  fireLight.intensity=18+6*Math.sin(t*9)+3*Math.sin(t*12);
- water.forEach((obj,i)=>{obj.position.y=(i%2===0?.025:.01)*Math.sin(t*1.5+i);});
+ water.forEach(obj=>{if(obj.userData.flowShader)obj.userData.flowShader.uniforms.uFlowTime.value=t;});
  controls.update();renderer.render(scene,camera);
 }
 tick();
