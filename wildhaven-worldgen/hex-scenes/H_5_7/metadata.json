@@ -1,0 +1,165 @@
+{
+  "schema_version": "1.0",
+  "region_id": "H_5_7",
+  "name": "Bosque das Cascatas",
+  "art_direction": "Mid-poly naturalista estilizado; reproduz composição e paleta da referência visual aprovada, não reconstrução fotogramétrica.",
+  "reference": "a_highly_detailed_isometric_3d_stylized_diorama_o.png",
+  "region_geography": {
+    "temperate_forest_fraction": 0.9081939799331104,
+    "mean_elevation_m": 175.93,
+    "mean_temperature_c": 24.6,
+    "precipitation_mm_year": 1137.16,
+    "rivers": 27,
+    "lakes": 6
+  },
+  "coordinates": {
+    "global_region_center_m": [
+      3533383.6474405094,
+      2520000.0
+    ],
+    "local_geometry": "X leste, Y vertical, Z sul; unidade artistica ~= metro diorama",
+    "local_hex_radius": 101.0,
+    "world_hex_radius_m": 240000,
+    "note": "Cena artística de um setor do hex geográfico, ainda não cobre nem substitui seus 240 km de raio."
+  },
+  "assets": {
+    "glb": "forest-temperate.glb",
+    "progress": "../../hex-workshop/public/progress.json"
+  },
+  "elements": [
+    "terrain hexagonal 3D",
+    "margens rochosas",
+    "rio sinuoso",
+    "3 cachoeiras",
+    "ponte de madeira",
+    "bandeiras vermelhas",
+    "acampamento com barraca e fogueira",
+    "ruínas de pedra",
+    "caverna",
+    "lago pequeno",
+    "pinheiros",
+    "árvores folhosas verdes e outonais",
+    "rochas",
+    "flores",
+    "arbustos",
+    "cervos"
+  ],
+  "geometry": {
+    "terrain": {
+      "triangles": 7800,
+      "vertices": 3961
+    },
+    "rocky-hex-walls": {
+      "triangles": 240,
+      "vertices": 240
+    },
+    "underside": {
+      "triangles": 4,
+      "vertices": 6
+    },
+    "river": {
+      "triangles": 448,
+      "vertices": 450
+    },
+    "river-foam": {
+      "triangles": 65,
+      "vertices": 195
+    },
+    "waterfalls": {
+      "triangles": 84,
+      "vertices": 90
+    },
+    "spray": {
+      "triangles": 960,
+      "vertices": 576
+    },
+    "pond": {
+      "triangles": 25,
+      "vertices": 26
+    },
+    "reeds": {
+      "triangles": 210,
+      "vertices": 175
+    },
+    "rocks": {
+      "triangles": 3759,
+      "vertices": 2685
+    },
+    "footpaths": {
+      "triangles": 558,
+      "vertices": 564
+    },
+    "trees-trunks": {
+      "triangles": 5252,
+      "vertices": 3132
+    },
+    "pine-needles": {
+      "triangles": 7380,
+      "vertices": 4920
+    },
+    "broadleaf-canopies": {
+      "triangles": 7680,
+      "vertices": 4320
+    },
+    "shrubs": {
+      "triangles": 4760,
+      "vertices": 2856
+    },
+    "wildflowers": {
+      "triangles": 32256,
+      "vertices": 20160
+    },
+    "bridge-planks": {
+      "triangles": 288,
+      "vertices": 192
+    },
+    "bridge-rails": {
+      "triangles": 416,
+      "vertices": 260
+    },
+    "banners": {
+      "triangles": 62,
+      "vertices": 46
+    },
+    "banner-emblems": {
+      "triangles": 72,
+      "vertices": 48
+    },
+    "canvas-tent": {
+      "triangles": 6,
+      "vertices": 6
+    },
+    "tent-opening": {
+      "triangles": 1,
+      "vertices": 3
+    },
+    "camp-props": {
+      "triangles": 24,
+      "vertices": 16
+    },
+    "camp-crates": {
+      "triangles": 84,
+      "vertices": 56
+    },
+    "fire": {
+      "triangles": 48,
+      "vertices": 36
+    },
+    "ruins": {
+      "triangles": 276,
+      "vertices": 184
+    },
+    "cave-interior": {
+      "triangles": 80,
+      "vertices": 42
+    },
+    "wildlife": {
+      "triangles": 1112,
+      "vertices": 650
+    }
+  },
+  "total_triangles": 73950,
+  "glb_bytes": 1642880,
+  "integration_status": "visual_preview_only",
+  "generated_with": "Python trimesh; asset estático GLB, sem dependência de IA na runtime."
+}

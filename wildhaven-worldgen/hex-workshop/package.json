@@ -1,0 +1,13 @@
+{
+  "name": "wildhaven-hex-workshop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node copy-assets.mjs && vite build",
+    "dev": "node copy-assets.mjs && vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {"three": "^0.181.0"},
+  "devDependencies": {"vite": "^7.2.2"}
+}
