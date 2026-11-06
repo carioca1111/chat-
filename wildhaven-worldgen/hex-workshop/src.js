@@ -15,7 +15,7 @@ let regions=[],worldProgress={},hover=null,selected=PREVIEW_ID;
 let local={version:1,selected:PREVIEW_ID,regions:{}};
 let imgX=0,imgY=0,mapScale=1,zoom=1,panX=0,panY=0,drag=null;
 let activeGroup=null,activeKind=null,activeRegion=null,loadingGeneration=0;
-let currentSettings=null,dirty=false,modelStats=null;
+let currentSettings=null,dirty=false,modelStats=null;let activeEdits=[];
 let spinner=false;
 
 function loadLocal(){
@@ -44,15 +44,16 @@ function countStatus(){
 }
 function restoreControls(){
  const item=draftInfo(selected),data=item?.settings||defaultSettings(getRegion(selected));
- currentSettings={...data};dirty=false;
+ currentSettings={...data};dirty=false;activeEdits=Array.isArray(data.edits)?data.edits.slice(0,300):[];renderEditCount();
  for(const key of CONTROLS){const v=Number(data[key]??50);el(key).value=v;el(key+'-value').textContent=`${v}%`;}
  el('seed').value=data.seed;
 }
 function readControls(){
  const params={seed:Math.min(4294967295,Math.max(1,Math.floor(Number(el('seed').value)||1)))};
  for(const key of CONTROLS)params[key]=Number(el(key).value);
- return params;
+ params.edits=activeEdits.map(x=>({...x}));return params;
 }
+function renderEditCount(){const text=el('edit-count');if(text)text.textContent=activeEdits.length+' alterações manuais neste hexágono';}
 function markDirty(){
  dirty=true;for(const key of CONTROLS)el(key+'-value').textContent=`${el(key).value}%`;
  el('approve').disabled=true;el('export-glb').disabled=true;
@@ -162,7 +163,7 @@ el('focus-hex').onclick=()=>focusRegion(selected);
 // Scene viewer; original H_5_7 GLB + procedural scenes.
 // -----------------------------------------------------
 const frame=el('three-view');const scene=new THREE.Scene();scene.background=new THREE.Color('#19282b');
-const camera=new THREE.PerspectiveCamera(40,1,.1,2500);camera.position.set(340,325,485);
+const camera=new THREE.PerspectiveCamera(39,1,5,50000);camera.position.set(7900,9000,11900);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
@@ -171,12 +172,12 @@ renderer.setSize(Math.max(1,frame.clientWidth),Math.max(1,frame.clientHeight),fa
 frame.appendChild(renderer.domElement);
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,8,0);orbit.enableDamping=true;orbit.dampingFactor=.085;
-orbit.enablePan=true;orbit.maxPolarAngle=Math.PI*.49;orbit.minDistance=25;orbit.maxDistance=1550;
+orbit.enablePan=true;orbit.maxPolarAngle=Math.PI*.49;orbit.minDistance=55;orbit.maxDistance=24000;
 scene.add(new THREE.HemisphereLight(0xeef6e9,0x596d57,2.05));
-const light=new THREE.DirectionalLight(0xffeccb,2.2);light.position.set(-210,330,250);light.castShadow=true;
-light.shadow.mapSize.set(2048,2048);light.shadow.camera.left=-335;light.shadow.camera.right=335;light.shadow.camera.top=335;light.shadow.camera.bottom=-335;light.shadow.camera.far=880;light.shadow.bias=-.0003;scene.add(light);
-const rim=new THREE.DirectionalLight(0xc1e1ef,.4);rim.position.set(80,64,-90);scene.add(rim);
-function resetCamera(){if(activeKind==='original'){camera.position.set(171,158,216);orbit.target.set(0,6,0);}else{camera.position.set(355,350,500);orbit.target.set(0,15,0);}orbit.update();}
+const light=new THREE.DirectionalLight(0xffeccb,2.4);light.position.set(-4300,7900,4400);light.castShadow=true;
+light.shadow.mapSize.set(2048,2048);light.shadow.camera.left=-6000;light.shadow.camera.right=6000;light.shadow.camera.top=6000;light.shadow.camera.bottom=-6000;light.shadow.camera.far=25000;light.shadow.bias=-.0004;scene.add(light);
+const rim=new THREE.DirectionalLight(0xc1e1ef,.4);rim.position.set(4000,6000,-5000);scene.add(rim);
+function resetCamera(){if(activeKind==='original'){camera.position.set(171,158,216);orbit.target.set(0,6,0);}else{camera.position.set(7900,9000,11900);orbit.target.set(0,20,0);}orbit.update();}
 resetCamera();
 function setSceneMessage(text){el('scene-message').textContent=text;}
 function showLoading(title,detail){
@@ -200,9 +201,11 @@ function setModel(group,kind,stats){
  clearGroup();activeGroup=group;activeKind=kind;activeRegion=selected;modelStats=stats;
  scene.add(group);resetCamera();
  const counts=countGroup(group);el('tris').textContent=counts.triangles.toLocaleString('pt-BR');el('meshes').textContent=counts.meshes;
- el('trees').textContent=stats?.trees?.toLocaleString('pt-BR')||'—';
- el('rocks').textContent=stats?.rocks?.toLocaleString('pt-BR')||'—';
- el('scene-badge').textContent=kind==='original'?'MODELO ORIGINAL':'CENÁRIO GEOGRÁFICO ÚNICO';
+ el('trees-stat').textContent=stats?.trees?.toLocaleString('pt-BR')||'—';
+ el('rocks-stat').textContent=stats?.rocks?.toLocaleString('pt-BR')||'—';
+ el('scene-badge').textContent=kind==='original'?'MODELO ORIGINAL':'HEX FACTORY 0.4 · 10 KM';
+  const bound=group.userData.boundsReport;el('bounds-status').textContent=bound?('Validação dos limites: '+(Object.values(bound).every(Boolean)?'✓ Árvores, pedras e rio dentro da região':'⚠ Verificação pendente')):'Modelo original: requer inspeção manual de bordas';
+  const cover=stats?.biomes;el('biome-coverage').textContent=cover?('Biomas presentes: '+Object.entries(cover).map(([id,n])=>(BIOME_STYLE[id]?.name||id)+' '+(100*n/Object.values(cover).reduce((a,b)=>a+b,0)).toFixed(1)+'%').join(' · ')):'Referência original: Bosque das Cascatas';
  el('view-kind').textContent=kind==='original'?'GLB ORIGINAL':'MALHAS GERADAS';
  el('export-glb').disabled=false;el('approve').disabled=false;dirty=false;
  hideLoading();
@@ -229,16 +232,16 @@ function loadOriginal(){
  });
 }
 function previewMessage(){
- clearGroup();el('tris').textContent='—';el('meshes').textContent='—';el('trees').textContent='—';el('rocks').textContent='—';
+ clearGroup();el('tris').textContent='—';el('meshes').textContent='—';el('trees-stat').textContent='—';el('rocks-stat').textContent='—';
  el('export-glb').disabled=true;el('approve').disabled=true;
  showLoading('Hexágono pronto para gerar','Ajuste os parâmetros e clique em “Gerar paisagem 3D”');
  el('scene-badge').textContent='NÃO MODELADO';el('view-kind').textContent='AGUARDANDO GERAÇÃO';
- setSceneMessage('Região ainda não modelada. A nova geração escolhe formas de relevo exclusivas e várias espécies de árvores; rios e construções não são obrigatórios.');
+ setSceneMessage('Região ainda não modelada. A prévia será gerada com malhas reais usando o bioma predominante e a informação de rios do mapa do Codex.');
 }
 function generateScene(params=readControls(), options={restore:false}){
  const region=getRegion(selected);if(!region)return;
  const id=selected,token=++loadingGeneration;
- showLoading('Criando paisagem exclusiva...','Relevo da região, espécies diferentes e detalhes naturais');
+ showLoading('Gerando hexágono de 10 km...','Biomas, setores do terreno, drenagem e vegetação');
  el('generate').disabled=true;
  // Yield to the browser so the loading state actually paints before the CPU job.
  setTimeout(()=>{
@@ -249,8 +252,8 @@ function generateScene(params=readControls(), options={restore:false}){
    setModel(result.group,'generated',result.stats);
    local.regions[id]={status:options.restore&&local.regions[id]?.status==='approved'?'approved':'draft',settings:result.settings,kind:'generated',updated:new Date().toISOString()};
    saveLocal();currentSettings=result.settings;updateSelection(false);drawAtlas();countStatus();
-   const waterNote=result.hasRiver?'rio procedural ilustrativo baseado na presença de rios':'sem rio novo: os dados geográficos não indicam um curso principal nesta região';
-   setSceneMessage(`Prévia 3D gerada localmente com seed ${result.settings.seed}: ${result.stats.trees} árvores e ${result.stats.rocks} rochas. ${waterNote}. Antes de aprovar para o jogo, conferir junções com vizinhos, fauna, colisões e fidelidade geográfica.`);
+   const waterNote=result.hasRiver?('rio com percurso descendente ('+result.stats.waterDrop_m.toFixed(1)+' m de queda)'):'nenhum rio gerado sem drenagem local válida';
+   setSceneMessage(`Hexágono representativo de 10 km: ${result.stats.archetype}, ${Object.keys(result.stats.biomes).length} bioma(s), ${result.stats.sectors} setores, ${result.stats.trees} árvores de ${result.stats.treeSpecies} espécies, ${result.stats.rocks} rochas; ${waterNote}. Geografia original preservada. Fronteiras com vizinhos e fidelidade visual ainda requerem inspeção.`);
   }catch(err){console.error(err);showLoading('Falha ao gerar paisagem',String(err.message||err));}
   finally{el('generate').disabled=false;}
  },40);
@@ -322,7 +325,7 @@ function updateSelection(load){
  const biome=dominantBiome(region);const style=BIOME_STYLE[biome.id]||BIOME_STYLE[1];
  const title=sourceInfo(selected)?.name||`Região ${selected}`;
  el('atlas-title').textContent=title;el('atlas-info').textContent=`${selected} · ${biome.name||style.name} · ${getStatus(selected)}`;
- el('selected-details').textContent=`Macrorregião: ${(region.rivers||[]).length} segmentos fluviais catalogados · altitude média ${Math.round(region.elevation_m?.mean||0)} m · cena de 2 km representada em escala visual ampliada`;
+ el('selected-details').textContent=`${(region.rivers||[]).length} rios na macrorregião · ${region.biomes?.filter(b=>b.id!==0&&b.fraction>.007).length||0} bioma(s) de terra · Elevação média ${Math.round(region.elevation_m?.mean||0)} m · Cena 10 km`; 
  el('selected-hex').textContent=selected;el('biome-name').textContent=biome.name||style.name;
  el('scene-title').textContent=title;
  el('status-tag').textContent=getStatus(selected);el('status-tag').classList.toggle('approved',isApproved(selected));
@@ -337,6 +340,27 @@ function updateSelection(load){
  const matches=activeRegion===selected&&!dirty;
  el('approve').disabled=!matches;el('export-glb').disabled=!matches;
 }
+// ------------------- Manual editing (browser-local) -------------------
+for(const id of ['brush-radius','brush-strength'])el(id).addEventListener('input',()=>{
+ el(id+'-label').textContent=el(id).value+(id==='brush-radius'?' m':' m');
+});
+function undoEdit(){if(!activeEdits.length)return;activeEdits.pop();renderEditCount();markDirty();generateScene();}
+el('undo-edit').onclick=undoEdit;
+el('clear-edits').onclick=()=>{if(!activeEdits.length)return;if(!confirm('Limpar todas as edições manuais deste hexágono?'))return;activeEdits=[];renderEditCount();markDirty();generateScene();};
+const editRay=new THREE.Raycaster(),editPointer=new THREE.Vector2();
+renderer.domElement.addEventListener('pointerdown',event=>{
+ if(!event.shiftKey||event.button!==0||!activeGroup||activeKind!=='generated'||dirty)return;
+ const rect=renderer.domElement.getBoundingClientRect();editPointer.x=(event.clientX-rect.left)/rect.width*2-1;editPointer.y=1-(event.clientY-rect.top)/rect.height*2;
+ editRay.setFromCamera(editPointer,camera);
+ const surfaces=activeGroup.children.filter(o=>o.isMesh&&o.name.startsWith('Setor terreno '));
+ const hit=editRay.intersectObjects(surfaces,false)[0];if(!hit)return;
+ const tool=el('edit-tool').value,point=hit.point;
+ const edit={tool,x:+point.x.toFixed(2),z:+point.z.toFixed(2),radius:+el('brush-radius').value,strength:+el('brush-strength').value,targetHeight:+point.y.toFixed(2)};
+ if(activeEdits.length>=300){setSceneMessage('Limite de 300 pinceladas. Exporte o projeto JSON e simplifique as edições.');return;}
+ activeEdits.push(edit);renderEditCount();markDirty();generateScene();
+});
+window.addEventListener('keydown',ev=>{if(ev.ctrlKey&&ev.key.toLowerCase()==='z'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){ev.preventDefault();undoEdit();}});
+
 // Startup: load exact Codex atlas/progress and the original forest asset.
 loadLocal();
 Promise.all([

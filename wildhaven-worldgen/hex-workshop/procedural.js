@@ -1,339 +1,296 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {OBSERVABLE_DIAMETER_M,HEX_RADIUS,hexCorners,insideHex,signedHexDistance,clamp,lerp,smoothstep,noise2,fbm,randomSource,hash32,makeDNA,makeLandscape,createRiver,terrainSlope,pickSpecies,countBiomeSamples,validateRiver} from './geography-core.js';
 
-// Wildhaven Hex Factory Alpha 0.3 — unique local ecological landscape samples.
-// Original Auralis geography is authoritative; each scene is a condensed artistic
-// representation of ~2 km, not a 1:1 resampling of a 240-km macroregion.
-export const BIOME_STYLE = {
-  0:{name:'Oceano',ground:0x87918b,foliage:0x427467,forest:0,rock:0x88999a,water:0x279dc5},
-  1:{name:'Floresta temperada',ground:0x6e9952,foliage:0x396b40,forest:1,rock:0xafa695,water:0x36afc9},
-  2:{name:'Selva tropical',ground:0x44834e,foliage:0x227046,forest:1.24,rock:0x8c917a,water:0x36a9b6},
-  3:{name:'Taiga',ground:0x6f8d6b,foliage:0x315647,forest:.93,rock:0x9ca5a1,water:0x67aeba},
-  4:{name:'Tundra',ground:0xa3ab95,foliage:0x62796b,forest:.075,rock:0xa3abad,water:0x84bacf},
-  5:{name:'Savana',ground:0xa3a264,foliage:0x60764b,forest:.32,rock:0xada289,water:0x76aeb8},
-  6:{name:'Pradaria',ground:0x9fa96b,foliage:0x6b8551,forest:.14,rock:0xb0a78c,water:0x65acbd},
-  7:{name:'Deserto rochoso',ground:0xbba77a,foliage:0x848365,forest:.015,rock:0xa99b83,water:0x54acb7},
-  8:{name:'Pântano',ground:0x5b8061,foliage:0x456e52,forest:.52,rock:0x899184,water:0x549991},
-  9:{name:'Montanha alpina',ground:0x82917d,foliage:0x4c735a,forest:.22,rock:0xb6b2a5,water:0x65aec5},
-  10:{name:'Manguezal',ground:0x6b8e6f,foliage:0x3b755c,forest:.57,rock:0x919787,water:0x5ca7a8},
-  11:{name:'Floresta luminescente',ground:0x597d6e,foliage:0x4a8497,forest:1.04,rock:0x859ba3,water:0x5bc2d0},
-  12:{name:'Vale cristalino',ground:0x8a9e8d,foliage:0x558c80,forest:.21,rock:0xa8a2b9,water:0x72c4d9},
-  13:{name:'Pântano micelial',ground:0x6a7e6b,foliage:0x756e92,forest:.57,rock:0x8d8695,water:0x6797b8},
-  14:{name:'Terras de Cinza',ground:0x605853,foliage:0x6c5b51,forest:.01,rock:0x766660,water:0xa36c54},
-  15:{name:'Vale Etéreo',ground:0x809389,foliage:0x6984a0,forest:.28,rock:0x9e9dac,water:0x6ac4cf}
+/* Wildhaven Alpha 0.4 — real triangle geometry, ecological vegetation and gravity-consistent water.
+   One independent scene is a 10km REPRESENTATION of its original macro-region.
+   The continental generator and its 368 regions are never modified. */
+export {makeDNA,OBSERVABLE_DIAMETER_M} from './geography-core.js';
+export const BIOME_STYLE={
+ 0:{name:'Oceano',ground:0x7b908b,foliage:0x477362,forest:0,rock:0x929b87,water:0x258ba8},
+ 1:{name:'Floresta Temperada',ground:0x709650,foliage:0x387149,forest:1,rock:0xa7a18c,water:0x39afcf},
+ 2:{name:'Selva Tropical',ground:0x488452,foliage:0x217649,forest:1.38,rock:0x8c8c76,water:0x31b2c4},
+ 3:{name:'Taiga',ground:0x719071,foliage:0x355d4c,forest:.94,rock:0x92998d,water:0x65b1c8},
+ 4:{name:'Tundra',ground:0xa2ae93,foliage:0x72846c,forest:.095,rock:0xa8aaa7,water:0x84b8cf},
+ 5:{name:'Savana',ground:0xb1ab6e,foliage:0x7b824e,forest:.27,rock:0xb09f83,water:0x83b2b2},
+ 6:{name:'Pradaria',ground:0xa7b16b,foliage:0x6b874c,forest:.12,rock:0xaba68b,water:0x68afb8},
+ 7:{name:'Deserto Rochoso',ground:0xb49c70,foliage:0x80805c,forest:.01,rock:0xa8957e,water:0x55aebc},
+ 8:{name:'Pântano',ground:0x6d8859,foliage:0x426c45,forest:.51,rock:0x7d8977,water:0x5b9891},
+ 9:{name:'Montanhas Alpinas',ground:0x8a9481,foliage:0x496d54,forest:.23,rock:0xb2ada0,water:0x67b8d2},
+ 10:{name:'Manguezal',ground:0x7c9172,foliage:0x376b52,forest:.76,rock:0x8d9482,water:0x56a4a6},
+ 11:{name:'Floresta Luminescente',ground:0x59846c,foliage:0x447f8f,forest:.99,rock:0x85959a,water:0x54c0c9},
+ 12:{name:'Vale Cristalino',ground:0x96a894,foliage:0x4b8c79,forest:.18,rock:0xa8a1ba,water:0x72c5de},
+ 13:{name:'Pântano Micelial',ground:0x71836c,foliage:0x6b6b88,forest:.55,rock:0x8d8696,water:0x668ab1},
+ 14:{name:'Terras de Cinza',ground:0x66605c,foliage:0x6b5145,forest:.005,rock:0x77665f,water:0x986959},
+ 15:{name:'Vale Etéreo',ground:0x8d9f91,foliage:0x667e9d,forest:.25,rock:0x9b9ca9,water:0x69c3dc}
 };
-
-const R=235,clamp=THREE.MathUtils.clamp,lerp=THREE.MathUtils.lerp,TAU=Math.PI*2;
-const hexCorners=Array.from({length:6},(_,i)=>{const a=(30+i*60)*Math.PI/180;return [R*Math.cos(a),R*Math.sin(a)];});
-function randGen(seed){let s=seed>>>0;return ()=>{s+=0x6D2B79F5;let t=Math.imul(s^(s>>>15),1|s);t^=t+Math.imul(t^(t>>>7),61|t);return ((t^(t>>>14))>>>0)/4294967296;};}
-function hash(text){let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
-function contains(x,z,pad=0){const a=R-pad;return Math.abs(z)<=a&&Math.abs(x)*Math.sqrt(3)+Math.abs(z)<=2*a;}
-function smoothNoise(x,z,seed){
-  const ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz;
-  const wx=fx*fx*(3-2*fx),wz=fz*fz*(3-2*fz);
-  const n=(a,b)=>{let h=Math.imul(a^seed,374761393)+Math.imul(b,668265263);h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295;};
-  return lerp(lerp(n(ix,iz),n(ix+1,iz),wx),lerp(n(ix,iz+1),n(ix+1,iz+1),wx),wz)*2-1;
+export function defaultSettings(region){const id=region?.id||'H_0_0';return {seed:(hash32('ART|'+id)+20051028)>>>0,trees:72,rocks:62,relief:65,detail:65,water:80,edits:[]};}
+const mat=(c,opts={})=>new THREE.MeshStandardMaterial({color:c,roughness:.93,metalness:0,flatShading:true,...opts});
+const deg=Math.PI/180;
+const rgb=c=>{const color=new THREE.Color(c);return [color.r,color.g,color.b];};
+function placeMesh(group,name,geom,material,pos){const ob=new THREE.Mesh(geom,material);ob.name=name;if(pos)ob.position.set(...pos);ob.castShadow=false;ob.receiveShadow=true;group.add(ob);return ob;}
+function setPaintColor(g,color){const n=g.getAttribute('position').count,c=new Float32Array(n*3),t=rgb(color);for(let i=0;i<n;i++)c.set(t,i*3);g.setAttribute('color',new THREE.BufferAttribute(c,3));return g;}
+function transformed(g,color,pos=[0,0,0],scale=[1,1,1],rot=[0,0,0]){
+ const copy=g.toNonIndexed ? (g.index?g.toNonIndexed():g.clone()):g.clone();
+ const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot));copy.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(...pos),q,new THREE.Vector3(...scale)));
+ setPaintColor(copy,color);return copy;
 }
-function fractal(x,z,seed){return .57*smoothNoise(x*.012,z*.012,seed)+.28*smoothNoise(x*.034,z*.034,seed+21)+.15*smoothNoise(x*.083,z*.083,seed+71);}
-function palette(biome){return BIOME_STYLE[biome]||BIOME_STYLE[1];}
-function dominantBiome(region){const bs=region?.biomes||[];return bs.reduce((m,b)=>b.fraction>m.fraction?b:m,{id:0,fraction:-1}).id;}
-export function defaultSettings(region){return {seed:(20051028+(region?.axial?.q||0)*7529+(region?.axial?.r||0)*16939)>>>0||1,trees:70,rocks:58,relief:62,detail:58,water:75};}
-function material(color,extras={}){return new THREE.MeshStandardMaterial({color,flatShading:true,roughness:.91,metalness:0,...extras});}
-function vertexRGB(color){const c=new THREE.Color(color);return [c.r,c.g,c.b];}
-function addMesh(root,geo,mat,name,x=0,y=0,z=0){const o=new THREE.Mesh(geo,mat);o.name=name;o.position.set(x,y,z);o.receiveShadow=true;root.add(o);return o;}
-
-// Tree asset family. Each of twelve visibly different silhouettes has multiple
-// baked geometry variants; instances vary scale, orientation, hue and clustering.
-const TREE_SPECIES=['oak','beech','maple','birch','pine','spruce','fir','cedar','willow','acacia','banyan','cypress','dead'];
-const EVERGREEN=new Set(['pine','spruce','fir','cedar','cypress']);
-function speciesWeights(biome,hasWater){
-  const w={oak:0,beech:0,maple:0,birch:0,pine:0,spruce:0,fir:0,cedar:0,willow:0,acacia:0,banyan:0,cypress:0,dead:0};
-  if([1,11,15].includes(biome))Object.assign(w,{oak:23,beech:19,maple:13,birch:11,pine:11,spruce:9,fir:7,cedar:5,willow:hasWater?5:1});
-  else if(biome===2)Object.assign(w,{banyan:38,oak:23,beech:17,willow:hasWater?12:4,cedar:8,acacia:3});
-  else if(biome===3)Object.assign(w,{spruce:36,fir:28,pine:22,birch:10,cedar:4});
-  else if(biome===5)Object.assign(w,{acacia:62,banyan:3,oak:12,cedar:4,dead:3});
-  else if(biome===6)Object.assign(w,{oak:23,acacia:13,beech:7,pine:7,birch:3});
-  else if(biome===8||biome===10||biome===13)Object.assign(w,{willow:40,banyan:19,oak:16,birch:7,beech:10});
-  else if(biome===9)Object.assign(w,{pine:31,spruce:30,fir:18,birch:5,cypress:7});
-  else if(biome===4)Object.assign(w,{birch:10,dead:4,spruce:7});
-  else if(biome===7||biome===14)Object.assign(w,{dead:17,acacia:6});
-  else Object.assign(w,{oak:17,beech:12,cypress:9,birch:5});
-  return w;
-}
-function chooseWeighted(rng,weights){let total=0;for(const v of Object.values(weights))total+=v;if(!total)return null;let p=rng()*total;for(const [k,v] of Object.entries(weights)){p-=v;if(p<=0)return k;}return Object.keys(weights).at(-1);}
-function treeGeometry(species,variation,biome){
- const rnd=randGen(hash(species)+variation*1812433253+biome*1123),parts=[];
- const colors={trunk:0x775d45,bark:0xa8a394,olive:0x355e40,green:palette(biome).foliage,autumn:0xbf7a37};
- const bark=species==='birch'?colors.bark:species==='dead'?0x766a5e:colors.trunk;
- const foliage=species==='maple'?colors.autumn:species==='dead'?null:colors.green;
- function piece(geometry,pos,scale,col,rotY=0){
-  const geo=geometry.toNonIndexed?geometry.toNonIndexed():geometry.clone();
-  geometry.dispose();
-  const m=new THREE.Matrix4();m.compose(new THREE.Vector3(...pos),new THREE.Quaternion().setFromEuler(new THREE.Euler(0,rotY,0)),new THREE.Vector3(...scale));geo.applyMatrix4(m);
-  const rgb=vertexRGB(col),arr=new Float32Array(geo.attributes.position.count*3);for(let i=0;i<arr.length;i+=3){arr[i]=rgb[0];arr[i+1]=rgb[1];arr[i+2]=rgb[2];}
-  geo.setAttribute('color',new THREE.BufferAttribute(arr,3));parts.push(geo);
- }
- const cone=(rad=1,verts=7)=>new THREE.ConeGeometry(rad,1,verts);
- const blob=(detail=1)=>new THREE.IcosahedronGeometry(1,detail);
- const trunkWidth=species==='banyan'?.08:species==='birch'?.025:species==='acacia'?.046:.051;
- piece(new THREE.CylinderGeometry(trunkWidth*.73,trunkWidth,1,7),[0,.50,0],[1,1,1],bark);
- if(species==='dead'){
-  for(let i=0;i<4;i++){const a=TAU*rnd(),y=.37+i*.15;piece(new THREE.CylinderGeometry(.009,.018,.4,5),[Math.cos(a)*.11,y+.1,Math.sin(a)*.11],[1,1,1],bark,a);}
- }else if(EVERGREEN.has(species)){
-  const tiers=species==='cedar'?4:species==='spruce'?5:species==='cypress'?3:4;
-  const width={pine:.31,spruce:.255,fir:.32,cedar:.39,cypress:.17}[species];
-  for(let i=0;i<tiers;i++){
-   const a=(i/(tiers-1)),w=width*(1-a*.52)*(0.88+rnd()*.26);
-   const cy=.45+i*(species==='cypress'?.20:.14);
-   piece(cone(1,species==='cedar'?9:7),[rnd()*.035-.017,cy,0],[w,species==='cypress'?.48:.39,w],foliage);
+const geoCache=new Map();
+function treeGeometry(species,variant){const key=`${species}|${variant}`;if(geoCache.has(key))return geoCache.get(key);
+ const rand=randomSource(hash32(key)),parts=[],crown=species==='maple'?0xa07439:species==='blueoak'?0x4792a0:species==='mushroomtree'?0x85679a:species==='dead'?null:species==='birch'?0x59835c:0x3b7848;
+ const brown=species==='birch'?0xbdbba8:species==='dead'?0x68645a:0x805d3e;
+ const r0=(n=.08)=>n*(.75+rand()*.6);
+ function cylinder(rtop,rbot,h,x,y,z,color,edges=6,angle=0){parts.push(transformed(new THREE.CylinderGeometry(rtop,rbot,h,edges),color,[x,y,z],[1,1,1],[0,0,angle]));}
+ function ball(x,y,z,rx,ry,rz,color,faces=0){parts.push(transformed(new THREE.IcosahedronGeometry(1,faces),color,[x,y,z],[rx,ry,rz],[rand()*.22,rand()*6.28,rand()*.2]));}
+ function cone(x,y,z,r,h,color,edges=7){parts.push(transformed(new THREE.ConeGeometry(r,h,edges,1),color,[x,y,z],[1,1,1],[0,rand()*6.28,0]));}
+ let trunk=.057,top=.66;
+ if(species==='oak'||species==='banyan'||species==='mangrove')trunk=.083;
+ if(species==='birch'||species==='cypress')trunk=.037;
+ if(species==='dead')top=.83;
+ cylinder(trunk*.6,trunk,top,0,top/2,0,brown);
+ const deciduous=['oak','beech','maple','birch','wideleaf','blueoak','banyan','mangrove'];
+ if(['pine','spruce','fir','cedar','cypress'].includes(species)){
+  const tiers=species==='spruce'?5:species==='cedar'?3:species==='cypress'?4:4;
+  const maxr=species==='cedar'?.34:species==='cypress'?.18:species==='pine'?.285:.34;
+  for(let k=0;k<tiers;k++){
+   const f=k/(tiers-1),size=maxr*(1-f*.72)*(1+(rand()-.5)*.25);
+   cone((rand()-.5)*.025,.45+k*.126,0,size,.39*(1-f*.22),crown,6+(variant%3));
   }
-  if(species==='pine')for(let i=0;i<3;i++){const a=TAU*i/3;piece(blob(0),[Math.cos(a)*.19,.65,Math.sin(a)*.19],[.19,.14,.18],foliage);}
- }else if(species==='acacia'){
-   piece(new THREE.CylinderGeometry(.022,.03,.65,6),[.20,.73,0],[1,1,1],bark,.25);
-   for(let i=0;i<4;i++){const a=i*TAU/4+.4;piece(blob(1),[Math.cos(a)*.28,.92+rnd()*.06,Math.sin(a)*.24],[.41,.13,.33],foliage);}
+  if(species==='cedar')for(let j=0;j<3;j++){const a=2*Math.PI*j/3;ball(Math.sin(a)*.23,.72,Math.cos(a)*.22,.19,.055,.18,crown);}
  }else if(species==='willow'){
-   piece(blob(1),[0,.78,0],[.39,.30,.37],foliage);
-   for(let i=0;i<8;i++){const a=TAU*i/8;const x=Math.cos(a)*.32,z=Math.sin(a)*.32;
-    piece(blob(0),[x,.60-rnd()*.15,z],[.14,.27,.13],foliage);}
- }else if(species==='banyan'){
-   for(let i=0;i<4;i++){const a=TAU*i/4;piece(new THREE.CylinderGeometry(.008,.019,.68,5),[Math.cos(a)*.20,.41,Math.sin(a)*.20],[1,1,1],bark);}
-   for(let i=0;i<7;i++){const a=TAU*i/7;piece(blob(1),[Math.cos(a)*.28,.77+(i%2)*.12,Math.sin(a)*.26],[.26,.23,.27],foliage);}
- }else{
-   // Broadleaves: multi-lobed crowns with asymmetry, intentional gaps and branches.
-   for(let i=0;i<4;i++){const a=TAU*i/4+rnd()*.5;piece(new THREE.CylinderGeometry(.01,.018,.42,5),[Math.cos(a)*.12,.72,Math.sin(a)*.12],[1,1,1],bark,a);}
-   const lobes=species==='beech'?5:species==='birch'?4:8;
-   for(let i=0;i<lobes;i++){
-    const a=TAU*i/lobes+rnd()*.20,spread=species==='birch'?.15:species==='beech'?.22:.27;
-    const x=Math.cos(a)*spread*(.8+.4*rnd()),z=Math.sin(a)*spread*(.8+.4*rnd());
-    piece(blob(species==='birch'?0:1),[x,.82+rnd()*.22,z],[.22+rnd()*.08,species==='birch'?.22:.21+rnd()*.08,.2+rnd()*.09],foliage);
-   }
-   piece(blob(1),[0,1.02,0],[.24,.18,.24],foliage);
- }
- // Merge geometry for one draw-call per visible species variant (InstancedMesh).
- const geo=mergeGeometries(parts,false);if(!geo)throw Error('Falha ao combinar árvore '+species);
- parts.forEach(g=>g.dispose());geo.computeVertexNormals();return geo;
-}
-
-const ARCHETYPES={
- planicie:'Planície aberta',colinas:'Colinas onduladas',vale:'Vale florestado',encosta:'Encosta assimétrica',
- plato:'Platôs rochosos',montanha:'Montanhas e cristas',bacia:'Bacia úmida',ravina:'Garganta rochosa',
- costa:'Planície costeira',dunas:'Dunas e terreno seco',pantano:'Depressão pantanosa',
-};
-function chooseArchetype(region,biome,rng){
- const range=Math.max(0,(region?.elevation_m?.max??200)-(region?.elevation_m?.min??0));
- let w={planicie:15,colinas:17,vale:14,encosta:10,plato:8,montanha:4,bacia:7,ravina:3,costa:0,dunas:0,pantano:0};
- if([6,5,4].includes(biome))Object.assign(w,{planicie:28,colinas:21,vale:8,encosta:7,plato:5,montanha:1,ravina:0});
- if([9,14].includes(biome))Object.assign(w,{planicie:0,colinas:8,vale:9,encosta:22,plato:12,montanha:31,ravina:14,bacia:0});
- if(biome===7)Object.assign(w,{dunas:35,planicie:25,colinas:11,plato:19,vale:0,bacia:0,ravina:9});
- if([8,10,13].includes(biome))Object.assign(w,{pantano:38,bacia:29,planicie:18,colinas:10,vale:13,montanha:0,ravina:0});
- if(biome===0)Object.assign(w,{costa:80,planicie:10,colinas:0,vale:0,encosta:0,plato:0,montanha:0,bacia:0,ravina:0});
- if(range>850){w.montanha+=25;w.encosta+=12;w.ravina+=10;w.planicie=Math.max(0,w.planicie-10);}
- if(range<150){w.planicie+=25;w.colinas+=14;w.montanha=0;w.ravina=0;}
- if((region?.biomes||[]).some(b=>b.id===10&&b.fraction>.2))w.costa=25;
- return chooseWeighted(rng,w)||'colinas';
-}
-export function analyzeRegion(region,seed=null){
- const id=region?.id||'H_0_0',biome=dominantBiome(region),sourceSeed=seed??defaultSettings(region).seed;
- const rng=randGen((sourceSeed>>>0)^hash(id));
- const archetype=chooseArchetype(region,biome,rng),rivers=region?.rivers?.length||0,lakes=region?.lakes?.length||0;
- const isWaterBiome=biome===0;
- // A macro-hex is hundreds of km across. River *presence* in its global index
- // does not imply every 2-km local scene has a river.
- const riverChance=rivers?clamp(.045+Math.sqrt(rivers)*.074,0,.67):0;
- const localRiver=!isWaterBiome&&rivers>0&&rng()<riverChance;
- const localPond=!localRiver&&!isWaterBiome&&lakes>0&&rng()<Math.min(.26,lakes*.022);
- return {id,biome,archetype,archetypeName:ARCHETYPES[archetype],worldRivers:rivers,worldLakes:lakes,localRiver,localPond,riverChance,sourceSeed,
-  // No randomly placed human infrastructure. Explicit curated landmarks are separate.
-  landmarks:[],observable_diameter_m:2000};
-}
-
-export function buildHexScene(region,settings={}){
- const cfg={...defaultSettings(region),...settings};cfg.seed=(Number(cfg.seed)||1)>>>0;
- for(const k of ['trees','rocks','relief','detail','water'])cfg[k]=clamp(Number(cfg[k])||0,0,100);
- const meta=analyzeRegion(region,cfg.seed),biome=meta.biome,style=palette(biome),rng=randGen(cfg.seed^hash(meta.id)^0x43E9B15);
- const random=(min,max)=>lerp(min,max,rng());
- const hasRiver=meta.localRiver&&cfg.water>0,hasPond=meta.localPond&&cfg.water>0;
- const root=new THREE.Group();root.name=`Wildhaven_${meta.id.replace(/[^\w-]/g,'_')}`;
- root.userData={...meta,seed:cfg.seed,preview:true,local_scenic_radius:R,visual_version:3};
- const archetype=meta.archetype;
- const terrainSeed=hash(meta.id),angle=random(0,TAU),ca=Math.cos(angle),sa=Math.sin(angle);
- const slopeAngle=random(-1,1),a1={x:random(-.45,.25)*R,z:random(-.4,.5)*R,r:random(.23,.58)*R,h:random(13,27)};
- const a2={x:random(-.4,.45)*R,z:random(-.4,.3)*R,r:random(.22,.54)*R,h:random(12,34)};
- const valleyX=random(-.18,.18)*R, riverAngle=random(0,TAU),rc=Math.cos(riverAngle),rs=Math.sin(riverAngle);
- const riverAmp=random(9,23),riverPhase=random(0,TAU),riverWidth=random(7,13);
- const pondCenter={x:random(-R*.18,R*.18),z:random(-R*.18,R*.18),radius:random(18,31)};
- const ridgeNoise=(x,z)=>fractal(x,z,terrainSeed);
- const local=(x,z)=>[x*ca-z*sa,x*sa+z*ca];
- const gauss=(x,z,p)=>Math.exp(-(((x-p.x)/p.r)**2+((z-p.z)/p.r)**2)*1.4)*p.h;
- const rawFactor=(.62+cfg.relief/74);
- const heightScale=biome===9?1.6:biome===14?1.42:biome===6?.55:1;
- function baseHeight(x,z){
-  const [u,v]=local(x,z),noise=ridgeNoise(x,z),slow=smoothNoise(x*.005,z*.005,terrainSeed+9);
-  let h=7;
-  switch(archetype){
-   case 'planicie':h+=noise*6+slow*4+3*Math.sin(u*.018);break;
-   case 'colinas':h+=gauss(x,z,a1)+gauss(x,z,a2)*.72+noise*9;break;
-   case 'vale':h+=Math.pow(Math.abs(u-valleyX)/R,1.53)*32+noise*7+slow*4;break;
-   case 'encosta':h+=(u/R+1)*24+gauss(x,z,a1)*.46+noise*10;break;
-   case 'plato':{const d=Math.hypot(u*.85,v*.8),step=1/(1+Math.exp((d-R*.46)/9));h+=29*step+gauss(x,z,a2)*.28+noise*6;break;}
-   case 'montanha':h+=Math.max(0,Math.sin(u*.024+slow*2))*35+gauss(x,z,a1)*1.7+gauss(x,z,a2)*1.1+noise*16;break;
-   case 'bacia':h+=Math.pow(Math.hypot(u,v)/R,1.6)*20+noise*4;break;
-   case 'ravina':h+=Math.min(36,Math.pow(Math.abs(u-valleyX)/R,1.4)*66)+noise*7;break;
-   case 'costa':h+=((u/R)+.5)*7+noise*2;break;
-   case 'dunas':h+=15*Math.sin(u*.028+slow*3)+8*Math.sin(v*.04)+noise*5;break;
-   case 'pantano':h+=Math.pow(Math.hypot(u,v)/R,2)*5+noise*2;break;
-   default:h+=noise*8;
+  for(let j=0;j<4;j++){const a=2*Math.PI*j/4+rand()*.3,c=Math.cos(a),s=Math.sin(a),len=.20+rand()*.12;
+   cylinder(.013,.023,.33,c*.11,.68,s*.11,brown,5,-c*.42);
+   ball(c*len,.63-rand()*.12,s*len,.11,.22,.11,0x438161);
   }
-  return h*heightScale*rawFactor;
- }
- function localRiverBasis(x,z){const along=x*rs+z*rc,cross=x*rc-z*rs;return {along,cross};}
- function riverCenter(s){return riverAmp*Math.sin(s*.011+riverPhase)+riverAmp*.39*Math.sin(s*.035+riverPhase*.46);}
- function positionAlong(s,t){return {x:s*rs+t*rc,z:s*rc-t*rs};}
- const pondLevel=baseHeight(pondCenter.x,pondCenter.z)-1.3;
- function groundHeight(x,z){
-  const {along,cross}=localRiverBasis(x,z);
-  const d=Math.abs(cross-riverCenter(along));
-  let h=baseHeight(x,z)-(hasRiver?6.3*Math.exp(-Math.pow(d/riverWidth,4)):0);
-  if(hasPond){
-   const dist=Math.hypot(x-pondCenter.x,z-pondCenter.z);
-   if(dist<pondCenter.radius*1.34){
-    // Cut a real bowl into the terrain, not a flat water disc on top of the hills.
-    const bowl=pondLevel-2.2+6.4*Math.pow(dist/pondCenter.radius,2);
-    h=Math.min(h,bowl);
-   }
+  ball(0,.83,0,.25,.17,.25,0x4b8c66);
+ }else if(species==='acacia'||species==='umbrella'){
+  for(let i=0;i<3;i++){const a=i*2*Math.PI/3+rand()*.45,c=Math.cos(a),s=Math.sin(a);
+   cylinder(.014,.032,.28,c*.10,.70,s*.11,brown,5,c*.5);
+   ball(c*.26,.84,s*.25,.26,.075,.23,0x8c9848);
   }
-  return h;
- }
- function slope(x,z){const e=3;return Math.hypot((groundHeight(x+e,z)-groundHeight(x-e,z))/(2*e),(groundHeight(x,z+e)-groundHeight(x,z-e))/(2*e));}
- const materialTerrain=material(0xffffff,{vertexColors:true,side:THREE.DoubleSide});
- // Higher-res radial tessellation; explicit Y-up winding and unlit sides never obscure ground.
- const perSide=42,segments=perSide*6,rings=68,pts=[],cols=[],faces=[],boundary=[];
- const colGround=new THREE.Color(style.ground);
- function pt(x,z){const y=groundHeight(x,z),micro=smoothNoise(x*.023,z*.023,terrainSeed+72);
-  const gr=colGround.clone().multiplyScalar(clamp(.94+micro*.11+(y-7)*.0006,.72,1.17));
-  pts.push(x,y,z);cols.push(gr.r,gr.g,gr.b);
- }
- pt(0,0);
- for(let ring=1;ring<=rings;ring++)for(let i=0;i<segments;i++){
-  const side=Math.floor(i/perSide),frac=(i%perSide)/perSide,a=hexCorners[side],b=hexCorners[(side+1)%6],f=ring/rings;
-  const x=lerp(a[0],b[0],frac)*f,z=lerp(a[1],b[1],frac)*f;
-  pt(x,z);if(ring===rings)boundary.push([x,z]);
- }
- for(let i=0;i<segments;i++)faces.push(0,1+(i+1)%segments,1+i);
- for(let ring=2;ring<=rings;ring++)for(let i=0;i<segments;i++){
-  const a=1+(ring-2)*segments+i,b=1+(ring-2)*segments+(i+1)%segments,c=1+(ring-1)*segments+i,d=1+(ring-1)*segments+(i+1)%segments;
-  faces.push(a,b,c,b,d,c);
- }
- const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));geo.setIndex(faces);geo.computeVertexNormals();
- const ground=addMesh(root,geo,materialTerrain,'Terreno 3D variável');ground.receiveShadow=true;ground.castShadow=false;
- // Geometry QA: upward-facing terrain center normal to avoid the black flipped-face bug.
- const normal=geo.getAttribute('normal');if(normal.getY(0)<0){const ar=geo.index.array;for(let i=0;i<ar.length;i+=3){const t=ar[i+1];ar[i+1]=ar[i+2];ar[i+2]=t;}geo.index.needsUpdate=true;geo.computeVertexNormals();}
- const wallPts=[],wallCols=[],wallFaces=[];
- for(let i=0;i<boundary.length;i++){
-  const [x,z]=boundary[i],top=groundHeight(x,z),base=Math.min(-24,top-26);
-  const color=new THREE.Color(style.rock).multiplyScalar(.73+.12*smoothNoise(x*.05,z*.05,terrainSeed));
-  wallPts.push(x,top,z,x,base,z);wallCols.push(...vertexRGB(color),...vertexRGB(color));
-  const a=i*2,b=((i+1)%boundary.length)*2;wallFaces.push(a,a+1,b,b,a+1,b+1);
- }
- const wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(wallPts,3));wg.setAttribute('color',new THREE.Float32BufferAttribute(wallCols,3));wg.setIndex(wallFaces);wg.computeVertexNormals();
- addMesh(root,wg,materialTerrain.clone(),'Faces rochosas laterais');
- // Geometry: rivers are smooth contour-aligned water ribbon. No automatic waterfall boxes.
- if(hasRiver){
-  const steps=240,half=riverWidth*.77,v=[],ix=[],bankLine=[];
-  for(let i=0;i<=steps;i++){
-   const s=lerp(-R*.92,R*.92,i/steps),t=riverCenter(s),center=positionAlong(s,t);
-   const y=baseHeight(center.x,center.z)-5.25;
-   for(const side of [-1,1]){const p=positionAlong(s,t+side*half);v.push(p.x,y,p.z);}
-   if(i<steps){
-    const nextS=lerp(-R*.92,R*.92,(i+1)/steps),nextT=riverCenter(nextS),pLeft=positionAlong(s,t-half),pRight=positionAlong(s,t+half),nLeft=positionAlong(nextS,nextT-half),nRight=positionAlong(nextS,nextT+half);
-    if(contains(pLeft.x,pLeft.z,1)&&contains(pRight.x,pRight.z,1)&&contains(nLeft.x,nLeft.z,1)&&contains(nRight.x,nRight.z,1)){
-    // Keep the river inside the hexagonal terrain, even when rotated.
-     ix.push(i*2,i*2+1,i*2+2,i*2+1,i*2+3,i*2+2);
-    }
-   }
-   bankLine.push({s,t,x:center.x,z:center.z});
+  ball(0,.85,0,.30,.07,.27,0x85964a);
+ }else if(species==='palm'){
+  for(let i=0;i<7;i++){const a=i*2*Math.PI/7,c=Math.cos(a),s=Math.sin(a);
+   ball(c*.23,.88,s*.23,.32,.025,.09,0x39825d);
   }
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setIndex(ix);g.computeVertexNormals();
-  addMesh(root,g,material(style.water,{metalness:0,roughness:.4,transparent:true,opacity:.91,side:THREE.DoubleSide}),'Curso de água natural');
- }
- if(hasPond){
-  const pond=addMesh(root,new THREE.CircleGeometry(pondCenter.radius*.78,48),material(style.water,{roughness:.35,transparent:true,opacity:.85,side:THREE.DoubleSide}),'Lagoa local',pondCenter.x,pondLevel,pondCenter.z);
-  pond.rotation.x=-Math.PI/2;
- }
- if(biome===0){
-  const ocean=addMesh(root,new THREE.CircleGeometry(R*.85,64),material(style.water,{roughness:.4,metalness:0,side:THREE.DoubleSide}),'Superfície marinha',0,groundHeight(0,0)+.7,0);ocean.rotation.x=-Math.PI/2;
- }
- // Angular stones are strongly governed by slope, rocky substrate and water edge.
- const rockM=[],rockC=[],rObj=new THREE.Object3D(),rockLimit=Math.round((95+cfg.rocks*4)*([9,7,14].includes(biome)?1.7:1));
- function addRock(x,z,r,wet=false){if(!contains(x,z,r*.7+3))return;
-  const h=groundHeight(x,z);rObj.position.set(x,h+r*.25,z);rObj.rotation.set(random(-.15,.15),random(0,TAU),random(-.13,.13));rObj.scale.set(r*random(.7,1.7),r*random(.5,.9),r*random(.8,1.7));rObj.updateMatrix();rockM.push(rObj.matrix.clone());
-  const c=new THREE.Color(style.rock);c.multiplyScalar(wet?random(.65,.83):random(.82,1.16));rockC.push(c);
- }
- for(let i=0;i<rockLimit*3;i++){
-  if(rockM.length>=rockLimit)break;
-  const x=random(-R,R),z=random(-R,R);if(!contains(x,z,7))continue;
-  const grade=slope(x,z),steep=clamp((grade-.15)*1.7,0,1);
-  const p=([9,7,14].includes(biome)?.45:.10)+steep*.65;
-  if(rng()<p)addRock(x,z,random(1.3,5.8)*(.9+grade*.27));
- }
- if(hasRiver){
-  const count=Math.round(cfg.rocks*2.0);
+ }else if(species==='mushroomtree'){
+  cylinder(.06,.11,.16,0,.66,0,0xb0a9a0);
+  ball(0,.75,0,.41,.13,.39,0x896a9e);
+ }else if(species==='dead'){
+  for(let i=0;i<4;i++){const a=i*2*Math.PI/4+rand()*.1;const x=Math.cos(a)*.16,z=Math.sin(a)*.16;
+   cylinder(.008,.02,.32,x*.5,.64,z*.5,0x786b58,5,.35*(i%2?1:-1));
+  }
+ }else if(deciduous.includes(species)){
+  const wide=species==='oak'||species==='banyan'||species==='wideleaf',count=species==='birch'?5:species==='beech'?6:8;
+  const spread=wide?.39:species==='birch'?.18:.29;
   for(let i=0;i<count;i++){
-   const s=random(-R*.88,R*.88),t=riverCenter(s)+(rng()<.5?-1:1)*random(riverWidth*1.04,riverWidth*2.9);
-   const p=positionAlong(s,t);addRock(p.x,p.z,random(1.1,4.3),true);
+   const a=i*Math.PI*2/count+rand()*.31,d=spread*(.42+rand()*.7),x=Math.cos(a)*d,z=Math.sin(a)*d;
+   const y=.70+(rand()-.5)*.15;
+   if(i%2===0)cylinder(.01,.023,.20,x*.42,.55,z*.42,brown,5,.2);
+   ball(x,y,z,.14+rand()*.095,.12+rand()*.14,.15+rand()*.10,crown);
+  }
+  ball(0,.82,0,wide?.28:.22,.17,.25,crown);
+ }
+ const merged=mergeGeometries(parts,false);for(const p of parts)p.dispose();if(!merged)throw Error('Falha ao criar árvore: '+species);
+ merged.computeVertexNormals();geoCache.set(key,merged);return merged;
+}
+const instanceColor=(base,f=1)=>new THREE.Color(base).multiplyScalar(f);
+function pushInstance(dict,key,matrix,color){let list=dict.get(key);if(!list){list=[];dict.set(key,list);}list.push([matrix,color]);}
+function makeBatches(root,dict,geomFn,name){let n=0;for(const [key,items] of dict){const mesh=new THREE.InstancedMesh(geomFn(key),mat(0xffffff,{vertexColors:key.startsWith('tree')||false}),items.length);
+  mesh.name=name+' '+key;mesh.castShadow=name==='Árvores';mesh.receiveShadow=true;mesh.frustumCulled=false;
+  for(let i=0;i<items.length;i++){mesh.setMatrixAt(i,items[i][0]);mesh.setColorAt(i,items[i][1]);}mesh.instanceMatrix.needsUpdate=true;root.add(mesh);n+=items.length;
+ }return n;}
+function meshFromTriangles(root,name,v,c,idx){const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(v,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(c,3));geo.setIndex(idx);geo.computeVertexNormals();return placeMesh(root,name,geo,mat(0xffffff,{vertexColors:true,side:THREE.DoubleSide}));}
+function clipTriangle(points){
+ let arr=points;
+ const vertices=hexCorners();
+ for(let k=0;k<6;k++){
+  const [ax,az]=vertices[k],[bx,bz]=vertices[(k+1)%6],cross=(p)=>(bx-ax)*(p[1]-az)-(bz-az)*(p[0]-ax);
+  if(!arr.length)break;
+  const clipped=[];
+  for(let i=0;i<arr.length;i++){
+   const a=arr[i],b=arr[(i+1)%arr.length],da=cross(a),db=cross(b),ina=da>=-1e-6,inb=db>=-1e-6;
+   if(ina&&inb)clipped.push(b);
+   else if(ina&&!inb){const t=da/(da-db);clipped.push([lerp(a[0],b[0],t),lerp(a[1],b[1],t)]);}
+   else if(!ina&&inb){const t=da/(da-db);clipped.push([lerp(a[0],b[0],t),lerp(a[1],b[1],t)]);clipped.push(b);}
+  }
+  arr=clipped;
+ }
+ return arr;
+}
+function addTerrainSectors(root,height,land,dna,waterQuality){
+ const sectorSize=1000,steps=10,step=sectorSize/steps;let triangles=0,number=0;
+ const biomeCounts={};
+ for(let ix=-5;ix<5;ix++)for(let iz=-5;iz<5;iz++){
+  const x0=ix*sectorSize,z0=iz*sectorSize,v=[],cols=[],faces=[];
+  function addPoint(x,z){const y=height(x,z),wet=waterQuality?.sample(x,z),b=land.biomeAt(x,z,y);
+   const colA=new THREE.Color((BIOME_STYLE[b.id]||BIOME_STYLE[1]).ground);
+   if(b.other!=null&&b.blend>.12){const colB=new THREE.Color((BIOME_STYLE[b.other]||BIOME_STYLE[1]).ground);colA.lerp(colB,clamp(1-b.blend,0,.9));}
+   const slope=terrainSlope(height,x,z,100);const rockiness=clamp((slope-.2)/.65,0,1);
+   colA.lerp(new THREE.Color((BIOME_STYLE[b.id]||BIOME_STYLE[1]).rock),rockiness*.7);
+   if(wet&&wet.distance<wet.halfWidth*1.75)colA.lerp(new THREE.Color(0x817f68),.35);
+   const light=clamp(.92+.10*noise2(x/140,z/140,dna.seed+807),.78,1.1);colA.multiplyScalar(light);
+   const j=v.length/3;v.push(x,y,z);cols.push(colA.r,colA.g,colA.b);return j;
+  }
+  function triangle(a,b,c){const poly=clipTriangle([a,b,c]);if(poly.length<3)return;
+   const index0=addPoint(...poly[0]);for(let i=1;i<poly.length-1;i++){
+    const index1=addPoint(...poly[i]),index2=addPoint(...poly[i+1]);
+    faces.push(index0,index1,index2);triangles++;
+   }
+  }
+  for(let x=0;x<steps;x++)for(let z=0;z<steps;z++){
+   const ax=x0+x*step,az=z0+z*step,bx=ax+step,bz=az+step;
+   const centers=[[ax,az],[bx,az],[ax,bz],[bx,bz]];
+   if(!centers.some(([a,b])=>insideHex(a,b))&&!insideHex((ax+bx)/2,(az+bz)/2))continue;
+   triangle(centers[0],centers[2],centers[1]);triangle(centers[1],centers[2],centers[3]);
+  }
+  if(faces.length){meshFromTriangles(root,`Setor terreno ${ix}_${iz}`,v,cols,faces);number++;}
+ }
+ return {sectors:number,terrainTriangles:triangles,sectorSize_m:sectorSize};
+}
+function addBorder(root,height,rockColor){const p=hexCorners(),samples=24,v=[],c=[],f=[];
+ const col=rgb(rockColor);for(let i=0;i<6;i++){const a=p[i],b=p[(i+1)%6];for(let k=0;k<samples;k++){
+  const t=k/samples,x=lerp(a[0],b[0],t),z=lerp(a[1],b[1],t),top=height(x,z),bottom=-390;
+  const s=v.length/3;v.push(x,top,z,x,bottom,z);c.push(...col,...col);
+  if(s>=2)f.push(s-2,s-1,s,s-1,s+1,s);
+ }}
+ const xa=p[0][0],za=p[0][1],top=height(xa,za);const q=v.length/3;v.push(xa,top,za,xa,-390,za);c.push(...col,...col);f.push(q-2,q-1,q,q-1,q+1,q);
+ meshFromTriangles(root,'Contorno rochoso',v,c,f);
+}
+function makeRiverMesh(root,river,style){if(!river)return;
+ const verts=[],idx=[],colors=[];const col=rgb(style.water);
+ for(let i=0;i<river.path.length;i++){
+  const p=river.path[i],a=river.path[Math.max(i-1,0)],b=river.path[Math.min(i+1,river.path.length-1)];
+  const dx=b.x-a.x,dz=b.z-a.z,norm=Math.hypot(dx,dz)||1,nx=-dz/norm,nz=dx/norm;
+  for(const side of [-1,1]){let x=p.x+nx*p.halfWidth*side,z=p.z+nz*p.halfWidth*side;
+   if(!insideHex(x,z,1)){x=p.x+nx*p.halfWidth*.55*side;z=p.z+nz*p.halfWidth*.55*side;}
+   verts.push(x,p.waterY+.13,z);colors.push(...col);
+  }
+  if(i>0){const k=i*2;idx.push(k-2,k-1,k,k-1,k+1,k);}
+ }
+ const water=meshFromTriangles(root,'Rio real: downhill',verts,colors,idx);water.material=mat(0xffffff,{vertexColors:true,roughness:.34,metalness:0,transparent:true,opacity:.9,side:THREE.DoubleSide});water.userData.waterProfile=river.path.map(p=>p.waterY);
+ return water;
+}
+function planPond(height,dna){if(!dna.hasPond)return null;
+ const rng=randomSource(dna.seed+49);let best={x:0,z:0,y:Infinity};
+ for(let i=0;i<60;i++){const x=(rng()-.5)*3500,z=(rng()-.5)*3500;if(!insideHex(x,z,500))continue;const y=height(x,z);if(y<best.y)best={x,z,y};}
+ return {x:best.x,z:best.z,radius:160+100*rng(),level:best.y-.6};
+}
+function carvePond(height,pond){if(!pond)return height;
+ return (x,z)=>{const d=Math.hypot(x-pond.x,z-pond.z),t=d/pond.radius;
+  if(t>1.25)return height(x,z);
+  const bed=pond.level-2.8+Math.max(0,t-.78)*10;
+  return lerp(height(x,z),Math.min(height(x,z),bed),smoothstep((1.25-t)/.47));
+ };
+}
+function makePond(root,pond,style){if(!pond)return null;
+ const p=[],index=[],N=48;
+ p.push(pond.x,pond.level,pond.z);
+ for(let i=0;i<=N;i++){const a=i*2*Math.PI/N,x=pond.x+pond.radius*Math.cos(a),z=pond.z+pond.radius*Math.sin(a);p.push(x,pond.level,z);if(i>0)index.push(0,i,i+1);}
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setIndex(index);geo.computeVertexNormals();
+ placeMesh(root,'Lagoa ecológica',geo,mat(style.water,{roughness:.42,side:THREE.DoubleSide,transparent:true,opacity:.86}));return pond;
+}
+function addOutcropsAndRocks(root,height,land,river,style,settings,rng,edits){
+ const varieties=[new THREE.DodecahedronGeometry(1,0),new THREE.IcosahedronGeometry(1,0),new THREE.CylinderGeometry(.52,.88,1,6)];
+ const rockMap=new Map();const base=style.rock,meta=[];
+ function rock(x,z,r=5,wet=false){const footprint=r*1.4+10;if(!insideHex(x,z,footprint))return;
+  const y=height(x,z),dummy=new THREE.Object3D();dummy.position.set(x,y+r*.16,z);dummy.rotation.set((rng()-.5)*.32,rng()*Math.PI*2,(rng()-.5)*.31);
+  dummy.scale.set(r*(.72+rng()*.6),r*(.35+rng()*.55),r*(.65+rng()*.8));dummy.updateMatrix();
+  const i=Math.floor(rng()*varieties.length),color=instanceColor(base,wet?.74:.79+rng()*.36);
+  pushInstance(rockMap,'rock'+i,dummy.matrix.clone(),color);meta.push({x,z,r,footprint});
+ }
+ const count=Math.floor(110+(settings.rocks??62)*8.3);let attempts=0;
+ while(meta.length<count&&attempts++<count*13){
+  const x=(rng()-.5)*10000,z=(rng()-.5)*10000;if(!insideHex(x,z,42))continue;
+  const s=terrainSlope(height,x,z,85),n=noise2(x/350,z/350,land.dna.seed+96);
+  const geoBias=clamp((s-.18)*1.9+Math.max(0,n)*.3,0,.96),isMount=[9,7,14].includes(land.dna.main);
+  if(rng()>geoBias*(isMount?1.45:1.0)+.045)continue;
+  const near=river?.sample(x,z),wet=!!near&&near.distance<near.halfWidth*2.5;
+  if(near&&near.distance<near.halfWidth*.8)continue;
+  rock(x,z,3+rng()*(s>.50?25:14),wet);
+ }
+ // A rocky riverbank is a geomorphological feature, not a bridge or building.
+ if(river)for(const p of river.path){if(rng()<.34)continue;const n=river.sample(p.x,p.z)?.direction||[1,0],norm=Math.hypot(...n)||1;
+  const nx=-n[1]/norm,nz=n[0]/norm;
+  for(const side of [-1,1])if(rng()<.70){const dist=p.halfWidth*(1.3+rng()*.7),x=p.x+nx*dist*side,z=p.z+nz*dist*side;
+   rock(x,z,3+rng()*11,true);
   }
  }
- const rockGeo=new THREE.DodecahedronGeometry(1,0),rockMat=material(0xffffff);
- if(rockM.length){const rocks=new THREE.InstancedMesh(rockGeo,rockMat,rockM.length);rocks.name='Rochas mid-poly instanciadas';rocks.castShadow=true;rocks.receiveShadow=true;rockM.forEach((m,i)=>{rocks.setMatrixAt(i,m);rocks.setColorAt(i,rockC[i]);});rocks.instanceMatrix.needsUpdate=true;rocks.frustumCulled=false;root.add(rocks);}
- // Ecological tree populations: clustered spatial distribution, major clearings,
- // height and canopy diversity. Neighbor forests can have different dominant species.
- const treeCount=Math.round(style.forest*(36+cfg.trees*8.2)),weights=speciesWeights(biome,hasRiver||hasPond);
- const clusters=[],clusterCount=Math.max(6,Math.round(treeCount/15));
- for(let i=0;i<clusterCount;i++){const x=random(-R*.84,R*.84),z=random(-R*.8,R*.8);if(contains(x,z,16))clusters.push({x,z,w:random(9,38),dominant:chooseWeighted(rng,weights)});}
- const speciesGroups=new Map(),treeCells=new Set(),speciesCounts={};
- function claimTree(x,z){const gx=Math.floor((x+R)/6),gz=Math.floor((z+R)/6),k=gx+':'+gz;if(treeCells.has(k))return false;treeCells.add(k);return true;}
- let actualTrees=0;
- for(let i=0;i<treeCount*6&&actualTrees<treeCount;i++){
-  const center=clusters[Math.floor(rng()*clusters.length)];
-  let x,z;
-  if(center&&rng()<.87){const spread=random(12,center.w+18),a=random(0,TAU);x=center.x+Math.cos(a)*spread*Math.sqrt(rng());z=center.z+Math.sin(a)*spread*Math.sqrt(rng());}
-  else{x=random(-R,R);z=random(-R,R);}
-  if(!contains(x,z,9))continue;
-  if(hasRiver){const b=localRiverBasis(x,z);if(Math.abs(b.cross-riverCenter(b.along))<riverWidth+random(1,6))continue;}
-  if(slope(x,z)>1.2&&rng()<.92)continue;
-  const clearing=smoothNoise(x*.02,z*.02,terrainSeed+837);
-  if(clearing>.52&&rng()<.88)continue;
-  if(!claimTree(x,z))continue;
-  let sp=center?.dominant&&rng()<.63?center.dominant:chooseWeighted(rng,weights);if(!sp)continue;
-  if(hasRiver&&Math.abs(localRiverBasis(x,z).cross-riverCenter(localRiverBasis(x,z).along))<riverWidth+15&&rng()<.24)sp='willow';
-  const variation=Math.floor(rng()*3),key=sp+':'+variation;
-  const h=random(12,27)*(sp==='birch'?.84:sp==='banyan'?1.32:sp==='dead'?.73:1),w=random(.79,1.35);
-  const obj=new THREE.Object3D();obj.position.set(x,groundHeight(x,z)-.15,z);obj.scale.set(h*w,h,h*w*random(.82,1.2));obj.rotation.y=random(0,TAU);obj.updateMatrix();
-  if(!speciesGroups.has(key))speciesGroups.set(key,[]);
-  speciesGroups.get(key).push({matrix:obj.matrix.clone(),color:new THREE.Color(0xffffff).multiplyScalar(random(.75,1.16))});
-  speciesCounts[sp]=(speciesCounts[sp]||0)+1;actualTrees++;
+ for(const e of edits||[]){if(e.tool==='add-rock')rock(e.x,e.z,clamp(e.radius/14,3,65),false);}
+ for(const [key,items] of rockMap){const i=Number(key.slice(4)),mesh=new THREE.InstancedMesh(varieties[i],mat(0xffffff),items.length);mesh.name=`Rochas mid-poly ${i}`;mesh.castShadow=true;mesh.receiveShadow=true;mesh.frustumCulled=false;
+  items.forEach(([mx,col],j)=>{mesh.setMatrixAt(j,mx);mesh.setColorAt(j,col);});mesh.instanceMatrix.needsUpdate=true;root.add(mesh);
  }
- const treeMaterial=material(0xffffff,{vertexColors:true,side:THREE.FrontSide});
- for(const [key,items] of speciesGroups){const [sp,variantText]=key.split(':');const mesh=new THREE.InstancedMesh(treeGeometry(sp,Number(variantText),biome),treeMaterial,items.length);
-  mesh.name=`Árvores variadas | ${sp} | tipo ${variantText}`;mesh.castShadow=true;mesh.receiveShadow=true;mesh.frustumCulled=false;
-  items.forEach((item,i)=>{mesh.setMatrixAt(i,item.matrix);mesh.setColorAt(i,item.color);});mesh.instanceMatrix.needsUpdate=true;root.add(mesh);
+ return {count:meta.length,placements:meta};
+}
+function addVegetation(root,height,land,river,pond,settings,rng,edits){
+ const treeMap=new Map(),object=new THREE.Object3D(),positions=[],stats={};const spread=land.dna.main===0?0:BIOME_STYLE[land.dna.main]?.forest??.25;
+ const goal=Math.floor((settings.trees??72)*125*clamp(spread,.05,1.25));
+ const occupied=new Map(),cell=36;const key=(x,z)=>`${Math.floor(x/cell)},${Math.floor(z/cell)}`;
+ function good(x,z,min){const ix=Math.floor(x/cell),iz=Math.floor(z/cell);
+  for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(const p of occupied.get(`${ix+dx},${iz+dz}`)||[]){if(Math.hypot(p.x-x,p.z-z)<Math.max(p.r,min))return false;}
+  return true;
  }
- const grassCount=Math.round(cfg.detail*(style.forest>.4?4.6:2.5));
- const grassM=[],grassC=[],gObj=new THREE.Object3D();
- for(let i=0;i<grassCount*2&&grassM.length<grassCount;i++){
-  const x=random(-R,R),z=random(-R,R);if(!contains(x,z,4)||slope(x,z)>.85)continue;
-  if(hasRiver){const b=localRiverBasis(x,z);if(Math.abs(b.cross-riverCenter(b.along))<riverWidth*.85)continue;}
-  gObj.position.set(x,groundHeight(x,z)+.2,z);gObj.rotation.y=random(0,TAU);const s=random(.18,.54);gObj.scale.set(s,s*random(.6,1.8),s);gObj.updateMatrix();grassM.push(gObj.matrix.clone());
-  grassC.push(new THREE.Color(rng()<.38?0xe1cf8a:rng()<.7?0x94a867:0xcfc5bb));
+ function addTree(x,z,forced=null){const biome=land.biomeAt(x,z).id,sty=BIOME_STYLE[biome]||BIOME_STYLE[1];
+  if(sty.forest<=0)return false;
+  const species=forced||pickSpecies(biome,rng,!!river?.sample(x,z));const tall=clamp(16+rng()*27,11,53),crowngirth=species==='oak'||species==='wideleaf'||species==='banyan'? .48:.36;
+  const bound=tall*crowngirth+5;if(!insideHex(x,z,bound+4)||!good(x,z,Math.max(16,tall*.42)))return false;
+  if(terrainSlope(height,x,z,35)>1.05)return false;
+  const w=river?.sample(x,z);if(w&&w.distance<w.halfWidth+bound+7)return false;
+  if(pond&&Math.hypot(x-pond.x,z-pond.z)<pond.radius+bound+5)return false;
+  for(const e of edits||[]){if(e.tool==='remove-tree'&&Math.hypot(x-e.x,z-e.z)<e.radius)return false;}
+  const variant=Math.floor(rng()*3),y=height(x,z);
+  object.position.set(x,y,z);object.rotation.set(0,rng()*Math.PI*2,0);object.scale.set(tall*(.86+rng()*.22),tall,tall*(.86+rng()*.22));object.updateMatrix();
+  pushInstance(treeMap,`tree:${species}:${variant}`,object.matrix.clone(),new THREE.Color().setRGB(.84+rng()*.22,.84+rng()*.21,.84+rng()*.17));
+  const k=key(x,z),arr=occupied.get(k)||[];arr.push({x,z,r:tall*.43});occupied.set(k,arr);positions.push({x,z,r:bound,species});stats[species]=(stats[species]||0)+1;return true;
  }
- if(grassM.length){const g=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),material(0xffffff),grassM.length);g.name='Flores e cobertura herbácea';g.castShadow=false;g.frustumCulled=false;
-  grassM.forEach((m,i)=>{g.setMatrixAt(i,m);g.setColorAt(i,grassC[i]);});g.instanceMatrix.needsUpdate=true;root.add(g);
+ let attempts=0;
+ while(positions.length<goal&&attempts++<goal*12){
+  const x=(rng()-.5)*10000,z=(rng()-.5)*10000;if(!insideHex(x,z,35))continue;
+  const biome=land.biomeAt(x,z).id,forest=BIOME_STYLE[biome]?.forest||0;
+  const density=clamp(forest*.75+.32*noise2(x/740,z/740,land.dna.seed+167)-.05,0,1);
+  if(rng()>density)continue;
+  addTree(x,z);
  }
- // Curated special locations are intentionally NOT injected into every hex.
- // Bridges, ruins, camps and falls are 0 unless explicitly authored in a later editor.
- root.traverse(o=>{if(o.isInstancedMesh)o.frustumCulled=false;});
- const stats={biome_id:biome,archetype,archetypeName:meta.archetypeName,trees:actualTrees,treeSpecies:Object.keys(speciesCounts).length,treeSpeciesCounts:speciesCounts,
-  rocks:rockM.length,flowers:grassM.length,rivers:meta.worldRivers,localRiver:hasRiver,localPond:hasPond,bridges:0,ruins:0,camps:0,
-  scenarioKey:`${meta.id}:${cfg.seed}:${archetype}`,scenicDiameterUnits:2*R,observableDiameterMeters:2000,generated:true,seed:cfg.seed};
- return {group:root,stats,settings:cfg,biome:style,hasRiver,groundHeight};
+ for(const e of edits||[]){if(e.tool==='add-tree'&&insideHex(e.x,e.z,e.radius))addTree(e.x,e.z,'oak');}
+ const material=mat(0xffffff,{vertexColors:true,roughness:.93});
+ for(const [key,items] of treeMap){const [,species,variant]=key.split(':');const mesh=new THREE.InstancedMesh(treeGeometry(species,Number(variant)),material,items.length);
+  mesh.name=`Árvores ${species} variante ${variant}`;mesh.castShadow=false;mesh.receiveShadow=true;mesh.frustumCulled=false;
+  items.forEach(([mx,col],j)=>{mesh.setMatrixAt(j,mx);mesh.setColorAt(j,col);});mesh.instanceMatrix.needsUpdate=true;root.add(mesh);
+ }
+ const foliageBatch=new Map();const flowers=Math.floor(260+(settings.detail??65)*26);
+ for(let k=0;k<flowers;k++){
+  const x=(rng()-.5)*10000,z=(rng()-.5)*10000;if(!insideHex(x,z,10))continue;
+  const water=river?.sample(x,z);if(water&&water.distance<water.halfWidth+5)continue;
+  if(terrainSlope(height,x,z)>1.1)continue;
+  const y=height(x,z),r=1.3+rng()*2.8;object.position.set(x,y+.75,z);object.scale.set(r,.5+rng()*2.5,r);object.rotation.y=rng()*Math.PI*2;object.updateMatrix();
+  const biome=land.biomeAt(x,z).id,c=biome===1?(rng()<.5?0x86a85c:0xc5b270):BIOME_STYLE[biome]?.foliage||0x508050;
+  pushInstance(foliageBatch,'shrub',object.matrix.clone(),new THREE.Color(c));
+ }
+ makeBatches(root,foliageBatch,()=>new THREE.IcosahedronGeometry(1,0),'Sub-bosque');
+ return {trees:positions.length,treeSpecies:Object.keys(stats).length,species:stats,treePositions:positions,flowers:foliageBatch.get('shrub')?.length||0};
+}
+export function buildHexScene(region,settings={}){
+ const cfg={...defaultSettings(region),...settings};for(const k of ['trees','rocks','relief','detail','water'])cfg[k]=clamp(Number(cfg[k]??50),0,100);
+ cfg.seed=(Number(cfg.seed)||1)>>>0;cfg.edits=Array.isArray(settings.edits)?settings.edits.slice(0,300):[];
+ const land=makeLandscape(region,cfg),dna=land.dna,style=BIOME_STYLE[dna.main]||BIOME_STYLE[1];
+ const river=createRiver(land,cfg),originalHeight=river?river.groundHeight:land.baseHeight;
+ const pondPlan=river?null:planPond(originalHeight,dna),height=carvePond(originalHeight,pondPlan);
+ if(!validateRiver(river))throw Error('Geometria hidrológica inválida: água ascendente ou fora da região');
+ const root=new THREE.Group();root.name=`Wildhaven_${dna.id}_10km`;
+ root.userData={region:dna.id,observable_diameter_m:10000,geography:dna,riverProfile:river?.path.map(p=>[p.x,p.z,p.waterY])||[],preview:true,approved:false};
+ const sectors=addTerrainSectors(root,height,land,dna,river);
+ addBorder(root,height,style.rock);
+ makeRiverMesh(root,river,style);
+ const pond=makePond(root,pondPlan,style);
+ const rng=randomSource(hash32(dna.id+'|ART|'+cfg.seed));
+ const rocks=addOutcropsAndRocks(root,height,land,river,style,cfg,rng,cfg.edits);
+ const plants=addVegetation(root,height,land,river,pond,cfg,rng,cfg.edits);
+ const biomeSamples=countBiomeSamples(land,450),stats={seed:cfg.seed,region:dna.id,archetype:dna.archetype,biomes:biomeSamples,
+  trees:plants.trees,treeSpecies:plants.treeSpecies,species:plants.species,rocks:rocks.count,flowers:plants.flowers,hasRiver:!!river,hasPond:!!pond,
+  bridges:0,camps:0,ruins:0,waterSegments:river?.path.length||0,waterDrop_m:river?river.path[0].waterY-river.path.at(-1).waterY:0,
+  observableDiameterMeters:OBSERVABLE_DIAMETER_M,scenicDiameterUnits:OBSERVABLE_DIAMETER_M,sectors:sectors.sectors,sectorSizeMeters:sectors.sectorSize_m,
+  terrainTriangles:sectors.terrainTriangles,generated:true};
+ root.userData.stats=stats;
+ root.userData.boundsReport={trees:plants.treePositions.every(t=>insideHex(t.x,t.z,t.r+4)),rocks:rocks.placements.every(r=>insideHex(r.x,r.z,r.footprint)),river:validateRiver(river)};
+ return {group:root,settings:cfg,stats,biome:style,dna,hasRiver:!!river,groundHeight:height,river};
 }

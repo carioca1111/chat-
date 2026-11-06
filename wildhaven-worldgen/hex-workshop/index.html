@@ -10,7 +10,7 @@
 <body>
   <div id="app">
     <header class="masthead">
-      <div class="identity"><div class="sigil">✧</div><div><div class="eyebrow">WILDHAVEN / FERRAMENTAS DE MUNDO</div><h1>HEX <span>FACTORY</span> <small>ALPHA 0.3.0</small></h1></div></div>
+      <div class="identity"><div class="sigil">✧</div><div><div class="eyebrow">WILDHAVEN / FERRAMENTAS DE MUNDO</div><h1>HEX <span>FACTORY</span> <small>ALPHA 0.4</small></h1></div></div>
       <div class="head-status"><span class="live-dot"></span><span>Ateliê independente · Sem instalar nada</span><span class="head-divider"></span><strong id="counter">0 / 368 aprovados</strong></div>
     </header>
     <main class="workspace">
@@ -38,10 +38,10 @@
         <div class="scene-stats">
           <div class="stat"><span>TRIÂNGULOS</span><strong id="tris">—</strong></div>
           <div class="stat"><span>MALHAS</span><strong id="meshes">—</strong></div>
-          <div class="stat"><span>ÁRVORES</span><strong id="trees">—</strong></div>
-          <div class="stat"><span>ROCHAS</span><strong id="rocks">—</strong></div>
+          <div class="stat"><span>ÁRVORES</span><strong id="trees-stat">—</strong></div>
+          <div class="stat"><span>ROCHAS</span><strong id="rocks-stat">—</strong></div>
         </div>
-        <div class="scene-footer"><span class="notice-icon">✦</span><p id="scene-message">Cada cenário possui relevo e vegetação exclusivos. Selecione outras regiões e use <strong>Gerar paisagem</strong> para criar novas malhas 3D.</p></div>
+        <div class="scene-footer"><span class="notice-icon">✦</span><p id="scene-message">Este é o primeiro cenário do ateliê. Selecione outras regiões e use <strong>Gerar paisagem</strong> para criar novas malhas 3D.</p></div>
       </section>
 
       <aside class="panel tools-panel">
@@ -59,7 +59,28 @@
             <label for="water"><span>Detalhe dos rios</span><output id="water-value">80%</output></label><input id="water" type="range" min="0" max="100" value="80"/>
           </div>
           <button type="button" class="primary-action" id="generate"><span>✧</span> Gerar paisagem 3D</button>
-          <p class="help">Cena visual ampliada de uma região equivalente a 2 km. Árvores com espécies e copas distintas; cada geração escolhe um relevo próprio. Rios e lagoas são opcionais, mesmo quando existem na macrorregião.</p>
+          <p class="help">Representação geográfica de 10 km. Relevo e biomas derivados dos dados de Auralis; o sistema só cria água quando a drenagem descendente é possível.</p>
+          <div class="separator"></div>
+          <div class="control-head"><strong>Escultura e composição</strong></div>
+          <div class="terrain-editor">
+            <label for="edit-tool">Pincel 3D — use <kbd>Shift</kbd> + clique no terreno</label>
+            <select id="edit-tool" aria-label="Ferramenta do pincel">
+              <option value="raise">Elevar relevo</option><option value="lower">Rebaixar relevo</option>
+              <option value="flatten">Achatar área</option><option value="smooth">Suavizar</option>
+              <option value="add-tree">Plantar árvore</option><option value="remove-tree">Limpar árvores</option>
+              <option value="add-rock">Adicionar pedra</option>
+            </select>
+            <label for="brush-radius">Raio do pincel <output id="brush-radius-label">300 m</output></label>
+            <input id="brush-radius" type="range" min="50" max="1200" step="50" value="300"/>
+            <label for="brush-strength">Força <output id="brush-strength-label">25 m</output></label>
+            <input id="brush-strength" type="range" min="5" max="90" step="5" value="25"/>
+            <div class="action-grid"><button id="undo-edit" type="button">↶ Desfazer</button><button id="clear-edits" type="button">✕ Limpar pincéis</button></div>
+            <small id="edit-count">Nenhuma alteração manual</small>
+          </div>
+          <div class="separator"></div>
+          <div class="control-head"><strong>Geografia da cena</strong></div>
+          <div id="biome-coverage" class="geo-readout">Aguardando geração 3D...</div>
+          <div id="bounds-status" class="geo-readout">Validação de limites: aguardando</div>
           <div class="separator"></div>
           <div class="control-head"><strong>Revisão e exportação</strong></div>
           <div class="action-grid"><button id="export-glb" type="button" disabled>↓ Baixar GLB</button><button id="export-json" type="button">↓ Projeto JSON</button></div>
