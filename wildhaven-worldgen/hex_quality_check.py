@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import struct
 from pathlib import Path
 import sys
 
@@ -38,6 +39,16 @@ def check():
     model = trimesh.load(model_path, file_type="glb", force="scene")
     assert isinstance(model, trimesh.Scene)
     geometry = model.geometry
+    assert np.mean(geometry["terrain"].face_normals[:, 1] > 0) > .98, "Terrain surface upside-down"
+    assert np.mean(geometry["river"].face_normals[:, 1] > 0) > .98, "River surface upside-down"
+    raw = model_path.read_bytes()
+    json_size, json_type = struct.unpack_from("<II", raw, 12)
+    assert json_type == 0x4E4F534A
+    gltf = json.loads(raw[20:20 + json_size])
+    materials = gltf.get("materials", [])
+    assert len(materials) >= 4, "No PBR materials: glTF defaults to metallic copper!"
+    assert all(m["pbrMetallicRoughness"]["metallicFactor"] < .15 for m in materials)
+    assert all("material" in prim for mesh in gltf["meshes"] for prim in mesh["primitives"])
     required = {
         "terrain", "river", "waterfalls", "geology-riverbank-left",
         "geology-riverbank-right", "geology-exposed-bedrock",
