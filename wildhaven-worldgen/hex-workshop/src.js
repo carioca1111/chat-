@@ -198,4 +198,13 @@ function tick(){requestAnimationFrame(tick);const t=clock.getElapsedTime();if(sp
  water.forEach(obj=>{if(obj.userData.flowShader)obj.userData.flowShader.uniforms.uFlowTime.value=t;});
  controls.update();renderer.render(scene,camera);
 }
+window.__wildhavenInspect=()=>({
+ sceneLoaded: Boolean(model),
+ drawCalls: renderer.info.render.calls,
+ gpuTriangles: renderer.info.render.triangles,
+ camera: [camera.position.x,camera.position.y,camera.position.z].map(n=>Math.round(n*100)/100),
+ canvas: {width:renderer.domElement.width,height:renderer.domElement.height},
+ sceneGroups: model?.children.length||0,
+ status: stateName('H_5_7')
+});
 tick();
