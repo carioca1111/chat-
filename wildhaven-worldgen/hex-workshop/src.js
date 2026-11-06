@@ -154,13 +154,13 @@ function makeAnimatedWater(obj){
  obj.material.onBeforeCompile=(shader)=>{
   shader.uniforms.uFlowTime={value:0};
   shader.vertexShader=shader.vertexShader.replace('#include <common>',
-   '#include <common>\\nvarying vec3 vFlowPosition;');
+   '#include <common>\nvarying vec3 vFlowPosition;');
   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
-   '#include <begin_vertex>\\nvFlowPosition=position;');
+   '#include <begin_vertex>\nvFlowPosition=position;');
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-   '#include <common>\\nuniform float uFlowTime;\\nvarying vec3 vFlowPosition;');
+   '#include <common>\nuniform float uFlowTime;\nvarying vec3 vFlowPosition;');
   shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
-   '#include <color_fragment>\\nfloat ripples=sin(vFlowPosition.z*.52-uFlowTime*2.3+sin(vFlowPosition.x*.37)*1.6);\\ndiffuseColor.rgb*=.944+.056*ripples;');
+   '#include <color_fragment>\nfloat ripples=sin(vFlowPosition.z*.52-uFlowTime*2.3+sin(vFlowPosition.x*.37)*1.6);\ndiffuseColor.rgb*=.944+.056*ripples;');
   obj.userData.flowShader=shader;
  };
  water.push(obj);
