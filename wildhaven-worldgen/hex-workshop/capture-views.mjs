@@ -25,7 +25,17 @@ try {
   await page.waitForTimeout(750);
   const filename=view+'.png';
   const target=page.locator('#three-view canvas');
-  await target.screenshot({path:resolve(destination,filename),animations:'disabled'});
+  // Do not wait for a continuously animated WebGL canvas to become "stable".
+  // Capture the visible canvas rectangle using page screenshot and a generous
+  // software-WebGL timeout: Playwright's element-screenshot default (~5s)
+  // can fail on CI even though the geometry and renderer are healthy.
+  const rect=await target.boundingBox();
+  if(!rect||rect.width<800||rect.height<350)throw new Error('3D viewport invalid: '+JSON.stringify(rect));
+  await page.screenshot({
+    path:resolve(destination,filename),
+    clip:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
+    animations:'disabled',timeout:120000,
+  });
   const metrics=await page.evaluate(()=>window.__wildhavenInspect?.()||{});
   data.views.push({view,image:filename,...metrics,browserErrors});
   if(browserErrors.length)throw new Error(view+': '+browserErrors.join(' | '));
