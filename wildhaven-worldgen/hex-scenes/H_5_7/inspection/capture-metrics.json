@@ -5,85 +5,57 @@
     {
       "view": "overview",
       "image": "overview.png",
-      "sceneLoaded": true,
-      "drawCalls": 42,
-      "gpuTriangles": 100612,
-      "camera": [
-        170,
-        175,
-        215
-      ],
-      "canvas": {
-        "width": 945,
-        "height": 645
-      },
-      "sceneGroups": 1,
-      "status": "Em desenvolvimento",
-      "lod": "distant",
-      "renderedTriangles": 100612,
+      "regions": 368,
+      "selected": "H_5_7",
+      "modelLoaded": true,
+      "modelKind": "original",
+      "renderCalls": 44,
+      "renderTriangles": 135072,
+      "approved": 0,
+      "generatedSeed": 20207246,
+      "dirty": false,
       "browserErrors": []
     },
     {
       "view": "river",
       "image": "river.png",
-      "sceneLoaded": true,
-      "drawCalls": 44,
-      "gpuTriangles": 135072,
-      "camera": [
-        84,
-        94,
-        118
-      ],
-      "canvas": {
-        "width": 945,
-        "height": 645
-      },
-      "sceneGroups": 1,
-      "status": "Em desenvolvimento",
-      "lod": "near",
-      "renderedTriangles": 135072,
+      "regions": 368,
+      "selected": "H_5_7",
+      "modelLoaded": true,
+      "modelKind": "original",
+      "renderCalls": 44,
+      "renderTriangles": 135072,
+      "approved": 0,
+      "generatedSeed": 20207246,
+      "dirty": false,
       "browserErrors": []
     },
     {
       "view": "cliffs",
       "image": "cliffs.png",
-      "sceneLoaded": true,
-      "drawCalls": 37,
-      "gpuTriangles": 134618,
-      "camera": [
-        55,
-        108,
-        -91
-      ],
-      "canvas": {
-        "width": 945,
-        "height": 645
-      },
-      "sceneGroups": 1,
-      "status": "Em desenvolvimento",
-      "lod": "near",
-      "renderedTriangles": 134618,
+      "regions": 368,
+      "selected": "H_5_7",
+      "modelLoaded": true,
+      "modelKind": "original",
+      "renderCalls": 44,
+      "renderTriangles": 135072,
+      "approved": 0,
+      "generatedSeed": 20207246,
+      "dirty": false,
       "browserErrors": []
     },
     {
       "view": "camp",
       "image": "camp.png",
-      "sceneLoaded": true,
-      "drawCalls": 43,
-      "gpuTriangles": 134796,
-      "camera": [
-        -125,
-        85,
-        98
-      ],
-      "canvas": {
-        "width": 945,
-        "height": 645
-      },
-      "sceneGroups": 1,
-      "status": "Em desenvolvimento",
-      "lod": "near",
-      "renderedTriangles": 134796,
+      "regions": 368,
+      "selected": "H_5_7",
+      "modelLoaded": true,
+      "modelKind": "original",
+      "renderCalls": 44,
+      "renderTriangles": 135072,
+      "approved": 0,
+      "generatedSeed": 20207246,
+      "dirty": false,
       "browserErrors": []
     }
   ]
