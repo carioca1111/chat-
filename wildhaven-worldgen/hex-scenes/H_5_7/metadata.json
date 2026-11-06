@@ -92,24 +92,24 @@
       "vertices": 564
     },
     "trees-trunks": {
-      "triangles": 5864,
-      "vertices": 3484
+      "triangles": 6200,
+      "vertices": 3680
     },
     "pine-needles": {
       "triangles": 6840,
       "vertices": 4560
     },
     "broadleaf-canopies": {
-      "triangles": 13760,
-      "vertices": 7740
+      "triangles": 16000,
+      "vertices": 9000
     },
     "shrubs": {
-      "triangles": 4760,
-      "vertices": 2856
+      "triangles": 5160,
+      "vertices": 3096
     },
     "wildflowers": {
-      "triangles": 32288,
-      "vertices": 20180
+      "triangles": 34432,
+      "vertices": 21520
     },
     "bridge-planks": {
       "triangles": 288,
@@ -184,20 +184,44 @@
       "vertices": 1191
     },
     "geology-exposed-bedrock": {
-      "triangles": 1848,
-      "vertices": 1288
+      "triangles": 1650,
+      "vertices": 1150
     },
     "geology-talus": {
-      "triangles": 365,
-      "vertices": 228
+      "triangles": 525,
+      "vertices": 327
     },
     "geology-river-boulders": {
       "triangles": 14360,
       "vertices": 8978
     },
     "geology-sediment-shelves": {
-      "triangles": 891,
-      "vertices": 621
+      "triangles": 957,
+      "vertices": 667
+    },
+    "geology-riparian-terrace-west": {
+      "triangles": 2090,
+      "vertices": 1260
+    },
+    "geology-riparian-terrace-east": {
+      "triangles": 2240,
+      "vertices": 1350
+    },
+    "geology-stratal-escarpments": {
+      "triangles": 392,
+      "vertices": 336
+    },
+    "geology-cliff-fractures": {
+      "triangles": 28,
+      "vertices": 84
+    },
+    "geology-escarpment-talus": {
+      "triangles": 1730,
+      "vertices": 1082
+    },
+    "geology-clustered-bankstones": {
+      "triangles": 10965,
+      "vertices": 6848
     }
   },
   "geology_metrics": {
@@ -217,24 +241,39 @@
       }
     ],
     "slope_class_samples": {
-      "suave": 1063,
-      "moderado": 205,
-      "acentuado": 46,
-      "escarpa": 7
+      "suave": 1078,
+      "moderado": 168,
+      "acentuado": 59,
+      "escarpa": 11
     },
-    "slope_exposures": 56,
+    "slope_exposures": 50,
     "riverbank_boulders": 362,
-    "sediment_shelves": 27,
+    "sediment_shelves": 29,
     "water_surface_animation": "shader-only; fixed water geometry",
-    "vegetation_rule": "slope+river+points-of-interest; deterministic seed"
+    "vegetation_rule": "slope+river+points-of-interest; deterministic seed",
+    "riparian_terrace_segments": 433,
+    "stratified_escarpments": 14,
+    "cliff_fissures": 28,
+    "escarpment_talus": 44,
+    "asymmetric_bank_clusters": 80,
+    "embedded_bank_stones": 269,
+    "detail_rule": "terrain_gradient+river_distance+erosion_proxy",
+    "model_type": "real_triangle_meshes_no_texture_decals"
+  },
+  "ecology": {
+    "macro_biome": "temperate_forest",
+    "baseline_temperature_c": 24.6,
+    "annual_precipitation_mm": 1137.16,
+    "placement": "altitude+slope+river_distance+soil_moisture+fertility+microtemperature",
+    "sample_proxies_are_not_authoritative_continental_fields": true
   },
   "boundary_metadata": {
     "shape": "hexagonal",
     "water_portals": "derived from procedural river centerline; pending cross-hex neighbor validation",
     "geometry_clipped": true
   },
-  "total_triangles": 112479,
-  "glb_bytes": 2483812,
+  "total_triangles": 135072,
+  "glb_bytes": 2984004,
   "integration_status": "in_development_unapproved",
   "generated_with": "Python trimesh; water shading via independent Three.js viewer."
 }

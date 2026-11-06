@@ -6,8 +6,8 @@
       "view": "overview",
       "image": "overview.png",
       "sceneLoaded": true,
-      "drawCalls": 38,
-      "gpuTriangles": 112479,
+      "drawCalls": 42,
+      "gpuTriangles": 100612,
       "camera": [
         170,
         175,
@@ -19,14 +19,16 @@
       },
       "sceneGroups": 1,
       "status": "Em desenvolvimento",
+      "lod": "distant",
+      "renderedTriangles": 100612,
       "browserErrors": []
     },
     {
       "view": "river",
       "image": "river.png",
       "sceneLoaded": true,
-      "drawCalls": 38,
-      "gpuTriangles": 112479,
+      "drawCalls": 44,
+      "gpuTriangles": 135072,
       "camera": [
         84,
         94,
@@ -38,14 +40,16 @@
       },
       "sceneGroups": 1,
       "status": "Em desenvolvimento",
+      "lod": "near",
+      "renderedTriangles": 135072,
       "browserErrors": []
     },
     {
       "view": "cliffs",
       "image": "cliffs.png",
       "sceneLoaded": true,
-      "drawCalls": 31,
-      "gpuTriangles": 112025,
+      "drawCalls": 37,
+      "gpuTriangles": 134618,
       "camera": [
         55,
         108,
@@ -57,14 +61,16 @@
       },
       "sceneGroups": 1,
       "status": "Em desenvolvimento",
+      "lod": "near",
+      "renderedTriangles": 134618,
       "browserErrors": []
     },
     {
       "view": "camp",
       "image": "camp.png",
       "sceneLoaded": true,
-      "drawCalls": 37,
-      "gpuTriangles": 112203,
+      "drawCalls": 43,
+      "gpuTriangles": 134796,
       "camera": [
         -125,
         85,
@@ -76,6 +82,8 @@
       },
       "sceneGroups": 1,
       "status": "Em desenvolvimento",
+      "lod": "near",
+      "renderedTriangles": 134796,
       "browserErrors": []
     }
   ]
