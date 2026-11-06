@@ -1,0 +1,10 @@
+.godot/
+.import/
+*.tmp
+*.log
+# Modelo extraído do pacote já versionado na branch de cenas
+assets/*.glb
+# O gerador geográfico é versionado em wildhaven-worldgen/outputs/
+data/regions.json
+data/world.json
+data/biomes.png

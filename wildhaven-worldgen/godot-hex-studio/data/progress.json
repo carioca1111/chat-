@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "atlas_source": "Auralis / seed 20051028 / Godot Studio",
+  "world_regions": 368,
+  "regions": {
+    "H_5_7": {
+      "name": "Bosque das Cascatas",
+      "status": "in_development",
+      "approved": false,
+      "model": "res://assets/H_5_7_forest.glb"
+    }
+  }
+}
