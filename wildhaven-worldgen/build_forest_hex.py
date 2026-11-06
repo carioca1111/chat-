@@ -8,6 +8,7 @@ from pathlib import Path
 from collections import defaultdict
 import numpy as np
 import trimesh
+from hex_landscape_systems import build_geology, slope_at, slope_class
 
 ROOT=Path(__file__).parent
 OUT=ROOT/'hex-scenes'/'H_5_7'; OUT.mkdir(parents=True,exist_ok=True)
@@ -71,8 +72,16 @@ def baseline(x,z):
 
 def terrain_y(x,z):
  dx=x-rxc(z)
- river=math.exp(-.5*(dx/(6.2+1.2*math.sin(z*.065)))**4)
- return baseline(x,z)-2.0*river
+ # Real sunken river channel, with naturally irregular stepped banks.
+ # The render water level is ~baseline(rxc(z),z)-0.35.
+ width=7.8+1.1*math.sin(z*.065)
+ river=math.exp(-.5*(dx/width)**4)
+ bed=baseline(x,z)-3.35*river
+ # Two sharply terraced, LOCALIZED highland ridges expose bedrock,
+ # while gradual hills remain soft and vegetated.
+ west=1.9*gauss(x,z,-53,-50,24,32)*(.5+.5*math.tanh((-z-37)/2.3))
+ east=2.35*gauss(x,z,52,-46,28,36)*(.5+.5*math.tanh((-z-36)/2.0))
+ return bed+west+east
 
 def add_box(group,pos,size,color):
  cx,cy,cz=pos; sx,sy,sz=size
@@ -169,6 +178,7 @@ def find_spots(count,avoid,part='all',maxtries=160000):
   if not inside(x,z,margin=7):continue
   if part=='pine' and z>73:continue
   if abs(x-rxc(z))<avoid:continue
+  if slope_at(terrain_y,x,z,1.4) > (1.05 if count>=40 else 1.6):continue
   if ((x+63)**2+(z-29)**2)<15**2:continue # camp
   if ((x-54)**2+(z+53)**2)<15**2:continue # ruins
   if ((x-64)**2+(z+9)**2)<10**2:continue # cave
@@ -179,7 +189,7 @@ def find_spots(count,avoid,part='all',maxtries=160000):
  return found
 
 # GEOLOGY: Surface with perfect 6-sided perimeter, radial mesh filling the whole hex.
-N=33;EDGE=20;SIDES=6*EDGE
+N=59;EDGE=26;SIDES=6*EDGE
 verts=[[0,terrain_y(0,0),0]]
 for j in range(1,N+1):
  t=j/N
@@ -201,6 +211,12 @@ for x,y,z in verts:
  v=(86,138,65) if y<10 else ((102,138,66) if y<18 else (134,143,92))
  if hill>9:v=(142,141,113)
  if stream<9:v=(101,122,76)
+ # Lithology is driven by actual height gradient, not arbitrary rocks.
+ gradient=slope_at(terrain_y,x,z,1.5)
+ if gradient>.75:
+  v=(146,144,126) if gradient<1.75 else (128,135,124)
+ elif gradient>.4 and y>16:
+  v=(126,142,106)
  delta=math.sin(x*.63+z*.71)*7+math.cos(x*.19-z*.41)*4
  colors.append([max(0,min(255,int(vv+delta))) for vv in v]+[255])
 add('terrain',verts,faces,colors)
@@ -222,23 +238,25 @@ add('underside',bottom,[[0,k,k+1] for k in range(1,5)],[57,55,50,255])
 
 # River water following geological trench. White irregular foam on both banks.
 wv=[];wf=[];wc=[];foamv=[];foamf=[];foamc=[]
-zs=np.linspace(-102,102,225)
+zs=np.linspace(-104,104,325)
 for i,z in enumerate(zs):
  x=rxc(z);c=baseline(x,z)-.35
  width=5.35+.8*math.sin(z*.09)
+ if not (inside(x-width,z,0) and inside(x+width,z,0)):
+  continue
  for side in (-1,1):
   xx=x+side*width
-  # The water always rests in the channel (except engineered waterfalls).
-  yy=c+(.05 if side==1 else 0)
+  yy=c+(.025 if side==1 else 0)
   wv.append([xx,yy,z]);wc.append(col((15,139,169) if i%7 else (34,161,178),4))
- if i:
-  k=2*i;wf.extend([[k-2,k-1,k+1],[k-2,k+1,k]])
+ if len(wv)>2:
+  k=len(wv)-2;wf.extend([[k-2,k-1,k+1],[k-2,k+1,k]])
 add('river',wv,wf,wc)
 # Foam bars along river edge; glints and banks; drawn on top of water.
 for i in range(4,len(zs)-4,4):
  z=float(zs[i]);x=rxc(z);y=baseline(x,z)-.20
  for bank in [-1,1]:
   if rng.random()>.66:continue
+  if not inside(x+bank*6.1,z,0):continue
   xx=x+bank*(4.6+.6*math.sin(z*.09))
   a=len(foamv)
   foamv.extend([[xx-.38,y+.09,z-.55],[xx+.35,y+.09,z-.40],[xx+.12,y+.12,z+1.25]])
@@ -400,6 +418,11 @@ for x,z in [(-19,57),(26,66),(69,65),(-57,67)]:
  if inside(x,z,4):
   for _ in range(9):shrub(x+rng.uniform(-4,4),z+rng.uniform(-4,4),rng.uniform(.5,1.2))
 
+# Install new reusable stratal cliffs, differentiated shorelines, wet boulders,
+# sediment and slope-dependent bedrock. This stays independent of gameplay.
+geology=build_geology(add=add,height=terrain_y,baseline=baseline,
+                      river_center=rxc,inside=inside,seed=SEED)
+
 scene=trimesh.Scene()
 report={}
 for name,geo in GROUPS.items():
@@ -415,11 +438,19 @@ manifest={
  'art_direction':'Mid-poly naturalista estilizado; reproduz composição e paleta da referência visual aprovada, não reconstrução fotogramétrica.',
  'reference':'a_highly_detailed_isometric_3d_stylized_diorama_o.png',
  'region_geography':{'temperate_forest_fraction':.9081939799331104,'mean_elevation_m':175.93,'mean_temperature_c':24.60,'precipitation_mm_year':1137.16,'rivers':27,'lakes':6},
- 'coordinates':{'global_region_center_m':[3533383.6474405094,2520000.0], 'local_geometry':'X leste, Y vertical, Z sul; unidade artistica ~= metro diorama','local_hex_radius':R,'world_hex_radius_m':240000,'note':'Cena artística de um setor do hex geográfico, ainda não cobre nem substitui seus 240 km de raio.'},
+ 'coordinates':{'global_region_center_m':[3533383.6474405094,2520000.0],
+                'local_geometry':'X leste, Y vertical, Z sul; unidade cênica procedural',
+                'local_hex_radius':R, 'observable_region_diameter_m':2000,
+                'scenic_unit_to_observable_meter':round(2000/(2*R),6),
+                'world_hex_radius_m':240000,
+                'note':'Representação CONDENSADA: o footprint cênico não é um terreno 1:1 de 2km. Mantém o continente original, e ainda requer adequação de escala de fauna e navegação.'},
  'assets':{'glb':'forest-temperate.glb','progress':'../../hex-workshop/public/progress.json'},
  'elements':['terrain hexagonal 3D','margens rochosas','rio sinuoso','3 cachoeiras','ponte de madeira','bandeiras vermelhas','acampamento com barraca e fogueira','ruínas de pedra','caverna','lago pequeno','pinheiros','árvores folhosas verdes e outonais','rochas','flores','arbustos','cervos'],
- 'geometry':report,'total_triangles':sum(z['triangles'] for z in report.values()),'glb_bytes':len(glb),
- 'integration_status':'visual_preview_only','generated_with':'Python trimesh; asset estático GLB, sem dependência de IA na runtime.'
+ 'geometry':report,'geology_metrics':geology,
+ 'boundary_metadata':{'shape':'hexagonal', 'water_portals':'derived from procedural river centerline; pending cross-hex neighbor validation', 'geometry_clipped':True},
+ 'total_triangles':sum(z['triangles'] for z in report.values()),'glb_bytes':len(glb),
+ 'integration_status':'in_development_unapproved',
+ 'generated_with':'Python trimesh; water shading via independent Three.js viewer.'
 }
 (OUT/'metadata.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf8')
 print('Built',OUT,'bytes',len(glb),'triangles',manifest['total_triangles'],'meshes',len(report))
