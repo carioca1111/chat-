@@ -1,9 +1,11 @@
 {
-  "format_version": "1.0.0",
+  "format_version": "1.1.0",
   "name": "Wildhaven / Auralis",
   "seed": 20051028,
   "config": {
     "seed": 20051028,
+    "revision": 2,
+    "coastal_islands": true,
     "width_m": 6400000,
     "height_m": 8000000,
     "resolution": [
@@ -14,6 +16,22 @@
     "latitude_south_deg": -12,
     "latitude_north_deg": 80,
     "river_threshold_km2": 5000,
+    "inspector_max_samples": 768,
+    "erosion": {
+      "iterations": 12,
+      "model_years": 100000,
+      "stream_power_k": 3e-06
+    },
+    "mountain_detail": {
+      "resolution": 512,
+      "extent_m": 64000
+    },
+    "quality_targets": {
+      "max_desert_fraction": 0.16,
+      "max_shore_straight_run_m": 120000,
+      "min_shore_complexity_ratio": 1.08,
+      "min_mainland_fraction": 0.97
+    },
     "height_encoding": {
       "offset_m": -6000,
       "scale_m": 0.25
@@ -60,8 +78,8 @@
       ],
       "dtype": "<f4",
       "units": "fraction 0..1",
-      "sha256": "81de0a1794edc590ac9c9641f71c2dec35dcb44cee786a59886b5b63907b71ce",
-      "array_sha256": "107bbc4db24ffc4255062920abc9cf61757ff9211b4d39b94b5635c5dd437478"
+      "sha256": "201bdd16e6509bb73e7a6729923d5f34b7b718b745a0c1549c68cb64a8c99df7",
+      "array_sha256": "ba14cfabf68119876fb790e51c08e3deb73c2645c05bbd1b4481330ec163a7e1"
     },
     "biomass": {
       "path": "fields/biomass.npz",
@@ -72,8 +90,8 @@
       ],
       "dtype": "<f4",
       "units": "fraction 0..1",
-      "sha256": "8d002e9079faba88eb43e548ea3716130ac3bbc43bbda3fbb11920845cddffa9",
-      "array_sha256": "750ec7b8e7fdbbbc04ad8d253ce1c0e475e1e2d5d5216ce8166240b109a033f3"
+      "sha256": "c464a109bde0a2cad201f746055b9294b3c5cf7f3c3825099378986d5525d09a",
+      "array_sha256": "5e9bae033c5e733a0330e33f3c7b5e867ec9ba90167aa5f0bb232d084eaa323a"
     },
     "biomes": {
       "path": "fields/biomes.npz",
@@ -84,8 +102,8 @@
       ],
       "dtype": "|u1",
       "units": "biome ID",
-      "sha256": "ad4360b02139965e6692e209d18d1ef0b48d6fe295e7826ca4c17ebe640d2757",
-      "array_sha256": "31b944e1ab314c6c73c5a48e727e4927c5484c4f7bd319d2b635117c917409a4"
+      "sha256": "532a4af6bed3646f15dcca6c3f378e7f40a3e8d921f49bc544705e8e3f6bacb2",
+      "array_sha256": "605501a836bd42e86261f59e774a0f962fbd67bcf765e572a29b9f67315cb503"
     },
     "discharge_m3s": {
       "path": "fields/discharge_m3s.npz",
@@ -96,8 +114,8 @@
       ],
       "dtype": "<f4",
       "units": "m3/s",
-      "sha256": "d80b255f835cee20d29a88598bb693f6d366b6ec4a9b89f9633be87d9bbdb9c2",
-      "array_sha256": "f8490bf1a21e3a3a78b5d9cc0135af66bd4ec19ce5d9e4a8f87df4ee81c25ad6"
+      "sha256": "da4c98adf365233dfea207652a777efbb1614ce0b88d46876db0188ce74b4c0e",
+      "array_sha256": "9693047f8dfaadc10215525b06edc3a466ab24dfebd235e8fa16707e60279cf1"
     },
     "distance_to_coast_m": {
       "path": "fields/distance_to_coast_m.npz",
@@ -108,8 +126,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "fd75cde754eca9ddcf3b0031ae9e21f702ad3c0fdcfcb8fe72d6b91321f59e8b",
-      "array_sha256": "b0d1064615f826a66d271a2a9f1ce529d52ab5e73df62a08bf4155c9e6d4bad8"
+      "sha256": "aeab4fab0d12038e4c9d4f293cbaecf7f3916f1c9376f6c8158ff2cc46468369",
+      "array_sha256": "e2f52aa0d43ba6126b568a8a01f5dcd57365fd205cfe64a54b68cce43468ff19"
     },
     "elevation_m": {
       "path": "fields/elevation_m.npz",
@@ -120,8 +138,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "c59f2a097e69ce7ddea8269452a84fe3342533dcc612ebffaa56dfd49e6cce78",
-      "array_sha256": "f0e6d637bd8175e1e51857b8ff7b6464b3f759cf58de4674b0608b9fe572e025"
+      "sha256": "9c4e94aadd29b46d767cbf2029e905758fede6495bc0883ca30c288037dc72a5",
+      "array_sha256": "3c242151e1e5774e5000f406b034fe6c9412f03641283fcb59e255f34258e31c"
     },
     "erosion_m": {
       "path": "fields/erosion_m.npz",
@@ -132,8 +150,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "b3ff20ae71e74c4f8ee844471c10213318f939637acc6c1f8725dd5e21b4e772",
-      "array_sha256": "a82d136cd8ff4c5148a92cd22429e4620cad3ed072ff1f25c355a7f1cf524244"
+      "sha256": "f1d900aabd3948ba2eed6619178b0bba5395daa6550d0ffb57a5b855b9a9f962",
+      "array_sha256": "62b42d6a92b3c9c3abe05aad3e910ca832f19f7d86ec4e3deb91432dd56a0a91"
     },
     "ethereal_anomaly": {
       "path": "fields/ethereal_anomaly.npz",
@@ -156,8 +174,8 @@
       ],
       "dtype": "<f4",
       "units": "fraction 0..1",
-      "sha256": "fb10d4a21972cbcdc6e066ddf8a0086b50bdae84350fe7451fc85d04a45ce5ff",
-      "array_sha256": "d0334aae8a4210f41fde1097fae64ad66fafd64f262365f054282a9951f1e400"
+      "sha256": "25d2e585ab1d6965283b24a91467af8bdb2ab1d3d6ae5c3f6490909a76ffc20b",
+      "array_sha256": "60078c2abdddf8e2f1b5993d4d3e80974bc88b869126ee46da9adb79bc0d25bb"
     },
     "flow_accumulation_km2": {
       "path": "fields/flow_accumulation_km2.npz",
@@ -168,8 +186,8 @@
       ],
       "dtype": "<f4",
       "units": "km2",
-      "sha256": "1831f7a0d42c1d3e52512c2eec74a1bb29ed93cad23b0bf2d95cb41f1316319e",
-      "array_sha256": "3cf86521ac679726a22a8691a470984e0563d039c20a12bb28b6f3ecd1fb426f"
+      "sha256": "33dd74084b9a4fa9c012ca7ef1ec2eeb5e46b6070c77bf9ea1a5fa13c89e23b5",
+      "array_sha256": "6d5e468669d3f624b84e3a59f2b16051c263b20732cac996ba86d34d8b88c02d"
     },
     "flow_rank": {
       "path": "fields/flow_rank.npz",
@@ -180,8 +198,8 @@
       ],
       "dtype": "<i4",
       "units": "topological index",
-      "sha256": "f38936a918ec1ab9bd89d62132dd1fe35aa44895e4d5691c33212a4d2e46e32e",
-      "array_sha256": "60a7520e1daf8acaf83b2b2f6932c850fa373a5e820ff15f216915a4f98dd52d"
+      "sha256": "a0e9a9adcbeb9bf2b9b66fb7dc4cf72e7841bd49395fcc93c38aa4dd0102fbeb",
+      "array_sha256": "197906597f1b1fc7346ce1bb2a6de88aeb75d6c40aacc1a960e92165b4b4c0da"
     },
     "flow_receiver": {
       "path": "fields/flow_receiver.npz",
@@ -192,8 +210,8 @@
       ],
       "dtype": "<i4",
       "units": "flattened cell index; -1 ocean",
-      "sha256": "ca1d56b76e9dae7c9417c555574b8e25ba46221984280ec0b6ed22522b9b8d6a",
-      "array_sha256": "606562b49967a5e70ab568a3f4874c07530ab04d7cbc0e623fab87c4ae7fd362"
+      "sha256": "af42a38da34d076b330548e89b52d3e97b262968c465676fbb508b8991403503",
+      "array_sha256": "0107cec823d18a6289dbf60aee9150de859d995eee7c735725f1270a9bca6674"
     },
     "fungal_substrate": {
       "path": "fields/fungal_substrate.npz",
@@ -207,6 +225,66 @@
       "sha256": "9183210398ec07e94d7ba133530f70262465e597c191ad1d8229c218bf99f6c0",
       "array_sha256": "14d1dc2a73658f186bc099957a8b99ef159d58a49e324b055f82e140b0150046"
     },
+    "geomorphic_deposition_m": {
+      "path": "fields/geomorphic_deposition_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "a54b5794713777a53e7684def24df17896781753e8164238a8e4a1bdd5cd96ba",
+      "array_sha256": "3e24cc0fafd365eb935f0cda4d5862a66e47b1d62552c72806e3dc927017bbca"
+    },
+    "geomorphic_erosion_m": {
+      "path": "fields/geomorphic_erosion_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "aa1b75e93590fc30df5a49fc96ba875f67dfc71097e62417f8dc4944c2b20867",
+      "array_sha256": "8bd012359adb371641f67bea7fa8c94f5f35ee0685a6ae828b9100e5c03b8741"
+    },
+    "geomorphic_fluvial_incision_m": {
+      "path": "fields/geomorphic_fluvial_incision_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "610d62f17da0059ef8301c4c5162a985fc6fe105271f396aea34cca77fbd1643",
+      "array_sha256": "6d48ba03713b3648892deb33696b7552d76ba00093a6e97b58fae26af6d7bff9"
+    },
+    "geomorphic_hillslope_transport_m": {
+      "path": "fields/geomorphic_hillslope_transport_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "5515119f01bffddf07879ba27d5ee0abfda71798c356aed26766ac726b19b598",
+      "array_sha256": "ad43dbd61e012c3e107179ca43b091d4dba6358ef57cd3a153f92684080ba855"
+    },
+    "geomorphic_net_change_m": {
+      "path": "fields/geomorphic_net_change_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "27a10f59ffc9b047283f9bb1ad2662cd44d752c5bd2161e2f9724b534d191d35",
+      "array_sha256": "34c06bfac019dcd8f5ed9bd8045c083ce842035b7c36589c4351efeeac00f3c0"
+    },
     "lake_depth_m": {
       "path": "fields/lake_depth_m.npz",
       "key": "data",
@@ -216,8 +294,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "45ce410e5b8fcae56606f94347585c58e0cf04a43f7eed1e2f4792b8a47d75c0",
-      "array_sha256": "8fb6077a096f4a1b78447f6a1af13e1dcbe7f77bb59648d9b418f7c0791e99fd"
+      "sha256": "d20327311ac90f8ff4944860a76e802f24ab85ce5430848af9fb16ee64b3afe8",
+      "array_sha256": "cad8cfce6578d6b97fb59f2e315bdcd36cac99acc98346c318f741dfc4c45365"
     },
     "lake_id": {
       "path": "fields/lake_id.npz",
@@ -228,8 +306,8 @@
       ],
       "dtype": "<i4",
       "units": "lake integer ID; 0 none",
-      "sha256": "32e18a01037a953ee7104c2d191c85daf127834c94a56747d8d90bde5ccb5055",
-      "array_sha256": "2e46bb6ae559ea29ae730cf99c7d158fa08ea813342d8d496abfbde4532d02f5"
+      "sha256": "0586a28fcd4d8e647c47349b67d041c37a3a6e8305d98fb664de0ab8fa5c7f15",
+      "array_sha256": "90abcf6739ba6331f26e7eb40a41699240ab36c7314fe9a1b8b4a75b16b8548e"
     },
     "land_mask": {
       "path": "fields/land_mask.npz",
@@ -240,8 +318,8 @@
       ],
       "dtype": "|b1",
       "units": "boolean land mask",
-      "sha256": "396af45e2c165c121ef30be4d158a623c5557b05f9669add96e616201522f61e",
-      "array_sha256": "8f799685a1ed09eae89afcf422a8e6384ddf69f897892c87f66f712479f266a5"
+      "sha256": "b6f79f2caac15011ff49ba49cebf9faebc60356d3ccf390487caf8f222fc28e7",
+      "array_sha256": "9e95e23edae6102c19aad87b80610dc6e1c226d57dc3d9355d5b846f9762af78"
     },
     "latitude_deg": {
       "path": "fields/latitude_deg.npz",
@@ -288,8 +366,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "0b2bbe07000a213ade8723fb9758310b420cf23bb8c24cb10a1f1230a78ef026",
-      "array_sha256": "fef10c3e57d8328a07accac1350e2ae4cd54be042c30da019f7690b7afc15d62"
+      "sha256": "d651679260159532b2846d442379630ca798209abed2e45ef0c9f0442034ad0c",
+      "array_sha256": "f0e0ee08820c95548d6b00cd39c28214400ad516e0d53a79c7da7867637985ab"
     },
     "precipitation_mm": {
       "path": "fields/precipitation_mm.npz",
@@ -300,8 +378,8 @@
       ],
       "dtype": "<f4",
       "units": "mm/year",
-      "sha256": "4d2d44e1387d2d9f9208bc85ff22354067e40ac26a9e8f4a7f6b1ef3c2686310",
-      "array_sha256": "a3d10f648856ec4f70fee427ba2771543b00953567c3faa95276643db82375af"
+      "sha256": "bdf60b06b3aabbbcd1bbcbc30aaf9f8e0a2b208150820f09cc209e05e68d5843",
+      "array_sha256": "aff95ee581543378dd3d346a8c2dde83936742afc1cd71e44e3a49a98f549f8a"
     },
     "ravine_incision_m": {
       "path": "fields/ravine_incision_m.npz",
@@ -312,8 +390,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "8d6140556d30ed8966b852e975be82cf246629ffca64b117fe2d82f208ba28b2",
-      "array_sha256": "dbb1747fa0bf786a650947257188650351551a3a0977515ca602e79cf4435f0a"
+      "sha256": "810118dd47e802c044a9d565a4e01ce8b94d6a4ece090e945ddf07d3c0348d99",
+      "array_sha256": "4f8acf9ac9fd2615d49c007241124f4fddcdeb74d48c250b10b4f25f4f823aee"
     },
     "ravine_outlet_incision_m": {
       "path": "fields/ravine_outlet_incision_m.npz",
@@ -324,8 +402,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "163b9864c8fca10842cfbf397e450aba8b2f86d21838c63620d719af93f312d3",
-      "array_sha256": "f15cc7a3f954bf8870fe5874fd8b2c86d27d353a08147e898a53b088b802af10"
+      "sha256": "abddee97fe4fc815b1d9529465a997fb1ade00d1c6c101afc24037013242aa0a",
+      "array_sha256": "21ba5e1ff55f743bcc3af1d57a0e0e03e64f6fd9a1aa5e8d3b09cff21341044d"
     },
     "region_index": {
       "path": "fields/region_index.npz",
@@ -348,8 +426,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "996b57f25bcfbc0d695ef0302b4b9ab25c696db30a96cfcbf75e3218510d94ca",
-      "array_sha256": "19607b44b1c63574bd0f0a70cfeacaeba34b98c947ec3cf66d7b66e2accd2c85"
+      "sha256": "d8265476d60e01e28aa7c7d0af6f0138549e8d598e73e177fe0074d27c04ead9",
+      "array_sha256": "bf25a263eeb946051fa07ea26c9aea7ade72ccf8acdd817068d1e73c52108147"
     },
     "slope": {
       "path": "fields/slope.npz",
@@ -360,8 +438,8 @@
       ],
       "dtype": "<f4",
       "units": "m/m",
-      "sha256": "dd239b0c31cc29d9a5b8ef48bb98fdee69902f1cc16f169f1b9bfea462144c38",
-      "array_sha256": "72faf8923e86c36fc69ddb9f81d281af65ea3eb262003f3936c37aea01dc4f6a"
+      "sha256": "3c2a9964ce21ad5bd80d16fa70ea60b2d9031ad384a12a474e0eeee5c5e51f36",
+      "array_sha256": "5dc7cb0c63783b693fb6db0278bdaaa4cfe3656f2d576d1bff6a3a31cd48ae1e"
     },
     "soil_moisture": {
       "path": "fields/soil_moisture.npz",
@@ -372,8 +450,20 @@
       ],
       "dtype": "<f4",
       "units": "fraction 0..1",
-      "sha256": "01fda974eed4cac5731cd7a2c822941e7dc0965e1bd19ea04e08a01b0c2ad8fa",
-      "array_sha256": "cf7b8d7f9c620004525943888b57c8bbc98c85547f840099ff60e96ec1760a83"
+      "sha256": "6dd452252100722073637f72b591eef9aee3e1d4d071a167807bafca10120eab",
+      "array_sha256": "36b679d043b58764667a37df7312c31c22d8e6c92124ba03cedbf94f08c2b60e"
+    },
+    "tectonic_uplift_m": {
+      "path": "fields/tectonic_uplift_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "77820a78df3b6da4ebfdd9a4a1201444b57b8f097d47ec6dd423de9f05e01889",
+      "array_sha256": "3573a49a3383ecb1d6cba33528669a8dd79253e0a70d108e06f7156147173756"
     },
     "temperature_c": {
       "path": "fields/temperature_c.npz",
@@ -384,8 +474,8 @@
       ],
       "dtype": "<f4",
       "units": "degC",
-      "sha256": "d20c4dc5fd86abbfce58dc9a59b12345fcd6feca99ebb91c7d63f88990639a86",
-      "array_sha256": "ccfe75a7812389e7b772329ec5101f5790acebf15e7054a87a247b0fb66a7829"
+      "sha256": "b3b9c4ee8f19154269e0d8bba112d933628aa6a6b09a31ff9208abfecbd6b9d0",
+      "array_sha256": "a744e2603a482f8bb7199ab064212d28a91628254e8e3f619e162d5edb891f04"
     },
     "vegetation_cover": {
       "path": "fields/vegetation_cover.npz",
@@ -396,8 +486,20 @@
       ],
       "dtype": "<f4",
       "units": "fraction 0..1",
-      "sha256": "df98d84d0edbc9ebcb6968b1cfd87266508084300d3b2441031a03fcd128f516",
-      "array_sha256": "78b6acadec00d3f8dbb27023a9d623588d53936607e90286f1465e875dfce4ba"
+      "sha256": "291e30610d15b5c29a34da49879c659f587426f8a4c29ba56e4c0e4b1482c8b7",
+      "array_sha256": "79ce4b64a799073fe5be1b3c429e701147cc94df9e1fa943ebe77375fd7bac8b"
+    },
+    "volcanic_relief_m": {
+      "path": "fields/volcanic_relief_m.npz",
+      "key": "data",
+      "shape": [
+        1600,
+        1280
+      ],
+      "dtype": "<f4",
+      "units": "m",
+      "sha256": "7cbfadd58100be00c63b98c286579ded04d6ae58fa44c2d2c201cb24d7196848",
+      "array_sha256": "e5af4b1875aa7e5d55ad3921835fb64ce3e603aaa9447f56c39d595d2c407270"
     },
     "water_surface_m": {
       "path": "fields/water_surface_m.npz",
@@ -408,8 +510,8 @@
       ],
       "dtype": "<f4",
       "units": "m",
-      "sha256": "028be26777b7f63853b7c2adbaea902c842ca83eb426bbd08e2585bbcc0b6f8e",
-      "array_sha256": "cbb5a628109d53c5360fff58ba96d73741c98b211dc158b0abf23bb42b74c8fa"
+      "sha256": "7f9eeed83a55a563f6c09c5800828535745f08e6bfbd8c11f261ac151586d66d",
+      "array_sha256": "a9fb2f96d3177821d70a4d03bc7dcaed16f5adcdcfd9027d3d2f0c67a0087c7d"
     },
     "wind_east_fraction": {
       "path": "fields/wind_east_fraction.npz",
@@ -507,24 +609,264 @@
     }
   ],
   "biome_counts": {
-    "0": 1278389,
-    "1": 86863,
-    "2": 61485,
-    "3": 75908,
-    "4": 62379,
-    "5": 73165,
-    "6": 17780,
-    "7": 233612,
-    "8": 35265,
-    "9": 63108,
-    "10": 6159,
-    "11": 8568,
-    "12": 7100,
-    "13": 1894,
-    "14": 2383,
-    "15": 33942
+    "0": 1352104,
+    "1": 71595,
+    "2": 81380,
+    "3": 107219,
+    "4": 28395,
+    "5": 55264,
+    "6": 163276,
+    "7": 28348,
+    "8": 33787,
+    "9": 22817,
+    "10": 12590,
+    "11": 25121,
+    "12": 9250,
+    "13": 14651,
+    "14": 2226,
+    "15": 39977
   },
-  "numeric_fingerprint": "25e0eb9f86b8bd4f86633fef06265b25ef8456f68d901b4ef9d996a89bf3512a",
+  "numeric_fingerprint": "d7f75b7c977df399314147d2d836dbc14595db270b9b0148053ec29640fe165c",
+  "landscape_evolution": {
+    "method": "periodically rerouted implicit n=1 stream-power incision, conservative D8 sediment transport and pairwise hillslope creep/talus relaxation",
+    "reference": "Braun & Willett (2013), doi:10.1016/j.geomorph.2012.10.008",
+    "settings": {
+      "boundary_mode": "ocean",
+      "iterations": 12,
+      "model_years": 100000,
+      "stream_power_k": 3e-06,
+      "reroute_every": 3,
+      "max_incision_per_stage_m": 120.0,
+      "hillslope_diffusivity_m2_yr": 120.0,
+      "talus_angle_degrees": 32.0,
+      "thermal_relaxation": 0.12,
+      "max_deposition_per_stage_m": 8.0
+    },
+    "routing_passes": 4,
+    "mean_cumulative_fluvial_incision_m": 14.32819977423381,
+    "maximum_cumulative_fluvial_incision_m": 1178.3273000264462,
+    "hillslope_numerical_flux_cap_used": false,
+    "material_budget_m3": {
+      "eroded": 762227411087287.9,
+      "deposited": 697237078010218.5,
+      "fluvial_export_to_ocean": 64990333077069.33,
+      "fluvial_export_to_tile_boundary": 0.0,
+      "exported_out_of_active_domain": 64990333077069.33,
+      "transport_residual": 0.046875,
+      "float32_height_residual": 98600.8671875
+    },
+    "stages": [
+      {
+        "stage": 1,
+        "mean_fluvial_incision_m": 1.2416473310267082,
+        "maximum_stage_incision_m": 120.0,
+        "mean_hillslope_outflow_m": 2.3257425936316
+      },
+      {
+        "stage": 2,
+        "mean_fluvial_incision_m": 1.2129891051734618,
+        "maximum_stage_incision_m": 120.0,
+        "mean_hillslope_outflow_m": 2.2704219451174685
+      },
+      {
+        "stage": 3,
+        "mean_fluvial_incision_m": 1.1928302115532177,
+        "maximum_stage_incision_m": 120.0,
+        "mean_hillslope_outflow_m": 2.2256473495777636
+      },
+      {
+        "stage": 4,
+        "mean_fluvial_incision_m": 1.2156850674761128,
+        "maximum_stage_incision_m": 120.0,
+        "mean_hillslope_outflow_m": 2.1716241166686308
+      },
+      {
+        "stage": 5,
+        "mean_fluvial_incision_m": 1.1933107125466267,
+        "maximum_stage_incision_m": 120.0,
+        "mean_hillslope_outflow_m": 2.1369619469936407
+      },
+      {
+        "stage": 6,
+        "mean_fluvial_incision_m": 1.1778721257191234,
+        "maximum_stage_incision_m": 120.0,
+        "mean_hillslope_outflow_m": 2.1094606683185995
+      },
+      {
+        "stage": 7,
+        "mean_fluvial_incision_m": 1.202028736148858,
+        "maximum_stage_incision_m": 94.4685635250921,
+        "mean_hillslope_outflow_m": 2.0710349237971237
+      },
+      {
+        "stage": 8,
+        "mean_fluvial_incision_m": 1.1829317336799798,
+        "maximum_stage_incision_m": 85.73671439179012,
+        "mean_hillslope_outflow_m": 2.047209704902321
+      },
+      {
+        "stage": 9,
+        "mean_fluvial_incision_m": 1.170196115903409,
+        "maximum_stage_incision_m": 83.20998412422364,
+        "mean_hillslope_outflow_m": 2.027910545371103
+      },
+      {
+        "stage": 10,
+        "mean_fluvial_incision_m": 1.1944761129671326,
+        "maximum_stage_incision_m": 113.47664358406246,
+        "mean_hillslope_outflow_m": 1.9969378100568431
+      },
+      {
+        "stage": 11,
+        "mean_fluvial_incision_m": 1.1776559531737887,
+        "maximum_stage_incision_m": 102.41473562512601,
+        "mean_hillslope_outflow_m": 1.9786962767876655
+      },
+      {
+        "stage": 12,
+        "mean_fluvial_incision_m": 1.166576568865393,
+        "maximum_stage_incision_m": 97.84616022271166,
+        "mean_hillslope_outflow_m": 1.9640599029290178
+      }
+    ],
+    "limitations": [
+      "Model exposure is uncalibrated; it does not measure the real age of fictional geology.",
+      "Regional D8 approximation; erosion between routing passes follows the preceding drainage tree.",
+      "Explicit hillslope fluxes are stability bounded; unresolvable slopes need a finer local terrain mesh."
+    ]
+  },
+  "mountain_detail": {
+    "name": "Serra das Agulhas / macico erodido",
+    "center_m": [
+      2812500.0,
+      6072500.0
+    ],
+    "bounds_m": [
+      2780500.0,
+      6040500.0,
+      2844500.0,
+      6104500.0
+    ],
+    "mesh_origin_m": [
+      2780500.0,
+      6040500.0
+    ],
+    "local_resolution": [
+      512,
+      512
+    ],
+    "pixel_size_m": [
+      125.0,
+      125.0
+    ],
+    "row_order": "north_to_south",
+    "heightmap": "meshes/mountains/heightmap.npy",
+    "initial_heightmap": "meshes/mountains/initial-heightmap.npy",
+    "erosion_field": "meshes/mountains/geomorphic-erosion.npz",
+    "deposition_field": "meshes/mountains/geomorphic-deposition.npz",
+    "gltf": "meshes/mountains/mountain.gltf",
+    "erosion": {
+      "method": "periodically rerouted implicit n=1 stream-power incision, conservative D8 sediment transport and pairwise hillslope creep/talus relaxation",
+      "reference": "Braun & Willett (2013), doi:10.1016/j.geomorph.2012.10.008",
+      "settings": {
+        "boundary_mode": "fixed_open",
+        "iterations": 8,
+        "model_years": 100000,
+        "stream_power_k": 2e-05,
+        "reroute_every": 2,
+        "max_incision_per_stage_m": 100,
+        "hillslope_diffusivity_m2_yr": 12,
+        "talus_angle_degrees": 34,
+        "thermal_relaxation": 0.15,
+        "max_deposition_per_stage_m": 7
+      },
+      "routing_passes": 4,
+      "mean_cumulative_fluvial_incision_m": 96.08335477585653,
+      "maximum_cumulative_fluvial_incision_m": 800.0,
+      "hillslope_numerical_flux_cap_used": true,
+      "material_budget_m3": {
+        "eroded": 645311237406.1494,
+        "deposited": 356512340725.0833,
+        "fluvial_export_to_ocean": 0.0,
+        "fluvial_export_to_tile_boundary": 288798896681.0661,
+        "exported_out_of_active_domain": 288798896681.0661,
+        "transport_residual": 0.0,
+        "float32_height_residual": 598.1964721679688
+      },
+      "stages": [
+        {
+          "stage": 1,
+          "mean_fluvial_incision_m": 13.49779624494257,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 12.9421813371875
+        },
+        {
+          "stage": 2,
+          "mean_fluvial_incision_m": 11.57636970834292,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 8.952299181110789
+        },
+        {
+          "stage": 3,
+          "mean_fluvial_incision_m": 11.668046717353944,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 7.42840458527492
+        },
+        {
+          "stage": 4,
+          "mean_fluvial_incision_m": 11.357978591555913,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 7.023777595472343
+        },
+        {
+          "stage": 5,
+          "mean_fluvial_incision_m": 11.763206339584379,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 6.61342886958981
+        },
+        {
+          "stage": 6,
+          "mean_fluvial_incision_m": 11.742040579587801,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 6.626362569121367
+        },
+        {
+          "stage": 7,
+          "mean_fluvial_incision_m": 12.201434259650192,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 6.481517118978521
+        },
+        {
+          "stage": 8,
+          "mean_fluvial_incision_m": 12.276482334838816,
+          "maximum_stage_incision_m": 100.0,
+          "mean_hillslope_outflow_m": 6.6334459550805045
+        }
+      ],
+      "limitations": [
+        "Model exposure is uncalibrated; it does not measure the real age of fictional geology.",
+        "Regional D8 approximation; erosion between routing passes follows the preceding drainage tree.",
+        "Explicit hillslope fluxes are stability bounded; unresolvable slopes need a finer local terrain mesh."
+      ]
+    },
+    "mesh_statistics": {
+      "triangle_count": 522242,
+      "vertex_count_with_shared_edges": 263169,
+      "buffer_count": 4
+    },
+    "local_to_world": {
+      "x": "X + mesh_origin_m[0]",
+      "y": "mesh_origin_m[1] - Z",
+      "elevation": "Y"
+    },
+    "integration": "Refined inset replaces the matching coarse terrain; fixed boundary samples preserve regional topography. No game integration."
+  },
+  "comparison_baseline": {
+    "commit": "394b17c15b8755b5cb78bb26726fb560a34a61a5",
+    "desert_fraction_nonwater": 0.303546,
+    "longest_straight_shore_m": 1195000,
+    "inspector_triangles": 162690
+  },
   "generation_environment": {
     "python": "3.12.14",
     "numpy": "2.3.5"
@@ -546,7 +888,8 @@
   "limitations": [
     "Art-directed geology; no plate-tectonic time simulation",
     "Annual-average heuristic climate and stream power; not hydrodynamic simulation",
-    "Continental 5 km raster is regional geography; ravine inset adds ~180 m detail, not gameplay-ready collision",
+    "Model years describe uncalibrated morphological exposure, not a measured real geological age",
+    "Continental 5 km raster is regional geography; mountain inset 125 m and ravine ~180 m; not gameplay-ready collision",
     "GlTF cave/roots/terraces are geographic prototypes; vegetation placement and collision need future integration",
     "Priority-Flood routes through lake surfaces; river bed may ascend within lakes, water surface never does",
     "Same environment and config reproduce arrays exactly; cross-version floating-point parity is not promised"

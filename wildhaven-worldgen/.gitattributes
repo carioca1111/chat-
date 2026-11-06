@@ -6,4 +6,4 @@ outputs/** -text whitespace=cr-at-eol
 *.png -text
 *.npy -text
 *.npz -text
-*.bin -text
+*.bin binary

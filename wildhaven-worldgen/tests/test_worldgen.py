@@ -1,10 +1,15 @@
 """Small adversarial drainage/hex tests; full exports have separate acceptance QA."""
 import unittest
+import json
+from pathlib import Path
+import tempfile
 import numpy as np
 
 from worldgen.hydrology import breach_outlet, run_hydrology
 from worldgen.regions import build_regions, hex_center, region_at
-from worldgen.validate import _local_spill_surface
+from worldgen.validate import (_local_spill_surface, _shoreline_metrics,
+                               _land_component_sizes, _read_viewer_data,
+                               ValidationFailure)
 
 
 class DrainageTests(unittest.TestCase):
@@ -136,6 +141,52 @@ class IndependentInsetValidationTests(unittest.TestCase):
         open_spill = _local_spill_surface(opened)
         self.assertEqual(float(open_spill[16, 16] - opened[16, 16]), 0.)
         self.assertTrue(np.isfinite(open_spill).all())
+
+
+class RevisionQualityValidationTests(unittest.TestCase):
+    def test_coast_metrics_detect_clipped_beach_and_resolved_inlets(self):
+        # A cardinal clipping plane must remain measurable even when the
+        # coastline elsewhere is complicated; it cannot hide behind a ratio.
+        rectangle = np.zeros((256, 320), dtype=bool)
+        rectangle[30:220, 20:300] = True
+        clipped = _shoreline_metrics(rectangle, 5000, 5000)
+        self.assertEqual(clipped["longest_horizontal_straight_km"], 1400.)
+        self.assertEqual(clipped["longest_vertical_straight_km"], 950.)
+        x, y = np.meshgrid(np.arange(512)-255.5, np.arange(512)-255.5)
+        distance, angle = np.hypot(x, y), np.arctan2(y, x)
+        smooth = _shoreline_metrics(distance < 180, 1000, 1000)
+        inlets = distance < 180 + 15*np.sin(angle*17) + 9*np.sin(angle*39)
+        rugged = _shoreline_metrics(inlets, 1000, 1000)
+        self.assertGreater(rugged["fine_to_coarse_perimeter_ratio"],
+                           smooth["fine_to_coarse_perimeter_ratio"] + .04)
+        self.assertGreater(rugged["fine_perimeter_km"], smooth["fine_perimeter_km"] * 1.4)
+
+    def test_component_checker_counts_nearshore_islands_and_diagonal_links(self):
+        land = np.zeros((30, 30), dtype=bool)
+        land[3:13, 3:13] = True
+        land[13, 13] = True  # D8 contact is part of the principal landmass.
+        land[22:24, 22:24] = True
+        self.assertEqual(_land_component_sizes(land), [101, 4])
+
+    def test_binary_inspector_loads_actual_samples_and_rejects_truncation(self):
+        with tempfile.TemporaryDirectory(prefix="wildhaven-viewer-test-") as temporary:
+            base = Path(temporary)
+            fields = {}
+            values = {"elevation_m": np.array([100, 300, 200, 400], dtype="<f4"),
+                      "land_mask": np.ones(4, dtype=np.uint8),
+                      "biome_rgb": np.arange(12, dtype=np.uint8)}
+            for name, data in values.items():
+                path = base / (name + ".bin")
+                path.write_bytes(data.tobytes())
+                fields[name] = {"path": path.name, "count": len(data),
+                                "dtype": "float32" if data.dtype.kind == "f" else "uint8",
+                                "byte_length": data.nbytes}
+            (base / "viewer.json").write_text(json.dumps({"nx": 2, "ny": 2, "fields": fields}), encoding="utf-8")
+            _, arrays = _read_viewer_data(base, "viewer.json")
+            self.assertTrue(np.array_equal(arrays["elevation_m"], values["elevation_m"]))
+            (base / "elevation_m.bin").write_bytes(b"\x00\x00\x00")
+            with self.assertRaises(ValidationFailure):
+                _read_viewer_data(base, "viewer.json")
 
 
 if __name__ == "__main__":

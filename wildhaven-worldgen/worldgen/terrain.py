@@ -5,7 +5,7 @@ texture over explicitly continuous folds, coastal margins and drainage basins.
 This is an art-directed geographic model, not a paleoclimate reconstruction.
 """
 import numpy as np
-from scipy.ndimage import map_coordinates, gaussian_filter, distance_transform_edt
+from scipy.ndimage import map_coordinates, gaussian_filter, distance_transform_edt, label
 
 BIOMES = [
     (0, "Oceano / água interior", "#123346"),
@@ -49,27 +49,46 @@ def geology(config):
     x,y = grids(config)
     n = noise(x,y,rng,6,6)
     broad = noise(x,y,rng,4,3)
-    # One connected shield with fjorded northern cap and two asymmetric gulfs.
-    axis = .49+.055*np.sin(y*7)-.035*np.sin(y*17)
-    width = .345*(.82+.18*np.sin(y*5))
-    radial = np.sqrt(((x-axis)/width)**2+((y-.49)/.457)**2)
-    margin = 1-radial+.065*broad+.022*n
-    margin -= .22*gaussian(x,y,.23,.37,.10,.09)
-    margin -= .18*gaussian(x,y,.81,.67,.10,.075)
-    margin = np.minimum(margin,2*np.minimum(y-.035,.965-y))
+    # A warped continental shield, embayments and multiscale coastal fractures.
+    # There is no clipping against latitude bands: that made the old southern
+    # shore a 1,195 km ruler-straight line. All coastlines are sea-level contours.
+    coast_noise=noise(x,y,rng,13,6)
+    coast_fine=noise(x,y,rng,43,4)
+    wx=x+.038*broad+.023*n
+    wy=y+.027*broad-.019*coast_noise
+    axis=.495+.045*np.sin(wy*7)-.035*np.sin(wy*17)
+    width=.345*(.82+.18*np.sin(wy*5))
+    radial=np.sqrt(((wx-axis)/width)**2+((wy-.50)/.425)**2)
+    margin=1-radial+.10*coast_noise+.055*coast_fine+.035*n
+    margin-=.40*gaussian(x,y,.225,.39,.105,.075)
+    margin-=.39*gaussian(x,y,.79,.64,.105,.062)
+    margin-=.27*gaussian(x,y,.68,.17,.07,.038)
+    margin-=.22*gaussian(x,y,.405,.89,.045,.09)
     land = margin>0
+    # Discard subpixel specks, retain genuine near-shore islands. One dominant
+    # continental mass remains; the acceptance test measures the actual ratio.
+    components,ncomponents=label(land,np.ones((3,3),dtype=np.uint8))
+    areas=np.bincount(components.ravel());areas[0]=0
+    if ncomponents:
+        keep=areas>=8;keep[0]=False;land=keep[components]
+    margin=np.where(land,margin,np.minimum(margin,-.0001))
     coast = np.clip(margin/.13,0,1)
     fine = noise(x,y,rng,18,5)
     base = 70+530*np.maximum(margin,0)**.75+360*n+150*broad+140*fine
-    # Fold belts with branching spines and variable uplift along strike.
+    # Fold belts carry nonperiodic fractured ridges, later dissected by actual
+    # stream-power erosion. A repeated sine wave is never used as peak height.
     spine = .36+.046*np.sin(10*y)+.021*np.sin(27*y)
     d = x-spine
     belt = np.exp(-(d/.047)**2)*np.exp(-((y-.63)/.31)**4)
-    crest = .35+.65*(1-np.abs(np.sin(55*x+17*y+2.8*n)))
-    elevation = base+4100*belt*(.48+.52*crest)
+    fracture=noise(np.clip(x+.03*n,0,1),np.clip(y+.025*broad,0,1),rng,17,6)
+    crest=(1-np.clip(np.abs(fracture*1.8),0,1))**2
+    mountain_texture=np.clip(.23+.72*crest+.22*fine,.16,1.1)
+    uplift=4700*belt*mountain_texture
+    elevation=base+uplift
     spine2 = .65+.037*np.sin(15*y)
-    elevation += 2700*np.exp(-((x-spine2)/.037)**2-((y-.73)/.19)**4)*(.55+.45*crest)
-    elevation += 1850*np.exp(-((x-(.49+.04*np.sin(19*y)))/.04)**2-((y-.22)/.14)**4)*(.5+.5*crest)
+    eastern=3100*np.exp(-((x-spine2)/.042)**2-((y-.73)/.19)**4)*mountain_texture
+    southern=2300*np.exp(-((x-(.49+.04*np.sin(19*y)))/.044)**2-((y-.22)/.14)**4)*mountain_texture
+    uplift+=eastern+southern;elevation+=eastern+southern
     elevation += 1050*gaussian(x,y,.61,.53,.10,.12) # rain-shadow plateau
     elevation -= 550*gaussian(x,y,.55,.30,.07,.11) # tropical foreland
     elevation += 1570*gaussian(x,y,.565,.14,.022,.024) # tropical basaltic shield upland
@@ -89,7 +108,8 @@ def geology(config):
     rim=430*np.exp(-((r-13500)/4300)**2)
     crater=1750*np.exp(-(r/10500)**4)
     lava=(.5+.5*np.cos(7*angle+2*np.sin(r/25000)))**18
-    elevation += (cone+rim-crater-160*lava*np.exp(-((r-36000)/25000)**2))*land
+    volcanic_relief=(cone+rim-crater-160*lava*np.exp(-((r-36000)/25000)**2))*land
+    elevation+=volcanic_relief
     wind_dx=dx; wind_dy=dy-.20*dx
     ash=np.exp(-np.sqrt((wind_dx/190000)**2+(wind_dy/74000)**2))
     ash *= np.where(dx>0,1,.65)*np.clip(1+.00012*(elevation-500),.6,1.5)
@@ -100,6 +120,7 @@ def geology(config):
     ethereal=np.clip(gaussian(x,y,.30,.69,.07,.07)*texture,0,1)
     minerals=np.clip(minerals*(1+.35*n+.20*broad),0,1)
     return {"elevation_m":elevation.astype("float32"),"land_mask":land,
+            "volcanic_relief_m":volcanic_relief.astype("float32"),"tectonic_uplift_m":(uplift*land).astype("float32"),
             "ash_concentration":np.clip(ash,0,1).astype("float32"),"mineralization":np.clip(minerals,0,1).astype("float32"),
             "luminous_anomaly":luminous.astype("float32"),"fungal_substrate":fungal.astype("float32"),
             "ethereal_anomaly":ethereal.astype("float32")}, {"center_m":[vx*config["width_m"],vy*config["height_m"]],
@@ -115,7 +136,7 @@ def climate(elevation, land, config):
     sea_temperature=28-.0082*np.abs(lat)**2
     temperature=sea_temperature-.0055*np.maximum(elevation,0)
     temperature += marine*(3*np.clip((np.abs(lat)-35)/40,0,1)-1)
-    potential=420+2250*np.exp(-(lat/18)**2)+1000*np.exp(-((np.abs(lat)-48)/14)**2)
+    potential=560+2400*np.exp(-(lat/18)**2)+1200*np.exp(-((np.abs(lat)-48)/14)**2)
     # Two steady-state ocean-fed humidity sweeps. Wind belts select direction;
     # lift removes atmospheric moisture upstream, leaving a dry lee.
     results=[]
@@ -124,9 +145,9 @@ def climate(elevation, land, config):
         for j in (range(w) if direction==1 else range(w-1,-1,-1)):
             e=np.maximum(elevation[:,j],0)
             lift=np.maximum(e-previous,0)/dx
-            uptake=np.clip(dx/1800000+np.maximum(e-previous,0)/4000,0,.42)
+            uptake=np.clip(dx/3000000+np.maximum(e-previous,0)/5500,0,.42)
             q=np.where(land[:,j],np.clip(q*(1-uptake)+dx/8000000,0,1),1)
-            rain[:,j]=potential[:,j]*(.19+.81*q)+q*lift*42000
+            rain[:,j]=potential[:,j]*(.30+.70*q)+q*lift*42000
             previous=e
         results.append(rain)
     west_weight=1/(1+np.exp(-(np.abs(lat)-34)/3))
@@ -148,7 +169,8 @@ def ecology(fields, config):
     moisture=np.clip(p/(700+np.maximum(t,0)*36)*.65+.27*wet-.8*s,0,1)
     fertility=np.clip(.2+.55*moisture+.20*np.clip(fields["sediment_m"]/10,0,1)+.12*fields["ash_concentration"]-2*s,0,1)
     b=np.full(e.shape,6,dtype="uint8")
-    b[(p<650)&(t>4)]=7
+    aridity=p/(700+np.maximum(t,0)*40)
+    b[(p<650)&(aridity<.50)&(t>8)]=7
     b[(t>19)&(p>=650)&(p<1450)]=5
     b[(t>5)&(p>=1000)]=1
     b[(t>17)&(p>=1450)&(np.abs(fields["latitude_deg"])<23)]=2

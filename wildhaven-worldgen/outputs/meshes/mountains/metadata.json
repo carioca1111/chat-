@@ -1,0 +1,126 @@
+{
+  "name": "Serra das Agulhas / macico erodido",
+  "center_m": [
+    2812500.0,
+    6072500.0
+  ],
+  "bounds_m": [
+    2780500.0,
+    6040500.0,
+    2844500.0,
+    6104500.0
+  ],
+  "mesh_origin_m": [
+    2780500.0,
+    6040500.0
+  ],
+  "local_resolution": [
+    512,
+    512
+  ],
+  "pixel_size_m": [
+    125.0,
+    125.0
+  ],
+  "row_order": "north_to_south",
+  "heightmap": "meshes/mountains/heightmap.npy",
+  "initial_heightmap": "meshes/mountains/initial-heightmap.npy",
+  "erosion_field": "meshes/mountains/geomorphic-erosion.npz",
+  "deposition_field": "meshes/mountains/geomorphic-deposition.npz",
+  "gltf": "meshes/mountains/mountain.gltf",
+  "erosion": {
+    "method": "periodically rerouted implicit n=1 stream-power incision, conservative D8 sediment transport and pairwise hillslope creep/talus relaxation",
+    "reference": "Braun & Willett (2013), doi:10.1016/j.geomorph.2012.10.008",
+    "settings": {
+      "boundary_mode": "fixed_open",
+      "iterations": 8,
+      "model_years": 100000,
+      "stream_power_k": 2e-05,
+      "reroute_every": 2,
+      "max_incision_per_stage_m": 100,
+      "hillslope_diffusivity_m2_yr": 12,
+      "talus_angle_degrees": 34,
+      "thermal_relaxation": 0.15,
+      "max_deposition_per_stage_m": 7
+    },
+    "routing_passes": 4,
+    "mean_cumulative_fluvial_incision_m": 96.08335477585653,
+    "maximum_cumulative_fluvial_incision_m": 800.0,
+    "hillslope_numerical_flux_cap_used": true,
+    "material_budget_m3": {
+      "eroded": 645311237406.1494,
+      "deposited": 356512340725.0833,
+      "fluvial_export_to_ocean": 0.0,
+      "fluvial_export_to_tile_boundary": 288798896681.0661,
+      "exported_out_of_active_domain": 288798896681.0661,
+      "transport_residual": 0.0,
+      "float32_height_residual": 598.1964721679688
+    },
+    "stages": [
+      {
+        "stage": 1,
+        "mean_fluvial_incision_m": 13.49779624494257,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 12.9421813371875
+      },
+      {
+        "stage": 2,
+        "mean_fluvial_incision_m": 11.57636970834292,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 8.952299181110789
+      },
+      {
+        "stage": 3,
+        "mean_fluvial_incision_m": 11.668046717353944,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 7.42840458527492
+      },
+      {
+        "stage": 4,
+        "mean_fluvial_incision_m": 11.357978591555913,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 7.023777595472343
+      },
+      {
+        "stage": 5,
+        "mean_fluvial_incision_m": 11.763206339584379,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 6.61342886958981
+      },
+      {
+        "stage": 6,
+        "mean_fluvial_incision_m": 11.742040579587801,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 6.626362569121367
+      },
+      {
+        "stage": 7,
+        "mean_fluvial_incision_m": 12.201434259650192,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 6.481517118978521
+      },
+      {
+        "stage": 8,
+        "mean_fluvial_incision_m": 12.276482334838816,
+        "maximum_stage_incision_m": 100.0,
+        "mean_hillslope_outflow_m": 6.6334459550805045
+      }
+    ],
+    "limitations": [
+      "Model exposure is uncalibrated; it does not measure the real age of fictional geology.",
+      "Regional D8 approximation; erosion between routing passes follows the preceding drainage tree.",
+      "Explicit hillslope fluxes are stability bounded; unresolvable slopes need a finer local terrain mesh."
+    ]
+  },
+  "mesh_statistics": {
+    "triangle_count": 522242,
+    "vertex_count_with_shared_edges": 263169,
+    "buffer_count": 4
+  },
+  "local_to_world": {
+    "x": "X + mesh_origin_m[0]",
+    "y": "mesh_origin_m[1] - Z",
+    "elevation": "Y"
+  },
+  "integration": "Refined inset replaces the matching coarse terrain; fixed boundary samples preserve regional topography. No game integration."
+}

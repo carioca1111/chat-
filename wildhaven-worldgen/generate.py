@@ -9,10 +9,12 @@ import numpy as np
 from scipy.ndimage import map_coordinates, distance_transform_edt
 from PIL import Image
 from worldgen import FORMAT_VERSION
-from worldgen.terrain import geology, climate, ecology, grids, BIOMES
+from worldgen.terrain import geology, climate, ecology, grids, gaussian, BIOMES
+from worldgen.erosion import evolve_landscape
+from worldgen.mesh import export_viewer,create_mountains,PALETTE
 from worldgen.hydrology import run_hydrology, breach_outlet
 from worldgen.regions import region_at, hex_center, build_regions
-from worldgen.ravine import ravine_cut, create_ravine
+from worldgen.ravine import ravine_cut, ravine_axis, create_ravine
 
 ROOT=Path(__file__).resolve().parent
 
@@ -62,18 +64,30 @@ def choose_ravine(fields,config):
     candidates=tropical&(e>1460)&(e<2050)
     rows,cols=np.where(candidates)
     if not len(rows):raise ValueError("Configuration lacks tropical upland for a 1300m ravine; increase resolution/extent or revise geologic parameters.")
-    best=None
-    for row,col in zip(rows,cols):
+    score=-((x[rows,cols]-.565)/.15)**2-((y[rows,cols]-.14)/.15)**2
+    score+=.2*np.minimum(fields["precipitation_mm"][rows,cols]/2000,1)
+    for k in np.argsort(-score,kind="stable"):
+        row,col=rows[k],cols[k]
         if (int(q[row,col]),int(r[row,col])) not in eligible:continue
         cx=x[row,col]*config["width_m"];cy=y[row,col]*config["height_m"]
         hc=hex_center(q[row,col],r[row,col],config["hex_radius_m"])
         if np.hypot(cx-hc[0],cy-hc[1])>config["hex_radius_m"]*.58:continue
-        score=-((x[row,col]-.565)/.15)**2-((y[row,col]-.14)/.15)**2
-        # Prefer rainforest rather than a cold elevated ridge at the edge of it.
-        score+=.2*min(fields["precipitation_mm"][row,col]/2000,1)
-        if best is None or score>best[0]:best=(score,float(cx),float(cy))
-    if best is None:raise ValueError("Hex radius too small for the ravine or no safe tropical site.")
-    return best[1:]
+        # The WHOLE fissure needs a high tropical foundation. Checking only its
+        # centre can place one end down a steep valley below sea level.
+        yy=cy+np.linspace(-28000,28000,17)
+        xx=cx+ravine_axis(yy,cy,config["seed"])
+        yy=np.repeat(yy,3);xx=np.repeat(xx,3)+np.tile([-2600,0,2600],17)
+        hh,ww=e.shape;dx=config["width_m"]/ww;dy=config["height_m"]/hh
+        support=map_coordinates(e,[(config["height_m"]-yy)/dy-.5,xx/dx-.5],order=1,mode="nearest")
+        if support.min()<1410:continue
+        r0=max(0,int((config["height_m"]-cy-40000)/dy));r1=min(hh,int((config["height_m"]-cy+40000)/dy)+1)
+        c0=max(0,int((cx-13000)/dx));c1=min(ww,int((cx+13000)/dx)+1)
+        px,py=np.meshgrid((np.arange(c0,c1)+.5)*dx,config["height_m"]-(np.arange(r0,r1)+.5)*dy)
+        proposed=ravine_cut(px,py,cx,cy,config["seed"])
+        core=proposed>1100
+        if not core.any() or np.min((e[r0:r1,c0:c1]-proposed)[core])<80:continue
+        return float(cx),float(cy)
+    raise ValueError("No tropical hex contains the full 1300m fissure above its drainage outlet.")
 
 def choose_village(fields,config):
     h,w=fields["elevation_m"].shape;dx=config["width_m"]/w;dy=config["height_m"]/h
@@ -89,16 +103,36 @@ def choose_village(fields,config):
             "biome_id":1,"elevation_m":float(fields["elevation_m"][row,col]),"slope":float(fields["slope"][row,col]),
             "freshwater_distance_m":float(dist[row,col]),"status":"Geographic reservation only; no village or gameplay instantiated"}
 
-def generate(config,out,no_renders=False):
+def generate(config,out,no_renders=False,cache_landscape=False,resume_landscape=False):
     out=Path(out);out.mkdir(parents=True,exist_ok=True);(out/"fields").mkdir(exist_ok=True)
     t0=time.monotonic()
     def stage(msg):print(f"[{time.monotonic()-t0:6.1f}s] {msg}",flush=True)
     h,w=config["resolution"];dx=config["width_m"]/w;dy=config["height_m"]/h
     if min(h,w)<128:raise ValueError("Minimum supported raster dimension:128")
     if config["hex_radius_m"]<120000:raise ValueError("Hex radius must be >=120 km to enclose the fixed ravine.")
-    stage("Geologic shield, folds, basins, volcano")
-    fields,volcano=geology(config)
-    fields.update(climate(fields["elevation_m"],fields["land_mask"],config))
+    cache=ROOT/".cache";cache_key=hashlib.sha256(json.dumps(config,sort_keys=True).encode()+(ROOT/"worldgen"/"terrain.py").read_bytes()+(ROOT/"worldgen"/"erosion.py").read_bytes()).hexdigest()
+    if resume_landscape:
+        checkpoint=json.loads((cache/"landscape.json").read_text(encoding="utf-8"))
+        if checkpoint["key"]!=cache_key:raise ValueError("Landscape checkpoint differs from current geography/configuration")
+        with np.load(cache/"landscape.npz",allow_pickle=False) as data:fields={name:data[name] for name in data.files}
+        volcano=checkpoint["volcano"];erosion_history=checkpoint["history"];stage("Resumed verified landscape checkpoint")
+    else:
+        stage("Geologic shield, folds, basins, volcano")
+        fields,volcano=geology(config)
+        fields.update(climate(fields["elevation_m"],fields["land_mask"],config))
+        stage("Iterative stream-power erosion, weathering and hillslope transport")
+        x,y=grids(config)
+        # An old dissected continent, a younger resistant basaltic upland and a
+        # recently built volcano. The caldera is added after long-term weathering.
+        exposure_protection=np.clip(gaussian(x,y,.565,.14,.040,.045)*1.5,0,1)
+        old_land=fields["elevation_m"]-fields["volcanic_relief_m"]
+        aged,weathering,erosion_history=evolve_landscape(old_land,fields["land_mask"],dx,dy,config,
+                                                       precipitation_mm=fields["precipitation_mm"],protection=exposure_protection)
+        fields.update(weathering);fields["elevation_m"]=aged+fields["volcanic_relief_m"]
+        fields.update(climate(fields["elevation_m"],fields["land_mask"],config))
+        if cache_landscape:
+            cache.mkdir(exist_ok=True);np.savez_compressed(cache/"landscape.npz",**fields)
+            save_json(cache/"landscape.json",{"key":cache_key,"volcano":volcano,"history":erosion_history})
     cx,cy=choose_ravine(fields,config)
     x,y=grids(config);cut=ravine_cut(x*config["width_m"],y*config["height_m"],cx,cy,config["seed"]).astype("float32")
     fields["elevation_m"]-=cut
@@ -127,6 +161,9 @@ def generate(config,out,no_renders=False):
     ravine["drainage_outlet"]=outlet
     q,r=region_at(cx,cy,config["hex_radius_m"]);ravine["region_id"]=f"H_{q}_{r}"
     specials={"volcano":volcano,"ravine":ravine,"starting_village":choose_village(fields,config)}
+    stage("Fine mountain terrain, iterative local erosion and open glTF mesh")
+    mountain,mountain_render=create_mountains(out,fields,config)
+    specials["mountains"]=mountain
     stage("Hexagon ownership and cross-region hydrographic references")
     regions,fields["region_index"]=build_regions(fields,config,network,specials)
     catalog={i:{"id":i,"name":name,"color":color} for i,name,color in BIOMES}
@@ -142,11 +179,11 @@ def generate(config,out,no_renders=False):
         data=np.ascontiguousarray(fields[name]);path=out/"fields"/f"{name}.npz"
         np.savez_compressed(path,data=data)
         rawhash=hashlib.sha256(data.tobytes()).hexdigest();fingerprint.update(name.encode()+bytes.fromhex(rawhash))
-        fieldmeta[name]={"path":f"fields/{name}.npz","key":"data","shape":list(data.shape),"dtype":data.dtype.str,"units":units.get(name,"fraction 0..1"),
+        fieldmeta[name]={"path":f"fields/{name}.npz","key":"data","shape":list(data.shape),"dtype":data.dtype.str,"units":units.get(name,"m" if name.endswith("_m") else "fraction 0..1"),
                          "sha256":hashlib.sha256(path.read_bytes()).hexdigest(),"array_sha256":rawhash}
     np.save(out/"biomes-data.npy",fields["biomes"],allow_pickle=False)
     offset=config["height_encoding"]["offset_m"];scale=config["height_encoding"]["scale_m"]
-    encoded=np.rint((fields["elevation_m"]-offset)/scale)
+    encoded=np.rint((fields["elevation_m"].astype(np.float64)-offset)/scale)
     if encoded.min()<0 or encoded.max()>65535:raise ValueError("Height outside lossless PNG encoding range; adjust height_encoding.")
     Image.fromarray(encoded.astype("uint16")).save(out/"heightmap.png")
     save_json(out/"regions.json",regions);save_json(out/"rivers.json",network);save_json(out/"special-locations.json",specials)
@@ -157,30 +194,30 @@ def generate(config,out,no_renders=False):
           "heightmap":{"path":"heightmap.png","bit_depth":16,"offset_m":offset,"scale_m":scale,"decode":"elevation_m=uint16*scale_m+offset_m","max_quantization_error_m":scale/2,
                        "exact_float_source":"fields/elevation_m.npz"},
           "fields":fieldmeta,"biome_catalog":list(catalog.values()),"biome_counts":counts,"numeric_fingerprint":fingerprint.hexdigest(),
+          "landscape_evolution":erosion_history,"mountain_detail":mountain,
+          "comparison_baseline":{"commit":"394b17c15b8755b5cb78bb26726fb560a34a61a5","desert_fraction_nonwater":.303546,"longest_straight_shore_m":1195000,"inspector_triangles":162690},
           "generation_environment":{"python":platform.python_version(),"numpy":np.__version__},
           "pipeline":["geology","elevation and slope","temperature","ocean and wind","precipitation and rain shadow","drainage and lakes","fluvial erosion and sedimentation","soil and fertility","biomes","biomass and vegetation","hex regions","export"],
           "limitations":["Art-directed geology; no plate-tectonic time simulation","Annual-average heuristic climate and stream power; not hydrodynamic simulation",
-                         "Continental 5 km raster is regional geography; ravine inset adds ~180 m detail, not gameplay-ready collision",
+                         "Model years describe uncalibrated morphological exposure, not a measured real geological age",
+                         "Continental 5 km raster is regional geography; mountain inset 125 m and ravine ~180 m; not gameplay-ready collision",
                          "GlTF cave/roots/terraces are geographic prototypes; vegetation placement and collision need future integration",
                          "Priority-Flood routes through lake surfaces; river bed may ascend within lakes, water surface never does",
                          "Same environment and config reproduce arrays exactly; cross-version floating-point parity is not promised"]}
     save_json(out/"world.json",meta)
     save_json(out/"config.json",config)
     # Lightweight WebGL inspector grid (sample spacing is intentionally disclosed).
-    stride=max(1,int(np.ceil(max(h,w)/320)))
-    rows=((np.arange(int(np.ceil(h/stride)))+.5)*h/int(np.ceil(h/stride))).astype(int)
-    cols=((np.arange(int(np.ceil(w/stride)))+.5)*w/int(np.ceil(w/stride))).astype(int)
-    from worldgen.render import PALETTE
-    vd={"nx":len(cols),"ny":len(rows),"width_m":config["width_m"],"height_m":config["height_m"],"sample_stride":stride,
+    ny=min(h,int(config.get("inspector_max_samples",768)));nx=min(w,int(round(ny*w/h)))
+    rows=((np.arange(ny)+.5)*h/ny).astype(int);cols=((np.arange(nx)+.5)*w/nx).astype(int)
+    vd={"nx":nx,"ny":ny,"width_m":config["width_m"],"height_m":config["height_m"],
         "sample_note":"Downsampled inspector; authoritative geometry is the full raster and local glTF"}
-    for name in ["elevation_m","temperature_c","precipitation_mm","soil_moisture","flow_accumulation_km2","land_mask","lake_id","water_surface_m"]:
-        a=fields[name][np.ix_(rows,cols)];vd[name]=a.ravel().tolist() if a.dtype==bool else np.round(a,3).ravel().tolist()
-    vd["biome_rgb"]=PALETTE[fields["biomes"][np.ix_(rows,cols)]].ravel().tolist()
-    (out/"viewer-data.json").write_text(json.dumps(vd,separators=(",",":"),allow_nan=False),encoding="utf-8")
+    arrays={name:fields[name][np.ix_(rows,cols)] for name in ["elevation_m","temperature_c","precipitation_mm","soil_moisture","flow_accumulation_km2","land_mask","lake_id","water_surface_m","slope","biomes"]}
+    arrays["biome_rgb"]=PALETTE[arrays["biomes"]]
+    export_viewer(out,"viewer-data.json",arrays,vd)
     if not no_renders:
         stage("High-resolution continental, climate and 3D detail renders")
-        from worldgen.render import render_all,render_ravine
-        render_all(out,fields,config,regions,network,specials);render_ravine(out)
+        from worldgen.render import render_all,render_ravine,render_mountains
+        render_all(out,fields,config,regions,network,specials);render_ravine(out);render_mountains(out,mountain_render)
     readme=ROOT/"README.md"
     if readme.exists():(out/"README.md").write_text(readme.read_text(encoding="utf-8"),encoding="utf-8")
     manifest={"algorithm":"sha256","files":{str(p.relative_to(out)).replace("\\","/"):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.rglob("*")) if p.is_file() and p.name not in {"manifest.json","validation-report.json"}}}
@@ -190,4 +227,5 @@ def generate(config,out,no_renders=False):
 
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--config",type=Path,default=ROOT/"config.json");parser.add_argument("--out",type=Path,default=ROOT/"outputs");parser.add_argument("--no-renders",action="store_true")
-    args=parser.parse_args();generate(json.loads(args.config.read_text(encoding="utf-8")),args.out,args.no_renders)
+    parser.add_argument("--cache-landscape",action="store_true");parser.add_argument("--resume-landscape",action="store_true")
+    args=parser.parse_args();generate(json.loads(args.config.read_text(encoding="utf-8")),args.out,args.no_renders,args.cache_landscape,args.resume_landscape)

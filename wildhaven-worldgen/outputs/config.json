@@ -1,5 +1,7 @@
 {
   "seed": 20051028,
+  "revision": 2,
+  "coastal_islands": true,
   "width_m": 6400000,
   "height_m": 8000000,
   "resolution": [
@@ -10,6 +12,22 @@
   "latitude_south_deg": -12,
   "latitude_north_deg": 80,
   "river_threshold_km2": 5000,
+  "inspector_max_samples": 768,
+  "erosion": {
+    "iterations": 12,
+    "model_years": 100000,
+    "stream_power_k": 3e-06
+  },
+  "mountain_detail": {
+    "resolution": 512,
+    "extent_m": 64000
+  },
+  "quality_targets": {
+    "max_desert_fraction": 0.16,
+    "max_shore_straight_run_m": 120000,
+    "min_shore_complexity_ratio": 1.08,
+    "min_mainland_fraction": 0.97
+  },
   "height_encoding": {
     "offset_m": -6000,
     "scale_m": 0.25

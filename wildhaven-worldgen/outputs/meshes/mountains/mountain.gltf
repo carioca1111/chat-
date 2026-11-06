@@ -1,0 +1,446 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Wildhaven geomorphic mesh v2"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0
+    },
+    {
+      "mesh": 1
+    },
+    {
+      "mesh": 2
+    },
+    {
+      "mesh": 3
+    }
+  ],
+  "meshes": [
+    {
+      "name": "eroded mountain quadrant 1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "COLOR_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "eroded mountain quadrant 2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5,
+            "COLOR_0": 6
+          },
+          "indices": 7,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "eroded mountain quadrant 3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "COLOR_0": 10
+          },
+          "indices": 11,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "eroded mountain quadrant 4",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 12,
+            "NORMAL": 13,
+            "COLOR_0": 14
+          },
+          "indices": 15,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "mountain-0.bin",
+      "byteLength": 3950628
+    },
+    {
+      "uri": "mountain-1.bin",
+      "byteLength": 3935232
+    },
+    {
+      "uri": "mountain-2.bin",
+      "byteLength": 3935232
+    },
+    {
+      "uri": "mountain-3.bin",
+      "byteLength": 3919896
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 792588,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 792588,
+      "byteLength": 792588,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1585176,
+      "byteLength": 792588,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 2377764,
+      "byteLength": 1572864,
+      "target": 34963
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 0,
+      "byteLength": 789504,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 789504,
+      "byteLength": 789504,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 1579008,
+      "byteLength": 789504,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 2368512,
+      "byteLength": 1566720,
+      "target": 34963
+    },
+    {
+      "buffer": 2,
+      "byteOffset": 0,
+      "byteLength": 789504,
+      "target": 34962
+    },
+    {
+      "buffer": 2,
+      "byteOffset": 789504,
+      "byteLength": 789504,
+      "target": 34962
+    },
+    {
+      "buffer": 2,
+      "byteOffset": 1579008,
+      "byteLength": 789504,
+      "target": 34962
+    },
+    {
+      "buffer": 2,
+      "byteOffset": 2368512,
+      "byteLength": 1566720,
+      "target": 34963
+    },
+    {
+      "buffer": 3,
+      "byteOffset": 0,
+      "byteLength": 786432,
+      "target": 34962
+    },
+    {
+      "buffer": 3,
+      "byteOffset": 786432,
+      "byteLength": 786432,
+      "target": 34962
+    },
+    {
+      "buffer": 3,
+      "byteOffset": 1572864,
+      "byteLength": 786432,
+      "target": 34962
+    },
+    {
+      "buffer": 3,
+      "byteOffset": 2359296,
+      "byteLength": 1560600,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 66049,
+      "type": "VEC3",
+      "min": [
+        62.5,
+        923.5269775390625,
+        -63937.5
+      ],
+      "max": [
+        32062.5,
+        2926.78076171875,
+        -31937.5
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 66049,
+      "type": "VEC3",
+      "min": [
+        -0.588470458984375,
+        0.6309249401092529,
+        -0.712759256362915
+      ],
+      "max": [
+        0.7626438140869141,
+        0.9999996423721313,
+        0.7668147087097168
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 66049,
+      "type": "VEC3",
+      "min": [
+        0.3310088515281677,
+        0.31862354278564453,
+        0.23619014024734497
+      ],
+      "max": [
+        0.8981550931930542,
+        0.9376125335693359,
+        0.9569975733757019
+      ]
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5125,
+      "count": 393216,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 65792,
+      "type": "VEC3",
+      "min": [
+        32062.5,
+        496.8705139160156,
+        -63937.5
+      ],
+      "max": [
+        63937.5,
+        1978.900634765625,
+        -31937.5
+      ]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 65792,
+      "type": "VEC3",
+      "min": [
+        -0.64134281873703,
+        0.665217936038971,
+        -0.6810029745101929
+      ],
+      "max": [
+        0.6901910305023193,
+        1.0,
+        0.6793530583381653
+      ]
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 65792,
+      "type": "VEC3",
+      "min": [
+        0.3339093029499054,
+        0.28482237458229065,
+        0.13263039290905
+      ],
+      "max": [
+        0.7465445399284363,
+        0.7418437600135803,
+        0.7106537222862244
+      ]
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5125,
+      "count": 391680,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 65792,
+      "type": "VEC3",
+      "min": [
+        62.5,
+        1268.284912109375,
+        -31937.5
+      ],
+      "max": [
+        32062.5,
+        4074.02783203125,
+        -62.5
+      ]
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 65792,
+      "type": "VEC3",
+      "min": [
+        -0.7270467281341553,
+        0.4938810467720032,
+        -0.8683672547340393
+      ],
+      "max": [
+        0.7776493430137634,
+        0.9999998807907104,
+        0.7137845754623413
+      ]
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 65792,
+      "type": "VEC3",
+      "min": [
+        0.3366970121860504,
+        0.3238741457462311,
+        0.28669700026512146
+      ],
+      "max": [
+        0.8997551798820496,
+        0.939683198928833,
+        0.9596015810966492
+      ]
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5125,
+      "count": 391680,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 65536,
+      "type": "VEC3",
+      "min": [
+        32062.5,
+        963.7177734375,
+        -31937.5
+      ],
+      "max": [
+        63937.5,
+        3705.08203125,
+        -62.5
+      ]
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 65536,
+      "type": "VEC3",
+      "min": [
+        -0.6933936476707458,
+        0.6112581491470337,
+        -0.779428243637085
+      ],
+      "max": [
+        0.6896669268608093,
+        1.0,
+        0.7224030494689941
+      ]
+    },
+    {
+      "bufferView": 14,
+      "componentType": 5126,
+      "count": 65536,
+      "type": "VEC3",
+      "min": [
+        0.3334057033061981,
+        0.32083600759506226,
+        0.23361237347126007
+      ],
+      "max": [
+        0.8968669176101685,
+        0.935945451259613,
+        0.9549010992050171
+      ]
+    },
+    {
+      "bufferView": 15,
+      "componentType": 5125,
+      "count": 390150,
+      "type": "SCALAR"
+    }
+  ],
+  "materials": [
+    {
+      "name": "weathered rock, soil and snow",
+      "doubleSided": false,
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    }
+  ],
+  "extras": {
+    "origin_m": [
+      2780500.0,
+      6040500.0
+    ],
+    "axes": "local X east, Y up, Z south; origin southwest"
+  }
+}

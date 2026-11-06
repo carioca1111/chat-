@@ -14,12 +14,13 @@ PALETTE=np.array([[int(c[i:i+2],16) for i in (1,3,5)] for _,_,c in BIOMES],dtype
 
 def shaded(fields,config):
     e=fields["elevation_m"];h,w=e.shape
-    shade=LightSource(azdeg=310,altdeg=42).hillshade(e,vert_exag=18,dx=config["width_m"]/w,dy=config["height_m"]/h)
+    shade=LightSource(azdeg=310,altdeg=42).hillshade(e,vert_exag=28,dx=config["width_m"]/w,dy=config["height_m"]/h)
     rgb=PALETTE[fields["biomes"]].astype(float)/255
     rgb*=.50+.65*shade[...,None]
     ocean=~fields["land_mask"]
     depth=np.clip(-e/3500,0,1)
-    rgb[ocean]=np.stack([.045+.035*(1-depth),.12+.09*(1-depth),.19+.10*(1-depth)],axis=-1)[ocean]
+    shelf=np.exp(-np.maximum(-e,0)/550)
+    rgb[ocean]=np.stack([.035+.055*shelf,.105+.22*shelf,.18+.23*shelf],axis=-1)[ocean]
     rgb[fields["lake_id"]>0]=[.17,.43,.57]
     return np.clip(rgb,0,1)
 
@@ -64,7 +65,7 @@ def render_all(out,fields,config,regions,network,specials):
         fig.text(.818,yy,name,fontsize=8)
         count=int(np.count_nonzero(fields["biomes"]==idx))
         fig.text(.818,yy-.011,f"{count/np.count_nonzero(fields['land_mask'])*100:.2f}% do continente",fontsize=6.5,color="#839da5")
-    fig.text(.795,.235,f"SEED  {config['seed']}\n\n{config['width_m']/1000:,.0f} × {config['height_m']/1000:,.0f} km\nGrade hexagonal sobreposta\nAlturas e clima contínuos\n\nRelevo sombreado ×18\nNorte para cima",fontsize=9,linespacing=1.65,color="#a1b9be")
+    fig.text(.795,.235,f"SEED  {config['seed']}  /  REVISÃO 2\n\n{config['width_m']/1000:,.0f} × {config['height_m']/1000:,.0f} km\nLitoral fraturado e estuários\nErosão fluvial e encostas\n\nRelevo sombreado ×28\nNorte para cima",fontsize=9,linespacing=1.65,color="#a1b9be")
     ax.plot([400,1400],[350,350],color="#e0e3cf",lw=3)
     ax.text(900,440,"1.000 km",ha="center",fontsize=8)
     ax.annotate("N",xy=(5700,7500),xytext=(5700,7100),ha="center",color="#dfecd9",arrowprops={"arrowstyle":"-|>","color":"#dfecd9"})
@@ -98,3 +99,33 @@ def render_ravine(out):
         ax.set_box_aspect((.7,1,.52));ax.view_init(39,135);ax.set_title("RAVINA DOS DEVORADORES / GEOMETRIA MULTINÍVEL",color="#d4e4cc")
         ax.set(xlabel="Leste local · km",ylabel="Norte local · km",zlabel="Altitude · m")
         fig.savefig(out/"renders"/"ravine-detail.png",dpi=220,facecolor=fig.get_facecolor());plt.close(fig)
+
+def render_mountains(out,tile):
+    out=Path(out);e=tile["height"];initial=tile["initial"];colors=tile["colors"];meta=tile["metadata"]
+    h,w=e.shape;dx,dy=meta["pixel_size_m"]
+    # Inspect a 48 km window, retaining every 250 m terrain sample. This shows
+    # actual incision and talus rather than a painted mountain pictogram.
+    gy,gx=np.gradient(e,dy,dx);slope=np.hypot(gx,gy)
+    interior=slope.copy();interior[:100]=interior[-100:]=0;interior[:,:100]=interior[:,-100:]=0
+    r,c=np.unravel_index(np.argmax(interior),e.shape);half=96
+    r=np.clip(r,half,h-half);c=np.clip(c,half,w-half)
+    z=e[r-half:r+half,c-half:c+half]
+    col=colors[r-half:r+half,c-half:c+half]
+    xx,yy=np.meshgrid(np.arange(z.shape[1])*dx/1000,np.arange(z.shape[0]-1,-1,-1)*dy/1000)
+    shade=LightSource(azdeg=305,altdeg=34).hillshade(z,vert_exag=2,dx=dx,dy=dy)
+    face=np.clip(col*(.45+.80*shade[...,None]),0,1)
+    fig=plt.figure(figsize=(15,11),facecolor="#0b1b25")
+    ax=fig.add_subplot(projection="3d",facecolor="#0b1b25")
+    ax.plot_surface(xx,yy,z/1000,facecolors=face,rstride=1,cstride=1,shade=False,linewidth=0,antialiased=True)
+    ax.view_init(33,235);ax.set_proj_type("persp",focal_length=.85)
+    relief=float(np.ptp(z));aspect_z=max(.10,2*relief/(z.shape[0]*dy))
+    ax.set_box_aspect((1,1,aspect_z));ax.set(xlabel="Leste local · km",ylabel="Norte local · km",zlabel="Altitude · km")
+    ax.set_title("SERRA DAS AGULHAS / VALES E CRISTAS ERODIDOS",color="#dce5d6",pad=25)
+    for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis.pane.fill=False
+    fig.text(.08,.065,f"Dados reais: {dx:.0f} m por amostra · {meta['mesh_statistics']['triangle_count']:,} triângulos no maciço completo · relevo visual ×2",color="#93aeb2",fontsize=10)
+    fig.savefig(out/"renders"/"mountain-detail.png",dpi=190,facecolor=fig.get_facecolor());plt.close(fig)
+    fig,axes=plt.subplots(1,3,figsize=(18,7),facecolor="#0b1b25")
+    for ax,data,title,cmap in zip(axes,[initial,e,initial-e],["ESTRUTURA INICIAL","APÓS EVOLUÇÃO DO RELEVO","REMOÇÃO LÍQUIDA · m"],["gist_earth","gist_earth","magma"]):
+        ax.set_facecolor("#102c3e");im=ax.imshow(data,cmap=cmap);ax.set_title(title,color="#c3d8dc",fontsize=10);ax.set_xticks([]);ax.set_yticks([])
+        cb=fig.colorbar(im,ax=ax,shrink=.65);cb.ax.tick_params(colors="#a2b8be",labelsize=7)
+    fig.tight_layout();fig.savefig(out/"renders"/"erosion-comparison.png",dpi=180,facecolor=fig.get_facecolor());plt.close(fig)

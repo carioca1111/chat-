@@ -53,6 +53,115 @@ def _field_data(path, entry):
     return loaded
 
 
+def _longest_boundary_run(lines):
+    """Longest contiguous true sequence in any row, excluding raster framing."""
+    longest = 0
+    for line in np.asarray(lines, dtype=bool):
+        changes = np.flatnonzero(np.diff(np.r_[False, line, False]))
+        if len(changes):
+            longest = max(longest, int(np.max(changes[1::2] - changes[::2])))
+    return longest
+
+
+def _shoreline_metrics(land, dx, dy, coarse_factor=8):
+    """Pixel-edge coastline measurements at two physical observation scales.
+
+    A smooth outline retains almost the same perimeter after coarsening. Bays,
+    peninsulas and smaller inlets contribute additional resolved fine perimeter.
+    This is a scale-complexity metric, not a claim to measure a fractal dimension.
+    The raster frame is deliberately ignored: ocean must surround the world.
+    """
+    mask = np.asarray(land, dtype=bool)
+    require(mask.ndim == 2 and min(mask.shape) >= 2, "Invalid coastline mask")
+    horizontal = mask[1:] != mask[:-1]
+    vertical = mask[:, 1:] != mask[:, :-1]
+    perimeter = float(horizontal.sum() * dx + vertical.sum() * dy)
+    factor = min(int(coarse_factor), min(mask.shape))
+    h = (mask.shape[0] // factor) * factor
+    w = (mask.shape[1] // factor) * factor
+    coarse = mask[:h, :w].reshape(h//factor, factor, w//factor, factor).mean(axis=(1, 3)) >= .5
+    coarse_perimeter = float((coarse[1:] != coarse[:-1]).sum() * dx * factor
+                             + (coarse[:, 1:] != coarse[:, :-1]).sum() * dy * factor)
+    return {"fine_perimeter_km": perimeter / 1000,
+            "coarse_perimeter_km": coarse_perimeter / 1000,
+            "observation_scale_m": [float(dx), float(dy)],
+            "coarse_factor": factor,
+            "fine_to_coarse_perimeter_ratio": perimeter / max(coarse_perimeter, 1),
+            "longest_horizontal_straight_km": _longest_boundary_run(horizontal) * dx / 1000,
+            "longest_vertical_straight_km": _longest_boundary_run(vertical.T) * dy / 1000}
+
+
+def _land_component_sizes(land):
+    """Independent scanline D8 component sizes, descending, without SciPy."""
+    mask = np.asarray(land, dtype=bool)
+    h, w = mask.shape
+    seen = np.zeros_like(mask, dtype=bool)
+    sizes = []
+    for start in np.flatnonzero(mask.ravel()):
+        row, col = divmod(int(start), w)
+        if seen[row, col]:
+            continue
+        pending = deque([(row, col)])
+        connected = 0
+        while pending:
+            row, col = pending.popleft()
+            if seen[row, col]:
+                continue
+            left, right = col, col
+            while left > 0 and mask[row, left - 1] and not seen[row, left - 1]:
+                left -= 1
+            while right + 1 < w and mask[row, right + 1] and not seen[row, right + 1]:
+                right += 1
+            seen[row, left:right + 1] = True
+            connected += right - left + 1
+            for adjacent in (row - 1, row + 1):
+                if adjacent < 0 or adjacent >= h:
+                    continue
+                low, high = max(0, left - 1), min(w, right + 2)
+                candidates = mask[adjacent, low:high] & ~seen[adjacent, low:high]
+                beginnings = candidates & ~np.r_[False, candidates[:-1]]
+                pending.extend((adjacent, int(c + low)) for c in np.flatnonzero(beginnings))
+        sizes.append(connected)
+    return sorted(sizes, reverse=True)
+
+
+def _read_viewer_data(base, relative):
+    """Read both v1 inline inspectors and v2 lossless binary field manifests."""
+    document = _json(_safe_path(base, relative))
+    nx, ny = int(document["nx"]), int(document["ny"])
+    require(nx > 1 and ny > 1, "Inspector mesh is empty")
+    count = nx * ny
+    arrays = {}
+    if "fields" in document:
+        dtypes = {"float32": np.dtype("<f4"), "float64": np.dtype("<f8"),
+                  "uint8": np.dtype("u1"), "int32": np.dtype("<i4"),
+                  "uint32": np.dtype("<u4"), "uint16": np.dtype("<u2")}
+        for name, info in document["fields"].items():
+            require(info["dtype"] in dtypes, f"Unsupported inspector dtype: {name}")
+            path = _safe_path(base, info["path"])
+            dtype = dtypes[info["dtype"]]
+            expected_count = count * (3 if name == "biome_rgb" else 1)
+            require(int(info["count"]) == expected_count, f"Inspector element count mismatch: {name}")
+            require(path.stat().st_size == int(info["byte_length"]) == expected_count * dtype.itemsize,
+                    f"Inspector binary length mismatch: {name}")
+            data = np.fromfile(path, dtype=dtype)
+            require(np.isfinite(data).all(), f"Invalid inspector field values: {name}")
+            arrays[name] = data
+    else:
+        for name in ("elevation_m", "biome_rgb", "temperature_c", "precipitation_mm",
+                     "soil_moisture", "flow_accumulation_km2", "land_mask", "land",
+                     "lake_id", "water_surface_m"):
+            if name in document:
+                data = np.asarray(document[name])
+                require(data.size == count * (3 if name == "biome_rgb" else 1),
+                        f"Inspector array length mismatch: {name}")
+                require(np.isfinite(data).all(), f"Invalid inspector values: {name}")
+                arrays[name] = data
+    require("elevation_m" in arrays and "biome_rgb" in arrays, "Inspector lacks terrain data")
+    require("land_mask" in arrays or "land" in arrays, "Inspector lacks its land/ocean mask")
+    return document, arrays
+
+
 class Export:
     """Minimal independent reader of world.json and NumPy export fields."""
     def __init__(self, output):
@@ -108,7 +217,12 @@ def check_biomes(e):
     }
     for biome, supported in contracts.items():
         require(supported[b == biome].all(), f"Biome {biome} has environmentally unsupported cells")
-    return {"sample_counts": counts}
+    desert_fraction = counts[7] / max(1, int(np.count_nonzero(b)))
+    if int(e.config.get("revision", 1)) >= 2:
+        maximum = min(.16, float(e.config.get("quality_targets", {}).get("max_desert_fraction", .16)))
+        require(desert_fraction <= maximum,
+                f"Rocky desert remains excessive: {desert_fraction:.1%} of nonwater land, limit {maximum:.1%}")
+    return {"sample_counts": counts, "desert_fraction_nonwater_land": desert_fraction}
 
 
 def check_volcano(e):
@@ -519,12 +633,78 @@ def check_reproducibility(e):
         geographic_files.update(str(path.relative_to(e.base)).replace("\\", "/")
                                 for path in (e.base / "meshes").rglob("*")
                                 if path.is_file() and path.suffix in {".npy", ".npz", ".gltf", ".bin", ".csv", ".json"})
+        geographic_files.update(str(path.relative_to(e.base)).replace("\\", "/")
+                                for path in (e.base / "viewer").rglob("*")
+                                if path.is_file() and path.suffix in {".bin", ".json"})
         for relative in sorted(geographic_files):
             require(_safe_path(e.base, relative).read_bytes() == _safe_path(second.base, relative).read_bytes(),
                     f"Seed reproduction mismatch: {relative}")
             compared_files.append(relative)
         return {"seed": e.config["seed"], "identical_numerical_fields": len(e.fields),
                 "byte_identical_geographic_files": compared_files}
+
+
+def check_mountain_detail(e):
+    """Verify actual detailed terrain, erosion differences and glTF polygons."""
+    metadata = _json(_safe_path(e.base, "meshes/mountains/metadata.json"))
+    initial = np.load(_safe_path(e.base, metadata["initial_heightmap"]), allow_pickle=False)
+    height = np.load(_safe_path(e.base, metadata["heightmap"]), allow_pickle=False)
+    erosion = _field_data(_safe_path(e.base, metadata["erosion_field"]), {"key": "data"})
+    deposition = _field_data(_safe_path(e.base, metadata["deposition_field"]), {"key": "data"})
+    shape = tuple(metadata["local_resolution"])
+    require(initial.shape == height.shape == erosion.shape == deposition.shape == shape,
+            "Detailed mountain field dimensions disagree")
+    require(min(shape) >= 512, "Mountain detail does not contain the promised 512x512 samples")
+    require(all(np.isfinite(a).all() for a in (initial, height, erosion, deposition)),
+            "Invalid detailed mountain numerical field")
+    require((erosion >= 0).all() and (deposition >= 0).all(), "Negative detailed sediment change")
+    evolution_error = float(np.max(np.abs(initial.astype(float) - erosion + deposition - height)))
+    require(evolution_error < .02,
+            f"Detailed mountain terrain does not match actual erosion/deposition: {evolution_error:.4f}m")
+    require(float(np.percentile(erosion, 95)) > 10 and float(erosion.max()) > 50,
+            "Detailed mountains lack meaningful erosive height changes")
+    relief = float(np.percentile(height, 99) - np.percentile(height, 1))
+    require(relief > 1000, f"Detailed mountain relief is insufficient: {relief:.0f}m")
+    x0, y0, x1, y1 = metadata["bounds_m"]
+    rows, cols = shape
+    dx, dy = (x1-x0)/cols, (y1-y0)/rows
+    require(dx > 0 and dy > 0 and max(dx, dy) <= 500,
+            "Mountain detail lacks sub-kilometre geometric sampling")
+    origin = metadata["mesh_origin_m"]
+    meshes = _read_gltf(e.base, metadata["gltf"])
+    covered = np.zeros(shape, dtype=bool)
+    triangle_count = 0
+    for name, vertices, triangles in meshes:
+        x = vertices[:, 0].astype(float) + float(origin[0])
+        y = float(origin[1]) - vertices[:, 2].astype(float)
+        colf, rowf = (x-x0)/dx-.5, (y1-y)/dy-.5
+        cc, rr = np.rint(colf).astype(int), np.rint(rowf).astype(int)
+        require(((cc >= 0) & (cc < cols) & (rr >= 0) & (rr < rows)).all(),
+                f"Mountain glTF has vertices outside its georeferenced height field: {name}")
+        require(np.max(np.abs(colf-cc)) < .001 and np.max(np.abs(rowf-rr)) < .001,
+                "Mountain glTF vertices do not coincide with local field sample centres")
+        require(np.allclose(vertices[:, 1], height[rr, cc], rtol=0, atol=.01),
+                "Mountain glTF heights disagree with exported detailed terrain")
+        covered[rr, cc] = True
+        triangle_count += len(triangles)
+    require(covered.all(), "Mountain mesh omits detailed height samples")
+    require(triangle_count == 2*(rows-1)*(cols-1),
+            f"Mountain glTF polygon count has holes or overlapping quads: {triangle_count}")
+    viewer, fields = _read_viewer_data(e.base, "meshes/mountains/mountain-viewer.json")
+    require((int(viewer["ny"]), int(viewer["nx"])) == shape,
+            "Mountain inspector silently downsamples detailed geometry")
+    require(np.allclose(fields["elevation_m"].reshape(shape), height, rtol=0, atol=.002),
+            "Mountain inspector heights differ from the detailed exported terrain")
+    require(np.allclose(viewer["origin_m"], [x0, y0], rtol=0, atol=.01)
+            and abs(float(viewer["width_m"])-(x1-x0)) < .01
+            and abs(float(viewer["height_m"])-(y1-y0)) < .01,
+            "Mountain inspector georeference disagrees with its mesh extent")
+    return {"local_shape": list(shape), "sample_spacing_m": [dx, dy],
+            "glTF_triangles": triangle_count, "glTF_mesh_chunks": len(meshes),
+            "terrain_relief_1st_to_99th_percentile_m": relief,
+            "erosion_95th_percentile_m": float(np.percentile(erosion, 95)),
+            "maximum_erosion_m": float(erosion.max()),
+            "erosion_height_balance_maximum_error_m": evolution_error}
 
 
 def check_exports(e):
@@ -563,9 +743,20 @@ def check_exports(e):
     with Image.open(_safe_path(e.base, "world-preview.png")) as image:
         require(max(image.size) >= 1600, "Continental preview is not high resolution")
     require(_safe_path(e.base, "README.md").stat().st_size > 100, "Missing export documentation")
-    return {"checked_fields": len(e.fields), "raster_shape": list(e.shape),
+    details = {"checked_fields": len(e.fields), "raster_shape": list(e.shape),
             "manifest_files": len(manifest["files"]), "height_png_bits": 16,
             "maximum_height_quantization_error_m": error}
+    if int(e.config.get("revision", 1)) >= 2:
+        viewer, arrays = _read_viewer_data(e.base, "viewer-data.json")
+        nx, ny = int(viewer["nx"]), int(viewer["ny"])
+        actual_triangles = 2*(nx-1)*(ny-1)
+        require(ny >= 640 and actual_triangles >= 600000,
+                f"Continental inspection mesh remains too sparse: {nx}x{ny}, {actual_triangles} triangles")
+        details["continental_inspector"] = {"grid": [ny, nx], "terrain_triangles": actual_triangles,
+                                               "actual_binary_fields": len(arrays),
+                                               "triangle_increase_vs_v1": actual_triangles/162690}
+        details["mountain_detail"] = check_mountain_detail(e)
+    return details
 
 
 def check_finite_terrain(e):
@@ -577,33 +768,44 @@ def check_finite_terrain(e):
         require((e.fields[name] >= 0).all(), f"Negative physical quantity: {name}")
     h = e.fields["elevation_m"]
     require(h[e.land].min() > 0 and h[~e.land].max() <= 0, "Elevation disagrees with land/ocean mask")
-    # Independent scanline D8 flood fill: one continuous continent, no islands
-    # created by small procedural coastline fragments. This needs no SciPy.
-    seen = np.zeros_like(e.land, dtype=bool)
-    start = int(np.flatnonzero(e.land.ravel())[0])
-    pending = deque([divmod(start, e.w)])
-    connected = 0
-    while pending:
-        row, col = pending.popleft()
-        if seen[row, col]:
-            continue
-        left, right = col, col
-        while left > 0 and e.land[row, left - 1] and not seen[row, left - 1]:
-            left -= 1
-        while right + 1 < e.w and e.land[row, right + 1] and not seen[row, right + 1]:
-            right += 1
-        seen[row, left:right + 1] = True
-        connected += right - left + 1
-        for adjacent in (row - 1, row + 1):
-            if adjacent < 0 or adjacent >= e.h:
-                continue
-            low, high = max(0, left - 1), min(e.w, right + 2)
-            candidates = e.land[adjacent, low:high] & ~seen[adjacent, low:high]
-            beginnings = candidates & ~np.r_[False, candidates[:-1]]
-            pending.extend((adjacent, int(c + low)) for c in np.flatnonzero(beginnings))
-    require(connected == int(e.land.sum()), f"World has disconnected land: {int(e.land.sum()) - connected} cells outside principal continent")
+    # One dominant continental mass is required. Revision2 optionally permits
+    # small nearshore islands, while the original format retains its exact
+    # single-component contract. No library used by the generator labels these.
+    require(not (e.land[0].any() or e.land[-1].any()
+                 or e.land[:, 0].any() or e.land[:, -1].any()),
+            "Continental coast touches the rectangular raster frame")
+    components = _land_component_sizes(e.land)
+    require(bool(components), "No continent")
+    principal_fraction = components[0] / int(e.land.sum())
+    targets = e.config.get("quality_targets", {})
+    if e.config.get("coastal_islands", False):
+        minimum = float(targets.get("min_mainland_fraction", .985))
+        require(0 < minimum <= 1, "Invalid principal-continent fraction target")
+        require(principal_fraction >= minimum,
+                f"No single dominant continent: principal landmass {principal_fraction:.2%}")
+    else:
+        require(len(components) == 1,
+                f"World has disconnected land: {int(e.land.sum()) - components[0]} cells outside principal continent")
+    shore = _shoreline_metrics(e.land, e.dx, e.dy)
+    if int(e.config.get("revision", 1)) >= 2:
+        max_run = min(120000., float(targets.get("max_shore_straight_run_m", 120000))) / 1000
+        min_complexity = max(1.08, float(targets.get("min_shore_complexity_ratio", 1.08)))
+        require(max(shore["longest_horizontal_straight_km"], shore["longest_vertical_straight_km"]) <= max_run,
+                f"Artificial straight coastline remains: horizontal {shore['longest_horizontal_straight_km']:.0f}km, vertical {shore['longest_vertical_straight_km']:.0f}km; limit {max_run:.0f}km")
+        require(shore["fine_to_coarse_perimeter_ratio"] >= min_complexity,
+                f"Coast lacks resolved multiscale inlets: perimeter ratio {shore['fine_to_coarse_perimeter_ratio']:.3f}, minimum {min_complexity:.3f}")
+        erosion = e.fields.get("geomorphic_erosion_m")
+        deposition = e.fields.get("geomorphic_deposition_m")
+        require(erosion is not None and deposition is not None,
+                "Missing numerical long-term geomorphic erosion/deposition fields")
+        require((erosion >= 0).all() and (deposition >= 0).all(), "Negative geomorphic sediment change")
+        require(float(np.percentile(erosion[e.land], 95)) > 10,
+                "Landscape evolution did not carve meaningful terrain")
     return {"finite_fields": len(e.fields), "minimum_elevation_m": float(h.min()),
-            "maximum_elevation_m": float(h.max()), "single_continent_land_cells": connected}
+            "maximum_elevation_m": float(h.max()), "single_continent_land_cells": components[0],
+            "land_component_count": len(components), "principal_land_fraction": principal_fraction,
+            "largest_component_areas_km2": [v * e.dx * e.dy / 1e6 for v in components[:20]],
+            "shoreline": shore}
 
 
 def check_independent_loader(e):
