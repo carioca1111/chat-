@@ -17,10 +17,12 @@
       3533383.6474405094,
       2520000.0
     ],
-    "local_geometry": "X leste, Y vertical, Z sul; unidade artistica ~= metro diorama",
+    "local_geometry": "X leste, Y vertical, Z sul; unidade cênica procedural",
     "local_hex_radius": 101.0,
+    "observable_region_diameter_m": 2000,
+    "scenic_unit_to_observable_meter": 9.90099,
     "world_hex_radius_m": 240000,
-    "note": "Cena artística de um setor do hex geográfico, ainda não cobre nem substitui seus 240 km de raio."
+    "note": "Representação CONDENSADA: o footprint cênico não é um terreno 1:1 de 2km. Mantém o continente original, e ainda requer adequação de escala de fauna e navegação."
   },
   "assets": {
     "glb": "forest-temperate.glb",
@@ -46,24 +48,24 @@
   ],
   "geometry": {
     "terrain": {
-      "triangles": 7800,
-      "vertices": 3961
+      "triangles": 18252,
+      "vertices": 9205
     },
     "rocky-hex-walls": {
-      "triangles": 240,
-      "vertices": 240
+      "triangles": 312,
+      "vertices": 312
     },
     "underside": {
       "triangles": 4,
       "vertices": 6
     },
     "river": {
-      "triangles": 448,
-      "vertices": 450
+      "triangles": 590,
+      "vertices": 592
     },
     "river-foam": {
-      "triangles": 65,
-      "vertices": 195
+      "triangles": 105,
+      "vertices": 315
     },
     "waterfalls": {
       "triangles": 84,
@@ -82,8 +84,8 @@
       "vertices": 175
     },
     "rocks": {
-      "triangles": 3759,
-      "vertices": 2685
+      "triangles": 3696,
+      "vertices": 2640
     },
     "footpaths": {
       "triangles": 558,
@@ -106,8 +108,8 @@
       "vertices": 2856
     },
     "wildflowers": {
-      "triangles": 32256,
-      "vertices": 20160
+      "triangles": 32384,
+      "vertices": 20240
     },
     "bridge-planks": {
       "triangles": 288,
@@ -156,10 +158,83 @@
     "wildlife": {
       "triangles": 1112,
       "vertices": 650
+    },
+    "geology-riverbank-left": {
+      "triangles": 360,
+      "vertices": 362
+    },
+    "geology-riverbank-right": {
+      "triangles": 380,
+      "vertices": 382
+    },
+    "geology-fall-buttresses": {
+      "triangles": 935,
+      "vertices": 585
+    },
+    "geology-fall-strata": {
+      "triangles": 396,
+      "vertices": 276
+    },
+    "geology-fall-cliff": {
+      "triangles": 90,
+      "vertices": 96
+    },
+    "geology-wet-boulders": {
+      "triangles": 1900,
+      "vertices": 1188
+    },
+    "geology-exposed-bedrock": {
+      "triangles": 1023,
+      "vertices": 713
+    },
+    "geology-talus": {
+      "triangles": 85,
+      "vertices": 53
+    },
+    "geology-river-boulders": {
+      "triangles": 14550,
+      "vertices": 9097
+    },
+    "geology-sediment-shelves": {
+      "triangles": 1023,
+      "vertices": 713
     }
   },
-  "total_triangles": 73950,
-  "glb_bytes": 1642880,
-  "integration_status": "visual_preview_only",
-  "generated_with": "Python trimesh; asset estático GLB, sem dependência de IA na runtime."
+  "geology_metrics": {
+    "shore_segments": 370,
+    "waterfalls_with_bedrock": [
+      {
+        "z": -59.0,
+        "vertical_drop": 4.01
+      },
+      {
+        "z": -16.0,
+        "vertical_drop": 2.54
+      },
+      {
+        "z": 38.0,
+        "vertical_drop": 1.9
+      }
+    ],
+    "slope_class_samples": {
+      "suave": 1135,
+      "moderado": 152,
+      "acentuado": 12,
+      "escarpa": 0
+    },
+    "slope_exposures": 31,
+    "riverbank_boulders": 367,
+    "sediment_shelves": 31,
+    "water_surface_animation": "shader-only; fixed water geometry",
+    "vegetation_rule": "slope+river+points-of-interest; deterministic seed"
+  },
+  "boundary_metadata": {
+    "shape": "hexagonal",
+    "water_portals": "derived from procedural river centerline; pending cross-hex neighbor validation",
+    "geometry_clipped": true
+  },
+  "total_triangles": 105463,
+  "glb_bytes": 2321896,
+  "integration_status": "in_development_unapproved",
+  "generated_with": "Python trimesh; water shading via independent Three.js viewer."
 }

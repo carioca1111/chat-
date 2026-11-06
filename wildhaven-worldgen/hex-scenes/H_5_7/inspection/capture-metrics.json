@@ -1,0 +1,82 @@
+{
+  "kind": "REAL_WEBGL_CAPTURE",
+  "headless_software_renderer": true,
+  "views": [
+    {
+      "view": "overview",
+      "image": "overview.png",
+      "sceneLoaded": true,
+      "drawCalls": 38,
+      "gpuTriangles": 105463,
+      "camera": [
+        170,
+        175,
+        215
+      ],
+      "canvas": {
+        "width": 945,
+        "height": 645
+      },
+      "sceneGroups": 1,
+      "status": "Em desenvolvimento",
+      "browserErrors": []
+    },
+    {
+      "view": "river",
+      "image": "river.png",
+      "sceneLoaded": true,
+      "drawCalls": 38,
+      "gpuTriangles": 105463,
+      "camera": [
+        84,
+        94,
+        118
+      ],
+      "canvas": {
+        "width": 945,
+        "height": 645
+      },
+      "sceneGroups": 1,
+      "status": "Em desenvolvimento",
+      "browserErrors": []
+    },
+    {
+      "view": "cliffs",
+      "image": "cliffs.png",
+      "sceneLoaded": true,
+      "drawCalls": 31,
+      "gpuTriangles": 105009,
+      "camera": [
+        55,
+        108,
+        -91
+      ],
+      "canvas": {
+        "width": 945,
+        "height": 645
+      },
+      "sceneGroups": 1,
+      "status": "Em desenvolvimento",
+      "browserErrors": []
+    },
+    {
+      "view": "camp",
+      "image": "camp.png",
+      "sceneLoaded": true,
+      "drawCalls": 37,
+      "gpuTriangles": 105187,
+      "camera": [
+        -125,
+        85,
+        98
+      ],
+      "canvas": {
+        "width": 945,
+        "height": 645
+      },
+      "sceneGroups": 1,
+      "status": "Em desenvolvimento",
+      "browserErrors": []
+    }
+  ]
+}
