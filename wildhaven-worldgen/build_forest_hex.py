@@ -9,6 +9,7 @@ from collections import defaultdict
 import numpy as np
 import trimesh
 from hex_landscape_systems import build_geology, slope_at, slope_class
+from export_glb_materials import add_pbr_materials
 
 ROOT=Path(__file__).parent
 OUT=ROOT/'hex-scenes'/'H_5_7'; OUT.mkdir(parents=True,exist_ok=True)
@@ -445,7 +446,7 @@ for name,geo in GROUPS.items():
  mesh.metadata['name']=name
  scene.add_geometry(mesh,node_name=name,geom_name=name)
  report[name]={'triangles':len(mesh.faces),'vertices':len(mesh.vertices)}
-glb=scene.export(file_type='glb')
+glb=add_pbr_materials(scene.export(file_type='glb'))
 (OUT/'forest-temperate.glb').write_bytes(glb)
 manifest={
  'schema_version':'1.0','region_id':'H_5_7','name':'Bosque das Cascatas',
