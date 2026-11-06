@@ -9,6 +9,7 @@ from collections import defaultdict
 import numpy as np
 import trimesh
 from hex_landscape_systems import build_geology, slope_at, slope_class
+from hex_fluvial_details import build_fluvial_details, environment_at, habitat_probability
 from export_glb_materials import add_pbr_materials
 
 ROOT=Path(__file__).parent
@@ -89,7 +90,7 @@ def terrain_y(x,z):
  dx=x-rxc(z)
  # Real sunken river channel, with naturally irregular stepped banks.
  # The render water level is ~baseline(rxc(z),z)-0.35.
- width=7.8+1.1*math.sin(z*.065)
+ width=5.1+.45*math.sin(z*.065) # banks meet the actual water surface around x +/- 6.5
  river=math.exp(-.5*(dx/width)**4)
  bed=baseline(x,z)-3.35*river
  # Two sharply terraced, LOCALIZED highland ridges expose bedrock,
@@ -185,7 +186,9 @@ def flower(x,z):
   add_prism('wildflowers',(xx,yy,zz),(xx,yy+rng.uniform(.35,.8),zz),.035,(55,114,42),sides=4)
   sphere('wildflowers',xx,yy+.68,zz,.19,.13,.18,rng.choice([(239,222,111),(233,201,214),(234,231,220),(181,163,222)]),sub=0)
 
-def find_spots(count,avoid,part='all',maxtries=160000):
+# Shared occupancy keeps a natural forest floor without a uniform grid.
+TREE_SPOTS=[]
+def find_spots(count,avoid,part='shrub',maxtries=160000):
  found=[]
  for _ in range(maxtries):
   if len(found)>=count:break
@@ -193,14 +196,20 @@ def find_spots(count,avoid,part='all',maxtries=160000):
   if not inside(x,z,margin=7):continue
   if part=='pine' and z>73:continue
   if abs(x-rxc(z))<avoid:continue
-  if slope_at(terrain_y,x,z,1.4) > (1.05 if count>=40 else 1.6):continue
   if ((x+63)**2+(z-29)**2)<15**2:continue # camp
   if ((x-54)**2+(z+53)**2)<15**2:continue # ruins
   if ((x-64)**2+(z+9)**2)<10**2:continue # cave
   if abs(z-11)<7 and abs(x)<32:continue # bridge
   if ((x-55)**2+(z-48)**2)<12**2:continue # pond
   if abs(z)<45 and abs(x+26)<4:continue # footpath
+  habitat=environment_at(terrain_y,rxc,x,z)
+  if rng.random()>habitat_probability(part,habitat):continue
+  if part in ('pine','broadleaf'):
+   if any((x-a)**2+(z-b)**2 < 4.25**2 for a,b in TREE_SPOTS):
+    continue
+   TREE_SPOTS.append((x,z))
   found.append((x,z))
+ if len(found)!=count:raise RuntimeError(f'Unable to populate {part}: {len(found)}/{count}')
  return found
 
 # GEOLOGY: Surface with perfect 6-sided perimeter, radial mesh filling the whole hex.
@@ -346,11 +355,11 @@ path(smooth([(-30,18),(-35,-5),(-49,-18),(-53,-38),(-50,-58)],75),2.3)
 path(smooth([(33,8),(53,23),(74,18),(82,-4)],60),2.2)
 
 # Decorative forest pine trunks and broadleaf canopies.
-for x,z in find_spots(190,10):pine(x,z,rng.uniform(6,15))
-for k,(x,z) in enumerate(find_spots(86,12)):
+for x,z in find_spots(190,9,'pine'):pine(x,z,rng.uniform(6,15))
+for k,(x,z) in enumerate(find_spots(100,8,'broadleaf')):
  broadleaf(x,z,rng.uniform(7,13),orange=k%5==0)
-for x,z in find_spots(220,8):shrub(x,z)
-for x,z in find_spots(290,9):flower(x,z)
+for x,z in find_spots(240,7,'shrub'):shrub(x,z)
+for x,z in find_spots(310,7,'flower'):flower(x,z)
 
 # Planked wooden bridge spanning river east-west, at z=11.
 bz=11; bx=rxc(bz); by=terrain_y(bx-15,bz)+1.9
@@ -437,6 +446,10 @@ for x,z in [(-19,57),(26,66),(69,65),(-57,67)]:
 # sediment and slope-dependent bedrock. This stays independent of gameplay.
 geology=build_geology(add=add,height=terrain_y,baseline=baseline,
                       river_center=rxc,inside=inside,seed=SEED)
+# Additional physical sediment terraces, stratified slope faces, fractures
+# and embedded boulders; geometry remains modular in the exported GLB.
+geology.update(build_fluvial_details(add=add,height=terrain_y,baseline=baseline,
+                                   river_center=rxc,inside=inside,seed=SEED))
 
 scene=trimesh.Scene()
 report={}
@@ -462,6 +475,10 @@ manifest={
  'assets':{'glb':'forest-temperate.glb','progress':'../../hex-workshop/public/progress.json'},
  'elements':['terrain hexagonal 3D','margens rochosas','rio sinuoso','3 cachoeiras','ponte de madeira','bandeiras vermelhas','acampamento com barraca e fogueira','ruínas de pedra','caverna','lago pequeno','pinheiros','árvores folhosas verdes e outonais','rochas','flores','arbustos','cervos'],
  'geometry':report,'geology_metrics':geology,
+ 'ecology':{'macro_biome':'temperate_forest','baseline_temperature_c':24.6,
+            'annual_precipitation_mm':1137.16,
+            'placement':'altitude+slope+river_distance+soil_moisture+fertility+microtemperature',
+            'sample_proxies_are_not_authoritative_continental_fields':True},
  'boundary_metadata':{'shape':'hexagonal', 'water_portals':'derived from procedural river centerline; pending cross-hex neighbor validation', 'geometry_clipped':True},
  'total_triangles':sum(z['triangles'] for z in report.values()),'glb_bytes':len(glb),
  'integration_status':'in_development_unapproved',

@@ -55,7 +55,9 @@ def check():
         "geology-river-boulders", "geology-fall-cliff",
         "geology-fall-buttresses", "pine-needles",
         "broadleaf-canopies", "ruins", "bridge-planks", "canvas-tent",
-        "footpaths", "cave-interior",
+        "footpaths", "cave-interior", "geology-riparian-terrace-west",
+        "geology-riparian-terrace-east", "geology-stratal-escarpments",
+        "geology-cliff-fractures", "geology-clustered-bankstones",
     }
     names = set(metadata["geometry"])
     assert required <= names, "Missing meshes: " + repr(required - names)
@@ -71,6 +73,11 @@ def check():
     assert len(measurements["waterfalls_with_bedrock"]) == 3
     assert measurements["riverbank_boulders"] > 200
     assert measurements["slope_exposures"] > 20
+    assert measurements["riparian_terrace_segments"] > 200
+    assert measurements["stratified_escarpments"] >= 10
+    assert measurements["cliff_fissures"] >= 20
+    assert measurements["embedded_bank_stones"] > 100
+    assert metadata["ecology"]["sample_proxies_are_not_authoritative_continental_fields"] is True
 
     # Boundaries and scale are not falsely declared fully georeferenced.
     assert metadata["boundary_metadata"]["geometry_clipped"]
@@ -84,6 +91,9 @@ def check():
         "shore_segments": measurements["shore_segments"],
         "boulders": measurements["riverbank_boulders"],
         "slope_samples": measurements["slope_class_samples"],
+        "riparian_terrace_segments": measurements["riparian_terrace_segments"],
+        "stratified_escarpments": measurements["stratified_escarpments"],
+        "embedded_bank_stones": measurements["embedded_bank_stones"],
     }, ensure_ascii=False, indent=2))
 
 

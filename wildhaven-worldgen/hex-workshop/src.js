@@ -147,6 +147,7 @@ const sun=new THREE.DirectionalLight(0xffeed4,1.9);sun.position.set(-75,130,100)
 const rim=new THREE.DirectionalLight(0xd8e9ff,.45);rim.position.set(75,90,-95);scene.add(rim);
 const fireLight=new THREE.PointLight(0xff9d45,24,25,2);fireLight.position.set(-55,11,47);scene.add(fireLight);
 let spin=false;let water=[];let model=null;const loader=new GLTFLoader();
+const detailLOD=[];let currentLOD='near';
 function makeAnimatedWater(obj){
  obj.material=obj.material.clone(); // do not change shared rock/foam materials
  obj.material.roughness=.46;
@@ -181,6 +182,7 @@ loader.load(ROOT+'forest-temperate.glb',({scene:gltf})=>{
   if(obj.name.includes('river')||obj.name.includes('pond')||obj.name.includes('waterfalls')){
    if(obj.material)makeAnimatedWater(obj);
   }
+  if(obj.name.includes('wildflowers') || obj.name.includes('geology-cliff-fractures')) detailLOD.push(obj);
   if(obj.name.includes('fire')&&obj.material){obj.material.emissive=new THREE.Color('#a74c08');obj.material.emissiveIntensity=.62;}
  });
  el('tris').textContent=Math.round(tris).toLocaleString('pt-BR');el('meshes').textContent=meshes.toLocaleString('pt-BR');el('scene-loading').style.display='none';
@@ -199,6 +201,10 @@ el('toggle-spin').onclick=()=>{spin=!spin;el('toggle-spin').classList.toggle('ac
 const resize=()=>{const w=frame.clientWidth,h=frame.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false)};new ResizeObserver(resize).observe(frame);
 const clock=new THREE.Clock();
 function tick(){requestAnimationFrame(tick);const t=clock.getElapsedTime();if(spin)controls.autoRotate=true;else controls.autoRotate=false;controls.autoRotateSpeed=.6;
+ // Distance LOD keeps fine blossoms/fractures for close inspection, never flattens terrain.
+ const distance=camera.position.distanceTo(controls.target);
+ currentLOD=distance>210?'distant':'near';
+ for(const mesh of detailLOD) mesh.visible=currentLOD==='near';
  fireLight.intensity=18+6*Math.sin(t*9)+3*Math.sin(t*12);
  water.forEach(obj=>{if(obj.userData.flowShader)obj.userData.flowShader.uniforms.uFlowTime.value=t;});
  controls.update();renderer.render(scene,camera);
@@ -210,6 +216,8 @@ window.__wildhavenInspect=()=>({
  camera: [camera.position.x,camera.position.y,camera.position.z].map(n=>Math.round(n*100)/100),
  canvas: {width:renderer.domElement.width,height:renderer.domElement.height},
  sceneGroups: model?.children.length||0,
- status: stateName('H_5_7')
+ status: stateName('H_5_7'),
+ lod: currentLOD,
+ renderedTriangles: renderer.info.render.triangles
 });
 tick();
