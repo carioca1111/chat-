@@ -31,9 +31,23 @@ class Geometry:
   if not self.v:return None
   return trimesh.Trimesh(vertices=np.asarray(self.v),faces=np.asarray(self.f),vertex_colors=np.asarray(self.c),process=False)
 
+# Winding repair for surfaces and authored primitives whose construction
+# uses clockwise X/Z orientation. glTF front-face culling would otherwise
+# hide the terrain and invert illumination on the foliage and bank rocks.
+REVERSE_WINDING={
+ 'terrain','river','river-foam','pond','rocks','pine-needles','fire',
+ 'canvas-tent','bridge-planks','camp-crates','ruins',
+ 'geology-riverbank-right','geology-exposed-bedrock',
+ 'geology-fall-strata','geology-sediment-shelves',
+ 'geology-fall-buttresses','geology-wet-boulders',
+ 'geology-talus','geology-river-boulders',
+}
 def add(group,v,f,col):
  if group not in GROUPS:GROUPS[group]=Geometry()
- GROUPS[group].add(v,f,col)
+ faces=np.asarray(f,dtype=np.int64).reshape(-1,3)
+ if group in REVERSE_WINDING:
+  faces=faces[:,[0,2,1]]
+ GROUPS[group].add(v,faces,col)
 
 def col(rgb,jitter=0):
  rgb=list(rgb)
