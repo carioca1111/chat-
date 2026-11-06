@@ -84,6 +84,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from PIL import Image, ImageStat
+          import numpy as np
           folder=Path('hex-scenes/H_5_7/inspection')
           for stem in ('overview','river','cliffs','camp'):
               path=folder/(stem+'.png')
@@ -91,6 +92,12 @@ jobs:
               stat=ImageStat.Stat(image)
               assert image.width>=800 and image.height>=350, path
               assert max(stat.stddev)>12, 'Blank viewport: '+str(path)
+              if stem=='overview':
+                  pix=np.asarray(image).astype(np.int32)
+                  r,g,b=pix[:,:,0],pix[:,:,1],pix[:,:,2]
+                  green=float(np.mean((g>r*1.12)&(g>b*.85)&(g>60)))
+                  assert green>.028, f'Forest palette lost its green vegetation: {green:.4f}'
+                  print('Green coverage:',green)
               print(stem,image.size,'variance',stat.stddev)
           PY
 
