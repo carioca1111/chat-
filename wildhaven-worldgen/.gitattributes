@@ -1,0 +1,9 @@
+*.py text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+outputs/** -text whitespace=cr-at-eol
+*.png -text
+*.npy -text
+*.npz -text
+*.bin -text

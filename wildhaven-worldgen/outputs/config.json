@@ -1,0 +1,18 @@
+{
+  "seed": 20051028,
+  "width_m": 6400000,
+  "height_m": 8000000,
+  "resolution": [
+    1600,
+    1280
+  ],
+  "hex_radius_m": 240000,
+  "latitude_south_deg": -12,
+  "latitude_north_deg": 80,
+  "river_threshold_km2": 5000,
+  "height_encoding": {
+    "offset_m": -6000,
+    "scale_m": 0.25
+  },
+  "description": "Wildhaven / continente Auralis / seed-mae fixa"
+}
