@@ -149,12 +149,13 @@ function addTerrainSectors(root,height,land,dna,waterQuality){
  return {sectors:number,terrainTriangles:triangles,sectorSize_m:sectorSize};
 }
 function addBorder(root,height,rockColor){const p=hexCorners(),samples=24,v=[],c=[],f=[];
+ let bottom=Infinity;for(let ix=-4;ix<=4;ix++)for(let iz=-4;iz<=4;iz++){const x=ix*900,z=iz*900;if(insideHex(x,z))bottom=Math.min(bottom,height(x,z));}bottom=Math.min(-28,bottom-36);
  const col=rgb(rockColor);for(let i=0;i<6;i++){const a=p[i],b=p[(i+1)%6];for(let k=0;k<samples;k++){
-  const t=k/samples,x=lerp(a[0],b[0],t),z=lerp(a[1],b[1],t),top=height(x,z),bottom=-390;
+  const t=k/samples,x=lerp(a[0],b[0],t),z=lerp(a[1],b[1],t),top=height(x,z);
   const s=v.length/3;v.push(x,top,z,x,bottom,z);c.push(...col,...col);
   if(s>=2)f.push(s-2,s-1,s,s-1,s+1,s);
  }}
- const xa=p[0][0],za=p[0][1],top=height(xa,za);const q=v.length/3;v.push(xa,top,za,xa,-390,za);c.push(...col,...col);f.push(q-2,q-1,q,q-1,q+1,q);
+ const xa=p[0][0],za=p[0][1],top=height(xa,za);const q=v.length/3;v.push(xa,top,za,xa,bottom,za);c.push(...col,...col);f.push(q-2,q-1,q,q-1,q+1,q);
  meshFromTriangles(root,'Contorno rochoso',v,c,f);
 }
 function makeRiverMesh(root,river,style){if(!river)return;
@@ -170,6 +171,14 @@ function makeRiverMesh(root,river,style){if(!river)return;
  }
  const water=meshFromTriangles(root,'Rio real: downhill',verts,colors,idx);water.material=mat(0xffffff,{vertexColors:true,roughness:.34,metalness:0,transparent:true,opacity:.9,side:THREE.DoubleSide});water.userData.waterProfile=river.path.map(p=>p.waterY);
  return water;
+}
+function makeSea(root,height,style){
+ const corners=hexCorners(),vertices=[0,0,0],indices=[],colors=[],level=90;
+ for(let x=-4000;x<=4000;x+=1000)for(let z=-4000;z<=4000;z+=1000)if(insideHex(x,z))level=Math.max(level,height(x,z)+6);
+ vertices[1]=level;for(const [x,z] of corners)vertices.push(x,level,z);
+ for(let i=0;i<6;i++)indices.push(0,1+i,1+(i+1)%6);
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geo.setIndex(indices);geo.computeVertexNormals();
+ placeMesh(root,'Superfície do oceano',geo,mat(style.water,{side:THREE.DoubleSide,roughness:.26,transparent:true,opacity:.87}));
 }
 function planPond(height,dna){if(!dna.hasPond)return null;
  const rng=randomSource(dna.seed+49);let best={x:0,z:0,y:Infinity};
@@ -281,6 +290,7 @@ export function buildHexScene(region,settings={}){
  const sectors=addTerrainSectors(root,height,land,dna,river);
  addBorder(root,height,style.rock);
  makeRiverMesh(root,river,style);
+ if(dna.main===0)makeSea(root,height,style);
  const pond=makePond(root,pondPlan,style);
  const rng=randomSource(hash32(dna.id+'|ART|'+cfg.seed));
  const rocks=addOutcropsAndRocks(root,height,land,river,style,cfg,rng,cfg.edits);

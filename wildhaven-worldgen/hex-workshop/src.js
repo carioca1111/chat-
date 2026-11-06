@@ -9,17 +9,25 @@ const ROOT=import.meta.env.BASE_URL;
 const el=id=>document.getElementById(id);
 const canvas=el('atlas'),ctx=canvas.getContext('2d');
 const mapImg=new Image();
-const W=6400000,H=8000000,STORE='wildhaven.hex-factory.v1';
+const W=6400000,H=8000000,STORE='wildhaven.hex-factory.v2';
 const PREVIEW_ID='H_5_7',CONTROLS=['trees','rocks','relief','detail','water'];
 let regions=[],worldProgress={},hover=null,selected=PREVIEW_ID;
-let local={version:1,selected:PREVIEW_ID,regions:{}};
+let local={version:2,selected:PREVIEW_ID,regions:{}};
 let imgX=0,imgY=0,mapScale=1,zoom=1,panX=0,panY=0,drag=null;
 let activeGroup=null,activeKind=null,activeRegion=null,loadingGeneration=0;
 let currentSettings=null,dirty=false,modelStats=null;let activeEdits=[];
 let spinner=false;
 
 function loadLocal(){
- try{const data=JSON.parse(localStorage.getItem(STORE)||'null');if(data?.version===1&&typeof data.regions==='object')local=data;}catch(e){console.warn('Local storage unavailable',e);}
+ try{
+  const raw=localStorage.getItem(STORE)||localStorage.getItem('wildhaven.hex-factory.v1');
+  const data=JSON.parse(raw||'null');
+  if(data?.version===2&&typeof data.regions==='object')local=data;
+  else if(data?.version===1&&data.regions&&typeof data.regions==='object'){
+    local={version:2,selected:data.selected||PREVIEW_ID,regions:{}};
+    for(const [id,v] of Object.entries(data.regions))local.regions[id]={...v,status:'draft'};
+  }
+ }catch(e){console.warn('Local storage unavailable',e);} 
 }
 function saveLocal(){
  try{local.selected=selected;localStorage.setItem(STORE,JSON.stringify(local));el('save-hint').textContent='Salvo neste navegador. Para guardar em outro PC ou navegador, use “Projeto JSON”.';}
@@ -240,7 +248,7 @@ function previewMessage(){
 }
 function generateScene(params=readControls(), options={restore:false}){
  const region=getRegion(selected);if(!region)return;
- const id=selected,token=++loadingGeneration;
+ const id=selected,token=++loadingGeneration,started=performance.now();
  showLoading('Gerando hexágono de 10 km...','Biomas, setores do terreno, drenagem e vegetação');
  el('generate').disabled=true;
  // Yield to the browser so the loading state actually paints before the CPU job.
@@ -253,7 +261,7 @@ function generateScene(params=readControls(), options={restore:false}){
    local.regions[id]={status:options.restore&&local.regions[id]?.status==='approved'?'approved':'draft',settings:result.settings,kind:'generated',updated:new Date().toISOString()};
    saveLocal();currentSettings=result.settings;updateSelection(false);drawAtlas();countStatus();
    const waterNote=result.hasRiver?('rio com percurso descendente ('+result.stats.waterDrop_m.toFixed(1)+' m de queda)'):'nenhum rio gerado sem drenagem local válida';
-   setSceneMessage(`Hexágono representativo de 10 km: ${result.stats.archetype}, ${Object.keys(result.stats.biomes).length} bioma(s), ${result.stats.sectors} setores, ${result.stats.trees} árvores de ${result.stats.treeSpecies} espécies, ${result.stats.rocks} rochas; ${waterNote}. Geografia original preservada. Fronteiras com vizinhos e fidelidade visual ainda requerem inspeção.`);
+   setSceneMessage(`Gerado em ${((performance.now()-started)/1000).toFixed(1)} s · Hexágono representativo de 10 km: ${result.stats.archetype}, ${Object.keys(result.stats.biomes).length} bioma(s), ${result.stats.sectors} setores, ${result.stats.trees} árvores de ${result.stats.treeSpecies} espécies, ${result.stats.rocks} rochas; ${waterNote}. Geografia original preservada. Fronteiras com vizinhos e fidelidade visual ainda requerem inspeção.`);
   }catch(err){console.error(err);showLoading('Falha ao gerar paisagem',String(err.message||err));}
   finally{el('generate').disabled=false;}
  },40);
@@ -285,7 +293,7 @@ el('export-glb').onclick=()=>{
  }catch(err){btn.textContent='↓ Baixar GLB';btn.disabled=false;alert('Falha na exportação do GLB: '+String(err.message||err));}
 };
 function projectSnapshot(){
- return {schema:'wildhaven-hex-factory-project/v1',generated_at:new Date().toISOString(),world:'Auralis',world_seed:20051028,
+ return {schema:'wildhaven-hex-factory-project/v2',generated_at:new Date().toISOString(),world:'Auralis',world_seed:20051028,
   total_hexes:regions.length,storage:'browser-local',regions:local.regions,selected};
 }
 el('export-json').onclick=()=>downloadBlob(new Blob([JSON.stringify(projectSnapshot(),null,2)],{type:'application/json'}),'Wildhaven_Hex_Factory_Projeto.json');
@@ -294,16 +302,17 @@ el('project-file').addEventListener('change',async ev=>{
  const file=ev.target.files?.[0];if(!file)return;
  try{
   const data=JSON.parse(await file.text());
-  if(data.schema!=='wildhaven-hex-factory-project/v1'||!data.regions||typeof data.regions!=='object')throw Error('Arquivo de projeto inválido');
+  if(data.schema!=='wildhaven-hex-factory-project/v2'||!data.regions||typeof data.regions!=='object')throw Error('Arquivo de projeto inválido');
   if(!confirm('Importar projeto e substituir as aprovações e parâmetros salvos neste navegador?'))return;
   const filtered={};for(const [id,v] of Object.entries(data.regions)){
    if(!getRegion(id)||!v||typeof v!=='object'||!v.settings)continue;
    const settings={...defaultSettings(getRegion(id))};
    const seed=Number(v.settings.seed);settings.seed=Number.isSafeInteger(seed)&&seed>0?seed>>>0:settings.seed;
    for(const key of CONTROLS){const num=Number(v.settings[key]);if(Number.isFinite(num))settings[key]=Math.max(0,Math.min(100,num));}
-   filtered[id]={status:v.status==='approved'?'approved':'draft',kind:v.kind==='original'&&id===PREVIEW_ID?'original':'generated',settings};
+   settings.edits=Array.isArray(v.settings.edits)?v.settings.edits.filter(e=>['raise','lower','smooth','flatten','add-tree','remove-tree','add-rock'].includes(e?.tool)&&Number.isFinite(Number(e?.x))&&Number.isFinite(Number(e?.z))).slice(0,300):[];
+    filtered[id]={status:data.schema.endsWith('/v2')&&v.status==='approved'?'approved':'draft',kind:v.kind==='original'&&id===PREVIEW_ID?'original':'generated',settings};
   }
-  local={version:1,selected:getRegion(data.selected)?data.selected:PREVIEW_ID,regions:filtered};
+  local={version:2,selected:getRegion(data.selected)?data.selected:PREVIEW_ID,regions:filtered};
   selected=local.selected;saveLocal();updateSelection(true);drawAtlas();countStatus();
  }catch(err){alert('Não foi possível importar: '+String(err.message||err));}
  finally{ev.target.value='';}
@@ -334,7 +343,7 @@ function updateSelection(load){
  if(load){
   ++loadingGeneration;restoreControls();saveLocal();
   if(draftInfo(selected)?.kind==='generated'){generateScene(draftInfo(selected).settings,{restore:true});}
-  else if(selected===PREVIEW_ID){loadOriginal();}
+  else if(selected===PREVIEW_ID){generateScene();}
   else previewMessage();
  }
  const matches=activeRegion===selected&&!dirty;
