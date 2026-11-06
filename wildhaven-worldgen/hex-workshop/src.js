@@ -162,7 +162,7 @@ el('focus-hex').onclick=()=>focusRegion(selected);
 // Scene viewer; original H_5_7 GLB + procedural scenes.
 // -----------------------------------------------------
 const frame=el('three-view');const scene=new THREE.Scene();scene.background=new THREE.Color('#19282b');
-const camera=new THREE.PerspectiveCamera(39,1,.1,950);camera.position.set(175,168,220);
+const camera=new THREE.PerspectiveCamera(40,1,.1,2500);camera.position.set(340,325,485);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
@@ -171,12 +171,12 @@ renderer.setSize(Math.max(1,frame.clientWidth),Math.max(1,frame.clientHeight),fa
 frame.appendChild(renderer.domElement);
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,8,0);orbit.enableDamping=true;orbit.dampingFactor=.085;
-orbit.enablePan=true;orbit.maxPolarAngle=Math.PI*.49;orbit.minDistance=33;orbit.maxDistance=480;
+orbit.enablePan=true;orbit.maxPolarAngle=Math.PI*.49;orbit.minDistance=25;orbit.maxDistance=1550;
 scene.add(new THREE.HemisphereLight(0xeef6e9,0x596d57,2.05));
-const light=new THREE.DirectionalLight(0xffeccb,2.4);light.position.set(-94,142,105);light.castShadow=true;
-light.shadow.mapSize.set(1024,1024);light.shadow.camera.left=-137;light.shadow.camera.right=137;light.shadow.camera.top=137;light.shadow.camera.bottom=-137;light.shadow.camera.far=390;light.shadow.bias=-.0004;scene.add(light);
+const light=new THREE.DirectionalLight(0xffeccb,2.2);light.position.set(-210,330,250);light.castShadow=true;
+light.shadow.mapSize.set(2048,2048);light.shadow.camera.left=-335;light.shadow.camera.right=335;light.shadow.camera.top=335;light.shadow.camera.bottom=-335;light.shadow.camera.far=880;light.shadow.bias=-.0003;scene.add(light);
 const rim=new THREE.DirectionalLight(0xc1e1ef,.4);rim.position.set(80,64,-90);scene.add(rim);
-function resetCamera(){camera.position.set(171,158,216);orbit.target.set(0,6,0);orbit.update();}
+function resetCamera(){if(activeKind==='original'){camera.position.set(171,158,216);orbit.target.set(0,6,0);}else{camera.position.set(355,350,500);orbit.target.set(0,15,0);}orbit.update();}
 resetCamera();
 function setSceneMessage(text){el('scene-message').textContent=text;}
 function showLoading(title,detail){
@@ -202,7 +202,7 @@ function setModel(group,kind,stats){
  const counts=countGroup(group);el('tris').textContent=counts.triangles.toLocaleString('pt-BR');el('meshes').textContent=counts.meshes;
  el('trees').textContent=stats?.trees?.toLocaleString('pt-BR')||'—';
  el('rocks').textContent=stats?.rocks?.toLocaleString('pt-BR')||'—';
- el('scene-badge').textContent=kind==='original'?'MODELO ORIGINAL':'PRÉVIA PROCEDURAL';
+ el('scene-badge').textContent=kind==='original'?'MODELO ORIGINAL':'CENÁRIO GEOGRÁFICO ÚNICO';
  el('view-kind').textContent=kind==='original'?'GLB ORIGINAL':'MALHAS GERADAS';
  el('export-glb').disabled=false;el('approve').disabled=false;dirty=false;
  hideLoading();
@@ -233,12 +233,12 @@ function previewMessage(){
  el('export-glb').disabled=true;el('approve').disabled=true;
  showLoading('Hexágono pronto para gerar','Ajuste os parâmetros e clique em “Gerar paisagem 3D”');
  el('scene-badge').textContent='NÃO MODELADO';el('view-kind').textContent='AGUARDANDO GERAÇÃO';
- setSceneMessage('Região ainda não modelada. A prévia será gerada com malhas reais usando o bioma predominante e a informação de rios do mapa do Codex.');
+ setSceneMessage('Região ainda não modelada. A nova geração escolhe formas de relevo exclusivas e várias espécies de árvores; rios e construções não são obrigatórios.');
 }
 function generateScene(params=readControls(), options={restore:false}){
  const region=getRegion(selected);if(!region)return;
  const id=selected,token=++loadingGeneration;
- showLoading('Gerando malhas 3D...','Terreno, escarpas, rios e vegetação');
+ showLoading('Criando paisagem exclusiva...','Relevo da região, espécies diferentes e detalhes naturais');
  el('generate').disabled=true;
  // Yield to the browser so the loading state actually paints before the CPU job.
  setTimeout(()=>{
@@ -322,7 +322,7 @@ function updateSelection(load){
  const biome=dominantBiome(region);const style=BIOME_STYLE[biome.id]||BIOME_STYLE[1];
  const title=sourceInfo(selected)?.name||`Região ${selected}`;
  el('atlas-title').textContent=title;el('atlas-info').textContent=`${selected} · ${biome.name||style.name} · ${getStatus(selected)}`;
- el('selected-details').textContent=`${(region.rivers||[]).length} rios catalogados · Elevação média ${Math.round(region.elevation_m?.mean||0)} m · Cena condensada 2 km`;
+ el('selected-details').textContent=`Macrorregião: ${(region.rivers||[]).length} segmentos fluviais catalogados · altitude média ${Math.round(region.elevation_m?.mean||0)} m · cena de 2 km representada em escala visual ampliada`;
  el('selected-hex').textContent=selected;el('biome-name').textContent=biome.name||style.name;
  el('scene-title').textContent=title;
  el('status-tag').textContent=getStatus(selected);el('status-tag').classList.toggle('approved',isApproved(selected));

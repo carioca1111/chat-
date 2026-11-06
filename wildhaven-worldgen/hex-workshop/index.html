@@ -10,7 +10,7 @@
 <body>
   <div id="app">
     <header class="masthead">
-      <div class="identity"><div class="sigil">✧</div><div><div class="eyebrow">WILDHAVEN / FERRAMENTAS DE MUNDO</div><h1>HEX <span>FACTORY</span> <small>ALPHA 0.2</small></h1></div></div>
+      <div class="identity"><div class="sigil">✧</div><div><div class="eyebrow">WILDHAVEN / FERRAMENTAS DE MUNDO</div><h1>HEX <span>FACTORY</span> <small>ALPHA 0.3</small></h1></div></div>
       <div class="head-status"><span class="live-dot"></span><span>Ateliê independente · Sem instalar nada</span><span class="head-divider"></span><strong id="counter">0 / 368 aprovados</strong></div>
     </header>
     <main class="workspace">
@@ -41,7 +41,7 @@
           <div class="stat"><span>ÁRVORES</span><strong id="trees">—</strong></div>
           <div class="stat"><span>ROCHAS</span><strong id="rocks">—</strong></div>
         </div>
-        <div class="scene-footer"><span class="notice-icon">✦</span><p id="scene-message">Este é o primeiro cenário do ateliê. Selecione outras regiões e use <strong>Gerar paisagem</strong> para criar novas malhas 3D.</p></div>
+        <div class="scene-footer"><span class="notice-icon">✦</span><p id="scene-message">Cada cenário possui relevo e vegetação exclusivos. Selecione outras regiões e use <strong>Gerar paisagem</strong> para criar novas malhas 3D.</p></div>
       </section>
 
       <aside class="panel tools-panel">
@@ -59,7 +59,7 @@
             <label for="water"><span>Detalhe dos rios</span><output id="water-value">80%</output></label><input id="water" type="range" min="0" max="100" value="80"/>
           </div>
           <button type="button" class="primary-action" id="generate"><span>✧</span> Gerar paisagem 3D</button>
-          <p class="help">Geração procedural de uma representação de 2 km. Os rios só são acrescentados quando constam nos dados geográficos da região.</p>
+          <p class="help">Cena visual ampliada de uma região equivalente a 2 km. Árvores com espécies e copas distintas; cada geração escolhe um relevo próprio. Rios e lagoas são opcionais, mesmo quando existem na macrorregião.</p>
           <div class="separator"></div>
           <div class="control-head"><strong>Revisão e exportação</strong></div>
           <div class="action-grid"><button id="export-glb" type="button" disabled>↓ Baixar GLB</button><button id="export-json" type="button">↓ Projeto JSON</button></div>
