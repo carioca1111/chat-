@@ -68,7 +68,7 @@ def inside(x,z,margin=0):
   if cross < margin*R: return False
  return True
 
-def rxc(z):return 3.8 + 10*math.sin((z+59)/37) + 3*math.sin((z-4)/16)
+def rxc(z):return 3.8 + 14*math.sin((z+59)/35) + 4.5*math.sin((z-4)/16)
 
 def gauss(x,z,cx,cz,sx,sz):return math.exp(-.5*((x-cx)/sx)**2-.5*((z-cz)/sz)**2)
 
@@ -94,8 +94,8 @@ def terrain_y(x,z):
  bed=baseline(x,z)-3.35*river
  # Two sharply terraced, LOCALIZED highland ridges expose bedrock,
  # while gradual hills remain soft and vegetated.
- west=1.9*gauss(x,z,-53,-50,24,32)*(.5+.5*math.tanh((-z-37)/2.3))
- east=2.35*gauss(x,z,52,-46,28,36)*(.5+.5*math.tanh((-z-36)/2.0))
+ west=7.2*gauss(x,z,-53,-50,24,32)*(.5+.5*math.tanh((-z-37)/1.25))
+ east=8.5*gauss(x,z,52,-46,28,36)*(.5+.5*math.tanh((-z-36)/1.15))
  return bed+west+east
 
 def add_box(group,pos,size,color):
@@ -155,7 +155,7 @@ def sphere(group,x,y,z,rx,ry,rz,color,sub=0):
  verts=mesh.vertices*np.array([rx,ry,rz])+np.array([x,y,z]);add(group,verts,mesh.faces,col(color,7))
 
 PINE_COLORS=[(24,82,52),(37,101,57),(29,90,63),(59,105,47),(34,110,62),(57,118,68)]
-LEAF_COLORS=[(95,147,48),(119,163,55),(140,164,57),(83,137,58),(164,171,42),(219,128,33),(226,142,35),(234,155,47)]
+LEAF_COLORS=[(63,140,61),(95,158,56),(117,157,58),(67,136,69),(135,168,50),(205,123,40),(216,139,41),(227,153,50)]
 
 def pine(x,z,h=None):
  if h is None:h=rng.uniform(7,16)
@@ -223,13 +223,13 @@ for j in range(N-1):
 colors=[]
 for x,y,z in verts:
  stream=abs(x-rxc(z));hill=max(0,(y-15))
- v=(86,138,65) if y<10 else ((102,138,66) if y<18 else (134,143,92))
- if hill>9:v=(142,141,113)
- if stream<9:v=(101,122,76)
+ v=(69,150,62) if y<10 else ((77,153,65) if y<18 else (103,143,80))
+ if hill>9:v=(133,140,107)
+ if stream<9:v=(85,128,72)
  # Lithology is driven by actual height gradient, not arbitrary rocks.
  gradient=slope_at(terrain_y,x,z,1.5)
  if gradient>.75:
-  v=(146,144,126) if gradient<1.75 else (128,135,124)
+  v=(136,141,119) if gradient<1.75 else (120,129,118)
  elif gradient>.4 and y>16:
   v=(126,142,106)
  delta=math.sin(x*.63+z*.71)*7+math.cos(x*.19-z*.41)*4
@@ -346,8 +346,8 @@ path(smooth([(-30,18),(-35,-5),(-49,-18),(-53,-38),(-50,-58)],75),2.3)
 path(smooth([(33,8),(53,23),(74,18),(82,-4)],60),2.2)
 
 # Decorative forest pine trunks and broadleaf canopies.
-for x,z in find_spots(205,10):pine(x,z,rng.uniform(6,15))
-for k,(x,z) in enumerate(find_spots(48,12)):
+for x,z in find_spots(190,10):pine(x,z,rng.uniform(6,15))
+for k,(x,z) in enumerate(find_spots(86,12)):
  broadleaf(x,z,rng.uniform(7,13),orange=k%5==0)
 for x,z in find_spots(220,8):shrub(x,z)
 for x,z in find_spots(290,9):flower(x,z)
