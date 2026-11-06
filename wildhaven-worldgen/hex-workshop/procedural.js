@@ -173,7 +173,7 @@ function makeRiverMesh(root,river,style){if(!river)return;
  return water;
 }
 function makeSea(root,height,style){
- const corners=hexCorners(),vertices=[0,0,0],indices=[],colors=[],level=90;
+ const corners=hexCorners(),vertices=[0,0,0],indices=[];let level=90;
  for(let x=-4000;x<=4000;x+=1000)for(let z=-4000;z<=4000;z+=1000)if(insideHex(x,z))level=Math.max(level,height(x,z)+6);
  vertices[1]=level;for(const [x,z] of corners)vertices.push(x,level,z);
  for(let i=0;i<6;i++)indices.push(0,1+i,1+(i+1)%6);
