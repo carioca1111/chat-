@@ -68,6 +68,7 @@ function treeGeometry(species,variation,biome){
  const foliage=species==='maple'?colors.autumn:species==='dead'?null:colors.green;
  function piece(geometry,pos,scale,col,rotY=0){
   const geo=geometry.toNonIndexed?geometry.toNonIndexed():geometry.clone();
+  geometry.dispose();
   const m=new THREE.Matrix4();m.compose(new THREE.Vector3(...pos),new THREE.Quaternion().setFromEuler(new THREE.Euler(0,rotY,0)),new THREE.Vector3(...scale));geo.applyMatrix4(m);
   const rgb=vertexRGB(col),arr=new Float32Array(geo.attributes.position.count*3);for(let i=0;i<arr.length;i+=3){arr[i]=rgb[0];arr[i+1]=rgb[1];arr[i+2]=rgb[2];}
   geo.setAttribute('color',new THREE.BufferAttribute(arr,3));parts.push(geo);
@@ -160,6 +161,7 @@ export function buildHexScene(region,settings={}){
  const a2={x:random(-.4,.45)*R,z:random(-.4,.3)*R,r:random(.22,.54)*R,h:random(12,34)};
  const valleyX=random(-.18,.18)*R, riverAngle=random(0,TAU),rc=Math.cos(riverAngle),rs=Math.sin(riverAngle);
  const riverAmp=random(9,23),riverPhase=random(0,TAU),riverWidth=random(7,13);
+ const pondCenter={x:random(-R*.18,R*.18),z:random(-R*.18,R*.18),radius:random(18,31)};
  const ridgeNoise=(x,z)=>fractal(x,z,terrainSeed);
  const local=(x,z)=>[x*ca-z*sa,x*sa+z*ca];
  const gauss=(x,z,p)=>Math.exp(-(((x-p.x)/p.r)**2+((z-p.z)/p.r)**2)*1.4)*p.h;
@@ -187,10 +189,20 @@ export function buildHexScene(region,settings={}){
  function localRiverBasis(x,z){const along=x*rs+z*rc,cross=x*rc-z*rs;return {along,cross};}
  function riverCenter(s){return riverAmp*Math.sin(s*.011+riverPhase)+riverAmp*.39*Math.sin(s*.035+riverPhase*.46);}
  function positionAlong(s,t){return {x:s*rs+t*rc,z:s*rc-t*rs};}
+ const pondLevel=baseHeight(pondCenter.x,pondCenter.z)-1.3;
  function groundHeight(x,z){
   const {along,cross}=localRiverBasis(x,z);
   const d=Math.abs(cross-riverCenter(along));
-  return baseHeight(x,z)-(hasRiver?6.3*Math.exp(-Math.pow(d/riverWidth,4)):0);
+  let h=baseHeight(x,z)-(hasRiver?6.3*Math.exp(-Math.pow(d/riverWidth,4)):0);
+  if(hasPond){
+   const dist=Math.hypot(x-pondCenter.x,z-pondCenter.z);
+   if(dist<pondCenter.radius*1.34){
+    // Cut a real bowl into the terrain, not a flat water disc on top of the hills.
+    const bowl=pondLevel-2.2+6.4*Math.pow(dist/pondCenter.radius,2);
+    h=Math.min(h,bowl);
+   }
+  }
+  return h;
  }
  function slope(x,z){const e=3;return Math.hypot((groundHeight(x+e,z)-groundHeight(x-e,z))/(2*e),(groundHeight(x,z+e)-groundHeight(x,z-e))/(2*e));}
  const materialTerrain=material(0xffffff,{vertexColors:true,side:THREE.DoubleSide});
@@ -232,15 +244,20 @@ export function buildHexScene(region,settings={}){
    const s=lerp(-R*.92,R*.92,i/steps),t=riverCenter(s),center=positionAlong(s,t);
    const y=baseHeight(center.x,center.z)-5.25;
    for(const side of [-1,1]){const p=positionAlong(s,t+side*half);v.push(p.x,y,p.z);}
-   if(i<steps)ix.push(i*2,i*2+1,i*2+2,i*2+1,i*2+3,i*2+2);
+   if(i<steps){
+    const nextS=lerp(-R*.92,R*.92,(i+1)/steps),nextT=riverCenter(nextS),pLeft=positionAlong(s,t-half),pRight=positionAlong(s,t+half),nLeft=positionAlong(nextS,nextT-half),nRight=positionAlong(nextS,nextT+half);
+    if(contains(pLeft.x,pLeft.z,1)&&contains(pRight.x,pRight.z,1)&&contains(nLeft.x,nLeft.z,1)&&contains(nRight.x,nRight.z,1)){
+    // Keep the river inside the hexagonal terrain, even when rotated.
+     ix.push(i*2,i*2+1,i*2+2,i*2+1,i*2+3,i*2+2);
+    }
+   }
    bankLine.push({s,t,x:center.x,z:center.z});
   }
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setIndex(ix);g.computeVertexNormals();
   addMesh(root,g,material(style.water,{metalness:0,roughness:.4,transparent:true,opacity:.91,side:THREE.DoubleSide}),'Curso de água natural');
  }
  if(hasPond){
-  const cx=random(-R*.19,R*.19),cz=random(-R*.2,R*.2),y=groundHeight(cx,cz)+.25;
-  const pond=addMesh(root,new THREE.CircleGeometry(random(14,26),36),material(style.water,{roughness:.35,transparent:true,opacity:.85,side:THREE.DoubleSide}),'Lagoa local',cx,y,cz);
+  const pond=addMesh(root,new THREE.CircleGeometry(pondCenter.radius*.78,48),material(style.water,{roughness:.35,transparent:true,opacity:.85,side:THREE.DoubleSide}),'Lagoa local',pondCenter.x,pondLevel,pondCenter.z);
   pond.rotation.x=-Math.PI/2;
  }
  if(biome===0){
