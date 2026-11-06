@@ -60,12 +60,12 @@
       "vertices": 6
     },
     "river": {
-      "triangles": 590,
-      "vertices": 592
+      "triangles": 572,
+      "vertices": 574
     },
     "river-foam": {
-      "triangles": 105,
-      "vertices": 315
+      "triangles": 99,
+      "vertices": 297
     },
     "waterfalls": {
       "triangles": 84,
@@ -84,32 +84,32 @@
       "vertices": 175
     },
     "rocks": {
-      "triangles": 3696,
-      "vertices": 2640
+      "triangles": 3885,
+      "vertices": 2775
     },
     "footpaths": {
       "triangles": 558,
       "vertices": 564
     },
     "trees-trunks": {
-      "triangles": 5252,
-      "vertices": 3132
+      "triangles": 5864,
+      "vertices": 3484
     },
     "pine-needles": {
-      "triangles": 7380,
-      "vertices": 4920
+      "triangles": 6840,
+      "vertices": 4560
     },
     "broadleaf-canopies": {
-      "triangles": 7680,
-      "vertices": 4320
+      "triangles": 13760,
+      "vertices": 7740
     },
     "shrubs": {
       "triangles": 4760,
       "vertices": 2856
     },
     "wildflowers": {
-      "triangles": 32384,
-      "vertices": 20240
+      "triangles": 32288,
+      "vertices": 20180
     },
     "bridge-planks": {
       "triangles": 288,
@@ -160,16 +160,16 @@
       "vertices": 650
     },
     "geology-riverbank-left": {
-      "triangles": 360,
-      "vertices": 362
+      "triangles": 352,
+      "vertices": 354
     },
     "geology-riverbank-right": {
       "triangles": 380,
       "vertices": 382
     },
     "geology-fall-buttresses": {
-      "triangles": 935,
-      "vertices": 585
+      "triangles": 950,
+      "vertices": 594
     },
     "geology-fall-strata": {
       "triangles": 396,
@@ -180,51 +180,51 @@
       "vertices": 96
     },
     "geology-wet-boulders": {
-      "triangles": 1900,
-      "vertices": 1188
+      "triangles": 1905,
+      "vertices": 1191
     },
     "geology-exposed-bedrock": {
-      "triangles": 1023,
-      "vertices": 713
+      "triangles": 1848,
+      "vertices": 1288
     },
     "geology-talus": {
-      "triangles": 85,
-      "vertices": 53
+      "triangles": 365,
+      "vertices": 228
     },
     "geology-river-boulders": {
-      "triangles": 14550,
-      "vertices": 9097
+      "triangles": 14360,
+      "vertices": 8978
     },
     "geology-sediment-shelves": {
-      "triangles": 1023,
-      "vertices": 713
+      "triangles": 891,
+      "vertices": 621
     }
   },
   "geology_metrics": {
-    "shore_segments": 370,
+    "shore_segments": 366,
     "waterfalls_with_bedrock": [
       {
         "z": -59.0,
-        "vertical_drop": 4.01
+        "vertical_drop": 4.0
       },
       {
         "z": -16.0,
-        "vertical_drop": 2.54
+        "vertical_drop": 2.56
       },
       {
         "z": 38.0,
-        "vertical_drop": 1.9
+        "vertical_drop": 1.89
       }
     ],
     "slope_class_samples": {
-      "suave": 1135,
-      "moderado": 152,
-      "acentuado": 12,
-      "escarpa": 0
+      "suave": 1063,
+      "moderado": 205,
+      "acentuado": 46,
+      "escarpa": 7
     },
-    "slope_exposures": 31,
-    "riverbank_boulders": 367,
-    "sediment_shelves": 31,
+    "slope_exposures": 56,
+    "riverbank_boulders": 362,
+    "sediment_shelves": 27,
     "water_surface_animation": "shader-only; fixed water geometry",
     "vegetation_rule": "slope+river+points-of-interest; deterministic seed"
   },
@@ -233,8 +233,8 @@
     "water_portals": "derived from procedural river centerline; pending cross-hex neighbor validation",
     "geometry_clipped": true
   },
-  "total_triangles": 105463,
-  "glb_bytes": 2323292,
+  "total_triangles": 112479,
+  "glb_bytes": 2483812,
   "integration_status": "in_development_unapproved",
   "generated_with": "Python trimesh; water shading via independent Three.js viewer."
 }

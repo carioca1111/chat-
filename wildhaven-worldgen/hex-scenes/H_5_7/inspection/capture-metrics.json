@@ -7,7 +7,7 @@
       "image": "overview.png",
       "sceneLoaded": true,
       "drawCalls": 38,
-      "gpuTriangles": 105463,
+      "gpuTriangles": 112479,
       "camera": [
         170,
         175,
@@ -26,7 +26,7 @@
       "image": "river.png",
       "sceneLoaded": true,
       "drawCalls": 38,
-      "gpuTriangles": 105463,
+      "gpuTriangles": 112479,
       "camera": [
         84,
         94,
@@ -45,7 +45,7 @@
       "image": "cliffs.png",
       "sceneLoaded": true,
       "drawCalls": 31,
-      "gpuTriangles": 105009,
+      "gpuTriangles": 112025,
       "camera": [
         55,
         108,
@@ -64,7 +64,7 @@
       "image": "camp.png",
       "sceneLoaded": true,
       "drawCalls": 37,
-      "gpuTriangles": 105187,
+      "gpuTriangles": 112203,
       "camera": [
         -125,
         85,
