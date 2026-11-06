@@ -137,20 +137,20 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.65));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.14;
+renderer.toneMappingExposure=1.04;
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.setSize(frame.clientWidth,frame.clientHeight,false);frame.appendChild(renderer.domElement);
 const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,6,0);controls.enableDamping=true;controls.dampingFactor=.09;controls.minDistance=35;controls.maxDistance=440;controls.maxPolarAngle=Math.PI*.48;controls.enablePan=true;
 scene.add(new THREE.HemisphereLight(0xe9f1e9,0x586d52,1.55));
-const sun=new THREE.DirectionalLight(0xfff1d8,2.25);sun.position.set(-75,130,100);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-130;sun.shadow.camera.right=130;sun.shadow.camera.top=130;sun.shadow.camera.bottom=-130;sun.shadow.camera.near=1;sun.shadow.camera.far=400;sun.shadow.bias=-.0003;scene.add(sun);
+const sun=new THREE.DirectionalLight(0xffeed4,1.9);sun.position.set(-75,130,100);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-130;sun.shadow.camera.right=130;sun.shadow.camera.top=130;sun.shadow.camera.bottom=-130;sun.shadow.camera.near=1;sun.shadow.camera.far=400;sun.shadow.bias=-.0003;scene.add(sun);
 const rim=new THREE.DirectionalLight(0xd8e9ff,.45);rim.position.set(75,90,-95);scene.add(rim);
 const fireLight=new THREE.PointLight(0xff9d45,24,25,2);fireLight.position.set(-55,11,47);scene.add(fireLight);
 let spin=false;let water=[];let model=null;const loader=new GLTFLoader();
 function makeAnimatedWater(obj){
  obj.material=obj.material.clone(); // do not change shared rock/foam materials
- obj.material.roughness=.22;
- obj.material.metalness=.04;
+ obj.material.roughness=.46;
+ obj.material.metalness=0;
  obj.material.onBeforeCompile=(shader)=>{
   shader.uniforms.uFlowTime={value:0};
   shader.vertexShader=shader.vertexShader.replace('#include <common>',
