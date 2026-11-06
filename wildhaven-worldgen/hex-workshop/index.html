@@ -1,45 +1,77 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#101b1a" />
-  <title>Wildhaven • Ateliê de Hexágonos</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="theme-color" content="#111918"/>
+  <meta name="description" content="Wildhaven Hex Factory — ateliê de paisagens 3D mid-poly de Auralis."/>
+  <title>Wildhaven — Hex Factory</title>
 </head>
 <body>
   <div id="app">
     <header class="masthead">
-      <div class="brand"><span class="brand-icon">✥</span><div><div class="eyebrow">AURALIS · WORLD FORGE</div><h1>WILDHAVEN <small>Ateliê de hexágonos</small></h1></div></div>
-      <div class="status-area"><span class="status-light"></span><span>ATELIÊ · APROVAÇÃO PENDENTE</span><strong id="counter">0 / 368</strong></div>
+      <div class="identity"><div class="sigil">✧</div><div><div class="eyebrow">WILDHAVEN / FERRAMENTAS DE MUNDO</div><h1>HEX <span>FACTORY</span> <small>ALPHA 0.2</small></h1></div></div>
+      <div class="head-status"><span class="live-dot"></span><span>Ateliê independente · Sem instalar nada</span><span class="head-divider"></span><strong id="counter">0 / 368 aprovados</strong></div>
     </header>
-    <div class="main-grid">
-      <section class="atlas-panel">
-        <div class="panel-head"><div><div class="eyebrow">ATLAS GEOGRÁFICO · SEED 20051028</div><h2>Regiões do mundo</h2></div><div class="legend"><span class="legend-glow"></span> Concluído e aprovado</div></div>
-        <div class="map-frame">
-          <canvas id="atlas" role="img" aria-label="Mapa de Auralis dividido em regiões hexagonais, com a primeira região modelada iluminada"></canvas>
-          <div class="map-instructions"><span>Arraste para mover · Roda para zoom</span><button id="map-reset" type="button">Recentrar</button></div>
-          <div class="map-tooltip" id="map-tooltip" hidden></div>
+    <main class="workspace">
+      <aside class="panel atlas-panel">
+        <div class="section-title"><div><div class="eyebrow">01 / NAVEGAÇÃO</div><h2>Mapa de Auralis</h2></div><span class="chip">368 REGIÕES</span></div>
+        <div class="atlas-frame">
+          <canvas id="atlas" aria-label="Atlas interativo das regiões de Auralis" role="img"></canvas>
+          <div class="map-bottom"><span>Arraste e use a roda para zoom</span><button id="map-reset" type="button">Recentrar</button></div>
+          <div id="map-tooltip" class="map-tooltip" hidden></div>
         </div>
-        <div class="atlas-summary"><div class="summary-icon">✦</div><div><strong id="atlas-title">Bosque das Cascatas</strong><span id="atlas-info">H_5_7 · Floresta temperada · Em desenvolvimento</span></div><button id="focus-hex" type="button">Localizar</button></div>
-        <p class="fineprint">Hexágonos sem brilho ainda aguardam sua própria cena. O atlas segue os polígonos e biomas produzidos pelo Codex; os limites não alteram o terreno.</p>
-      </section>
-      <section class="scene-panel">
-        <div class="panel-head"><div><div class="eyebrow">HEXÁGONO H_5_7 · FLORESTA TEMPERADA</div><h2>Bosque das Cascatas</h2></div><span class="pill">MID-POLY · 3D REAL</span></div>
+        <div class="atlas-legend"><span><i class="legend-dot approved"></i>Aprovado localmente</span><span><i class="legend-dot draft"></i>Rascunho</span><span><i class="legend-dot pending"></i>Pendente</span></div>
+        <div class="selection-card"><span class="region-label">REGIÃO SELECIONADA</span><div class="selection-row"><strong id="atlas-title">Bosque das Cascatas</strong><button id="focus-hex" type="button" title="Centralizar no mapa">◎</button></div><p id="atlas-info">H_5_7 · Floresta temperada</p><p class="selection-note" id="selected-details">Lendo geografia do continente...</p></div>
+        <div class="panel-bottom"><span>Geografia original preservada</span><a href="https://github.com/carioca1111/chat-/tree/wildhaven-hex-workshop/wildhaven-worldgen" target="_blank" rel="noopener">Dados do Codex ↗</a></div>
+      </aside>
+
+      <section class="panel viewport-panel">
+        <div class="section-title preview-heading"><div><div class="eyebrow">02 / ESTÚDIO DE PAISAGEM</div><h2 id="scene-title">Bosque das Cascatas</h2></div><span class="chip chip-gold" id="scene-badge">MODELO ORIGINAL</span></div>
         <div class="scene-frame" id="three-view">
-          <div class="scene-gradient"></div>
-          <div class="scene-loading" id="scene-loading"><span class="loading-ring"></span><strong>Carregando a malha real...</strong><span>Terreno, rios e objetos tridimensionais</span></div>
-          <div class="scene-controls"><button type="button" id="reset-camera" title="Repor a câmera">⟲ Vista geral</button><button type="button" id="toggle-spin">↻ Girar automaticamente</button></div>
-          <div class="camera-hint">Arraste para girar · Roda para aproximar · 1 geral · 2 rio · 3 escarpas · 4 acampamento</div>
+          <div class="scene-backdrop"></div>
+          <div class="loading" id="scene-loading"><span class="loader"></span><strong>Preparando o cenário 3D</strong><small>Carregando malhas reais...</small></div>
+          <div class="view-actions"><button id="reset-camera" type="button" title="Retornar à vista geral">◎ Vista geral</button><button id="toggle-spin" type="button">↻ Girar</button><button id="load-original" type="button" hidden>✦ Bosque original</button></div>
+          <div class="view-label">CENA 3D · <span id="view-kind">MALHA ORIGINAL</span></div>
+          <div class="view-hint">Arraste para girar · Roda para zoom · Botão direito para mover</div>
         </div>
-        <div class="scene-foot">
-          <div class="metric"><small>TRIÂNGULOS</small><strong id="tris">—</strong></div>
-          <div class="metric"><small>MALHAS</small><strong id="meshes">—</strong></div>
-          <div class="metric"><small>FINALIDADE</small><strong>Inspeção 3D</strong></div>
+        <div class="scene-stats">
+          <div class="stat"><span>TRIÂNGULOS</span><strong id="tris">—</strong></div>
+          <div class="stat"><span>MALHAS</span><strong id="meshes">—</strong></div>
+          <div class="stat"><span>ÁRVORES</span><strong id="trees">—</strong></div>
+          <div class="stat"><span>ROCHAS</span><strong id="rocks">—</strong></div>
         </div>
-        <div class="model-notice"><span>✦</span><p>Esta é uma <b>cena 3D construída com malhas</b>, não uma imagem em um plano. A composição segue a arte aprovada, mas não é uma conversão 1:1 da pintura. O hexágono de jogo corresponde a 2 km de ponta a ponta de forma condensada (não 1:1); Auralis geográfico permanece intacto. Esta cena ainda aguarda aprovação visual, testes de junções com vizinhos e validação de escala.</p></div>
+        <div class="scene-footer"><span class="notice-icon">✦</span><p id="scene-message">Este é o primeiro cenário do ateliê. Selecione outras regiões e use <strong>Gerar paisagem</strong> para criar novas malhas 3D.</p></div>
       </section>
-    </div>
-    <footer><span>Ateliê separado do Wildhaven Alpha 0.1 · Sem integração com o jogo</span><a target="_blank" rel="noopener" href="https://github.com/carioca1111/chat-/tree/wildhaven-hex-workshop/wildhaven-worldgen">Dados geográficos de Auralis ↗</a></footer>
+
+      <aside class="panel tools-panel">
+        <div class="section-title"><div><div class="eyebrow">03 / CONSTRUÇÃO</div><h2>Gerador de paisagens</h2></div><span class="chip green">NO NAVEGADOR</span></div>
+        <div class="tools-scroll">
+          <div class="region-head"><span class="region-label">EDITANDO AGORA</span><strong id="selected-hex">H_5_7</strong><span id="biome-name">Floresta temperada</span><span class="status-tag" id="status-tag">Em desenvolvimento</span></div>
+          <div class="separator"></div>
+          <div class="control-head"><strong>Parâmetros de geração</strong><button id="reset-settings" type="button">Restaurar</button></div>
+          <label class="seed-label" for="seed">SEED DO CENÁRIO</label><div class="seed-control"><input id="seed" type="number" step="1" min="1" max="4294967295" value="20051028"/><button id="new-seed" type="button" title="Mudar seed">↻</button></div>
+          <div class="sliders">
+            <label for="trees"><span>Densidade de árvores</span><output id="trees-value">70%</output></label><input id="trees" type="range" min="0" max="100" value="70"/>
+            <label for="rocks"><span>Rochas e escarpas</span><output id="rocks-value">68%</output></label><input id="rocks" type="range" min="0" max="100" value="68"/>
+            <label for="relief"><span>Intensidade do relevo</span><output id="relief-value">65%</output></label><input id="relief" type="range" min="0" max="100" value="65"/>
+            <label for="detail"><span>Vegetação rasteira</span><output id="detail-value">65%</output></label><input id="detail" type="range" min="0" max="100" value="65"/>
+            <label for="water"><span>Detalhe dos rios</span><output id="water-value">80%</output></label><input id="water" type="range" min="0" max="100" value="80"/>
+          </div>
+          <button type="button" class="primary-action" id="generate"><span>✧</span> Gerar paisagem 3D</button>
+          <p class="help">Geração procedural de uma representação de 2 km. Os rios só são acrescentados quando constam nos dados geográficos da região.</p>
+          <div class="separator"></div>
+          <div class="control-head"><strong>Revisão e exportação</strong></div>
+          <div class="action-grid"><button id="export-glb" type="button" disabled>↓ Baixar GLB</button><button id="export-json" type="button">↓ Projeto JSON</button></div>
+          <button id="approve" type="button" class="approve-action" disabled>✓ Aprovar este hexágono</button>
+          <button id="import-json" type="button" class="subtle-action">↑ Importar projeto salvo</button><input type="file" id="project-file" accept=".json,application/json" hidden/>
+          <div class="save-hint" id="save-hint">As configurações e aprovações ficam salvas neste navegador. Exporte o JSON para guardar ou transferir o progresso.</div>
+          <div class="separator"></div>
+          <div class="progress-block"><span class="eyebrow">PROGRESSO NESTE NAVEGADOR</span><div class="progress-numbers"><strong id="approved-count">0</strong><span>/ 368 aprovados</span></div><div class="progress-bar"><div id="progress-fill"></div></div><span id="draft-count" class="progress-sub">1 cenário original em desenvolvimento</span></div>
+        </div>
+      </aside>
+    </main>
+    <footer><span>Wildhaven Hex Factory · ferramentas separadas do jogo Alpha 0.1</span><span>Prévia procedural artística ≠ terreno científico final · Integração no jogo somente após validação</span></footer>
   </div>
   <script type="module" src="/src.js"></script>
 </body>
