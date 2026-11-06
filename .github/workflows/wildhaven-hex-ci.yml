@@ -1,0 +1,119 @@
+name: Wildhaven · H_5_7 mesh + real-WebGL inspection
+
+on:
+  push:
+    branches: [wildhaven-hex-workshop]
+    paths:
+      - 'wildhaven-worldgen/**'
+      - '.github/workflows/wildhaven-hex-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wildhaven-hex-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install generator and validation dependencies
+        working-directory: wildhaven-worldgen
+        run: python -m pip install -r requirements.txt
+
+      - name: Generate the H_5_7 real 3D mesh
+        working-directory: wildhaven-worldgen
+        run: python build_forest_hex.py
+
+      - name: Validate mesh data and atlas approval gate
+        working-directory: wildhaven-worldgen
+        run: python hex_quality_check.py
+
+      - name: Test original Auralis generator without regenerating the continent
+        working-directory: wildhaven-worldgen
+        run: python -m unittest discover -s tests -v
+
+      - name: Compress glTF binary deterministically
+        working-directory: wildhaven-worldgen
+        run: |
+          python - <<'PY'
+          import brotli
+          from pathlib import Path
+          source = Path('hex-scenes/H_5_7/forest-temperate.glb')
+          compressed = Path('hex-scenes/H_5_7/forest-temperate.glb.br')
+          compressed.write_bytes(brotli.compress(source.read_bytes(), quality=9))
+          assert brotli.decompress(compressed.read_bytes()) == source.read_bytes()
+          print('GLB', source.stat().st_size, 'bytes; Brotli', compressed.stat().st_size, 'bytes')
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install viewer and screenshot dependencies
+        working-directory: wildhaven-worldgen/hex-workshop
+        run: |
+          npm install
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Verify independent viewer production build
+        working-directory: wildhaven-worldgen/hex-workshop
+        run: npm run build
+
+      - name: Render four ACTUAL WebGL inspection images
+        working-directory: wildhaven-worldgen/hex-workshop
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 4173 > /tmp/wildhaven-viewer.log 2>&1 &
+          node capture-views.mjs
+
+      - name: Verify screenshots contain visible geometry
+        working-directory: wildhaven-worldgen
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageStat
+          folder=Path('hex-scenes/H_5_7/inspection')
+          for stem in ('overview','river','cliffs','camp'):
+              path=folder/(stem+'.png')
+              image=Image.open(path).convert('RGB')
+              stat=ImageStat.Stat(image)
+              assert image.width>=800 and image.height>=350, path
+              assert max(stat.stddev)>12, 'Blank viewport: '+str(path)
+              print(stem,image.size,'variance',stat.stddev)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: H_5_7-inspection-and-GLB
+          if-no-files-found: warn
+          path: |
+            wildhaven-worldgen/hex-scenes/H_5_7/forest-temperate.glb
+            wildhaven-worldgen/hex-scenes/H_5_7/forest-temperate.glb.br
+            wildhaven-worldgen/hex-scenes/H_5_7/metadata.json
+            wildhaven-worldgen/hex-scenes/H_5_7/inspection/*
+
+      - name: Commit actual generated 3D asset and inspections to existing branch
+        if: success()
+        run: |
+          git config user.name 'wildhaven-artifact-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add wildhaven-worldgen/hex-scenes/H_5_7/forest-temperate.glb.br
+          git add wildhaven-worldgen/hex-scenes/H_5_7/metadata.json
+          git add -f wildhaven-worldgen/hex-scenes/H_5_7/inspection
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(wildhaven): export H_5_7 GLB and real WebGL screenshots [skip ci]'
+            git push origin HEAD:wildhaven-hex-workshop
+          fi
