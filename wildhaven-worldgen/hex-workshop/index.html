@@ -10,17 +10,17 @@
   <div id="app">
     <header class="masthead">
       <div class="brand"><span class="brand-icon">✥</span><div><div class="eyebrow">AURALIS · WORLD FORGE</div><h1>WILDHAVEN <small>Ateliê de hexágonos</small></h1></div></div>
-      <div class="status-area"><span class="status-light"></span><span>PRIMEIRA MALHA 3D</span><strong id="counter">1 / 368</strong></div>
+      <div class="status-area"><span class="status-light"></span><span>ATELIÊ · APROVAÇÃO PENDENTE</span><strong id="counter">0 / 368</strong></div>
     </header>
     <div class="main-grid">
       <section class="atlas-panel">
-        <div class="panel-head"><div><div class="eyebrow">ATLAS GEOGRÁFICO · SEED 20051028</div><h2>Regiões do mundo</h2></div><div class="legend"><span class="legend-glow"></span> Cena modelada</div></div>
+        <div class="panel-head"><div><div class="eyebrow">ATLAS GEOGRÁFICO · SEED 20051028</div><h2>Regiões do mundo</h2></div><div class="legend"><span class="legend-glow"></span> Concluído e aprovado</div></div>
         <div class="map-frame">
           <canvas id="atlas" role="img" aria-label="Mapa de Auralis dividido em regiões hexagonais, com a primeira região modelada iluminada"></canvas>
           <div class="map-instructions"><span>Arraste para mover · Roda para zoom</span><button id="map-reset" type="button">Recentrar</button></div>
           <div class="map-tooltip" id="map-tooltip" hidden></div>
         </div>
-        <div class="atlas-summary"><div class="summary-icon">✦</div><div><strong id="atlas-title">Bosque das Cascatas</strong><span id="atlas-info">H_5_7 · Floresta temperada · Visual 3D pronto</span></div><button id="focus-hex" type="button">Localizar</button></div>
+        <div class="atlas-summary"><div class="summary-icon">✦</div><div><strong id="atlas-title">Bosque das Cascatas</strong><span id="atlas-info">H_5_7 · Floresta temperada · Em desenvolvimento</span></div><button id="focus-hex" type="button">Localizar</button></div>
         <p class="fineprint">Hexágonos sem brilho ainda aguardam sua própria cena. O atlas segue os polígonos e biomas produzidos pelo Codex; os limites não alteram o terreno.</p>
       </section>
       <section class="scene-panel">
@@ -29,17 +29,17 @@
           <div class="scene-gradient"></div>
           <div class="scene-loading" id="scene-loading"><span class="loading-ring"></span><strong>Carregando a malha real...</strong><span>Terreno, rios e objetos tridimensionais</span></div>
           <div class="scene-controls"><button type="button" id="reset-camera" title="Repor a câmera">⟲ Vista geral</button><button type="button" id="toggle-spin">↻ Girar automaticamente</button></div>
-          <div class="camera-hint">Arraste para girar · Roda para aproximar · Botão direito para mover</div>
+          <div class="camera-hint">Arraste para girar · Roda para aproximar · 1 geral · 2 rio · 3 escarpas · 4 acampamento</div>
         </div>
         <div class="scene-foot">
           <div class="metric"><small>TRIÂNGULOS</small><strong id="tris">—</strong></div>
           <div class="metric"><small>MALHAS</small><strong id="meshes">—</strong></div>
-          <div class="metric"><small>FINALIDADE</small><strong>Prévia visual</strong></div>
+          <div class="metric"><small>FINALIDADE</small><strong>Inspeção 3D</strong></div>
         </div>
-        <div class="model-notice"><span>✦</span><p>Esta é uma <b>cena 3D construída com malhas</b>, não uma imagem em um plano. A composição segue a arte aprovada, mas não é uma conversão 1:1 da pintura. O hexágono geográfico continua com 240 km de raio; esta cena local é um estudo de arte para detalhamento futuro.</p></div>
+        <div class="model-notice"><span>✦</span><p>Esta é uma <b>cena 3D construída com malhas</b>, não uma imagem em um plano. A composição segue a arte aprovada, mas não é uma conversão 1:1 da pintura. O hexágono de jogo corresponde a 2 km de ponta a ponta de forma condensada (não 1:1); Auralis geográfico permanece intacto. Esta cena ainda aguarda aprovação visual, testes de junções com vizinhos e validação de escala.</p></div>
       </section>
     </div>
-    <footer><span>Ateliê separado do Wildhaven Alpha 0.1 · Sem integração com o jogo</span><a target="_blank" rel="noopener" href="https://github.com/carioca1111/chat-/tree/codex/wildhaven-worldgen/wildhaven-worldgen">Dados geográficos de Auralis ↗</a></footer>
+    <footer><span>Ateliê separado do Wildhaven Alpha 0.1 · Sem integração com o jogo</span><a target="_blank" rel="noopener" href="https://github.com/carioca1111/chat-/tree/wildhaven-hex-workshop/wildhaven-worldgen">Dados geográficos de Auralis ↗</a></footer>
   </div>
   <script type="module" src="/src.js"></script>
 </body>
