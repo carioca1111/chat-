@@ -234,7 +234,7 @@
     "geometry_clipped": true
   },
   "total_triangles": 105463,
-  "glb_bytes": 2321896,
+  "glb_bytes": 2323292,
   "integration_status": "in_development_unapproved",
   "generated_with": "Python trimesh; water shading via independent Three.js viewer."
 }
