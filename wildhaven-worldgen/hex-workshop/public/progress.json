@@ -1,20 +1,40 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "world": "Auralis",
   "world_seed": 20051028,
   "total_hexes": 368,
-  "visual_preview_ready": ["H_5_7"],
+  "visual_preview_ready": [
+    "H_5_7"
+  ],
   "game_ready": [],
   "regions": {
     "H_5_7": {
       "name": "Bosque das Cascatas",
       "biome_id": 1,
-      "status": "visual_preview_ready",
+      "status": "in_development",
       "glb": "/forest-temperate.glb",
       "metadata": "/forest-metadata.json",
       "style": "Mid-poly naturalista estilizado",
-      "reference": "Composição aprovada: cascatas, ponte, acampamento, ruínas, caverna, pinheiros, árvores outonais e cervos"
+      "reference": "Composição aprovada: cascatas, ponte, acampamento, ruínas, caverna, pinheiros, árvores outonais e cervos",
+      "approved": false,
+      "approval_required": [
+        "visual_review",
+        "geology",
+        "river_continuity",
+        "scene_scale",
+        "neighbor_boundaries",
+        "browser_performance"
+      ],
+      "observable_diameter_m": 2000,
+      "world_data_unchanged": true,
+      "export_pipeline": "build_forest_hex.py -> forest-temperate.glb -> forest-temperate.glb.br",
+      "note": "Geometria em refinamento. Não iluminar como concluído antes da aprovação."
     }
   },
-  "note": "H_5_7 tem uma cena local tridimensional de referência; não significa que todo o hexágono geográfico de raio 240km foi modelado em escala jogável. Nada foi integrado à Alpha 0.1."
+  "note": "368 regiões geográficas preservadas; somente H_5_7 em desenvolvimento. Brilho reservado exclusivamente aos IDs com status completed e approved=true. Alpha 0.1 não alterada.",
+  "approved_hexes": [],
+  "in_development": [
+    "H_5_7"
+  ],
+  "completed": []
 }
