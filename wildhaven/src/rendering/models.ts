@@ -2,6 +2,7 @@ import { batchStatic } from "./batch";
 import * as T from "three";
 import type { Species } from "../core/types";
 import { SPECIES } from "../creatures/species";
+import { createDetritivore, isDetritivore } from "./detritivores";
 const materials = new Map<number, T.MeshStandardMaterial>();
 export const mat = (color: number) => {
   if (!materials.has(color))
@@ -33,6 +34,7 @@ export function part(
   return m;
 }
 export function animal(species: Species) {
+  if (isDetritivore(species)) return createDetritivore(species);
   const g = new T.Group(),
     s = SPECIES[species];
   part(g, "sphere", s.color, [0, 1, 0], [0.52, 0.62, 1]);
