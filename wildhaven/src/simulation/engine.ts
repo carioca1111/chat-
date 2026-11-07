@@ -3,6 +3,7 @@ import { random, clamp } from "../core/random";
 import { walkable, riverX, chunkKey, trees } from "../terrain/fields";
 import { distance, strike } from "../combat/combat";
 import { SPECIES } from "../creatures/species";
+import { ROCANTRAZ, rocantrazSees } from "../creatures/rocantraz";
 import { visitor } from "../world/create";
 export const STEP = 0.2;
 export function event(w: World, text: string) {
@@ -54,6 +55,38 @@ function decide(w: World, c: Creature) {
     c.state = c.species === "cervalho" && c.hp > 20 ? "fugir" : "atacar";
     c.target = hunter.id;
     c.goal = { x: c.x + (c.x - hunter.x) * 2, z: c.z + (c.z - hunter.z) * 2 };
+    return;
+  }
+  if (c.species === "rocantraz") {
+    if (c.energy < 25) {
+      c.state = "descansar"; c.target = undefined; return;
+    }
+    if (c.hunger > ROCANTRAZ.behavior.huntsWhenHungerAbove) {
+      const prey = w.creatures
+        .filter((o) => o.hp > 0 && o.id !== c.id &&
+          (SPECIES[o.species].diet === "herbivore" || o.species === "coroador") &&
+          rocantrazSees(c, o))
+        .sort((a, b) => distance(a, c) - distance(b, c))[0];
+      if (prey) {
+        const d = distance(c, prey);
+        c.target = prey.id;
+        c.goal = { x: prey.x, z: prey.z };
+        c.state = d > ROCANTRAZ.behavior.stalkUntilUnits ? "espreitar" : "investir";
+        return;
+      }
+    }
+    c.target = undefined;
+    if (distance(c, c.goal) < 3 || c.state === "descansar" ||
+        c.state === "atacar" || c.state === "pastar" ||
+        c.state === "espreitar" || c.state === "investir") {
+      const den = c.den ?? { x: c.x, z: c.z };
+      const radius = ROCANTRAZ.behavior.patrolRadiusUnits;
+      c.goal = {
+        x: clamp(den.x + (random(w) - 0.5) * radius * 2, -136, 184),
+        z: clamp(den.z + (random(w) - 0.5) * radius * 2, -136, 184),
+      };
+    }
+    c.state = w.tick % 200 === 0 ? "rugir" : "explorar";
     return;
   }
   if (c.energy < 18) {
@@ -125,20 +158,28 @@ export function step(w: World) {
       c.thirst = Math.max(0, c.thirst - STEP * 7);
       continue;
     }
-    if (c.state === "perseguir" || c.state === "atacar") {
+    if (c.state === "perseguir" || c.state === "atacar" ||
+        c.state === "espreitar" || c.state === "investir") {
       const prey =
         w.creatures.find((o) => o.id === c.target && o.hp > 0) ||
         w.hunters.find((h) => h.id === c.target && h.status === "expedição");
       if (prey) {
-        if (distance(c, prey) > SPECIES[c.species].range)
-          move(w, c, prey, SPECIES[c.species].speed, STEP);
+        if (distance(c, prey) > SPECIES[c.species].range) {
+          const pursuitSpeed = c.species === "rocantraz"
+            ? c.state === "espreitar"
+              ? ROCANTRAZ.behavior.simulatedStalkSpeedUnitsS
+              : ROCANTRAZ.behavior.simulatedBurstSpeedUnitsS
+            : SPECIES[c.species].speed;
+          move(w, c, prey, pursuitSpeed, STEP);
+        }
         else if (c.cooldown === 0) {
           prey.hp = Math.max(0, prey.hp - SPECIES[c.species].damage);
-          c.cooldown = 1.6;
+          c.cooldown = c.species === "rocantraz" ? 2.8 : 1.6;
           c.state = "atacar";
           if (prey.hp === 0) {
-            c.hunger = Math.max(0, c.hunger - 45);
+            c.hunger = Math.max(0, c.hunger - (c.species === "rocantraz" ? 70 : 45));
             c.target = undefined;
+            if (c.species === "rocantraz") c.state = "pastar";
             if ("species" in prey) {
               prey.state = "morto";
               event(w, `${SPECIES[c.species].name} caçou ${prey.id}.`);
@@ -190,6 +231,7 @@ export function step(w: World) {
             (c) =>
               c.hp > 0 &&
               c.species !== "coroador" &&
+              c.species !== "rocantraz" &&
               distance(c, h.destination) < 42,
           )
           .sort((a, b) => distance(a, h) - distance(b, h))[0];
