@@ -67,8 +67,8 @@ export function createWorld(seed = 46219): World {
     audit: [],
     nextHunter: 180,
   };
-  for (let i = 0; i < 31; i++) {
-    const species = i < 22 ? "cervalho" : i < 29 ? "rasteiro" : "coroador";
+  for (let i = 0; i < 39; i++) {
+    const species = i < 22 ? "cervalho" : i < 29 ? "rasteiro" : i < 31 ? "coroador" : "cascarrumo";
     let x = 20 + random(w) * 140,
       z = -85 + random(w) * 155;
     while (height(x, z, seed) < 0.3) {
