@@ -500,16 +500,21 @@ export function animateRocantraz(root:T.Group,time:number,walking:boolean,action
   const strike=Math.pow(Math.max(0,Math.sin(time*2*Math.PI*1.05)),2);
   const dead=a==="die",rest=a==="rest",feeding=a==="feed";
   const roaring=a==="roar",bite=a==="bite",swipe=a==="swipe",defend=a==="defend";
+  // One-shot actions develop over time instead of snapping to a static pose.
+  const deathProgress=clamp(time/1.45);
+  const deathFall=deathProgress*deathProgress*(3-2*deathProgress);
+  const roarOpen=clamp(time/0.42)*clamp((2.32-time)/0.38);
+  const defensivePulse=Math.sin(Math.min(time,2.4)*Math.PI*0.9);
   const lean=stalking?0.19:a==="charge"?0.29:a==="run"?0.17:0;
-  r.body.position.y=dead?-0.64:rest?-0.48:stalking?-0.24:
+  r.body.position.y=dead?-0.64*deathFall:rest?-0.48:stalking?-0.24:
     moving?0.075*Math.cos(theta*2):0.022*Math.sin(time*2.3);
-  r.body.rotation.x=dead?0.23:rest?0.13:lean;
-  r.body.rotation.z=dead?0.57:moving?0.031*Math.sin(theta):0;
+  r.body.rotation.x=dead?0.23*deathFall:rest?0.13:lean;
+  r.body.rotation.z=dead?0.73*deathFall:moving?0.031*Math.sin(theta):0;
   r.body.rotation.y=moving?0.020*Math.sin(theta):0.008*Math.sin(time*0.55);
-  r.leftLeg.rotation.x=dead?-0.45:rest?-0.73:moving?left*amplitude:0;
-  r.rightLeg.rotation.x=dead?0.36:rest?-0.73:moving?right*amplitude:0;
-  r.leftKnee.rotation.x=dead?0.55:rest?1.01:moving?0.16+lLift*(running?0.85:0.61):0.08;
-  r.rightKnee.rotation.x=dead?0.40:rest?1.01:moving?0.16+rLift*(running?0.85:0.61):0.08;
+  r.leftLeg.rotation.x=dead?-0.45*deathFall:rest?-0.73:moving?left*amplitude:0;
+  r.rightLeg.rotation.x=dead?0.36*deathFall:rest?-0.73:moving?right*amplitude:0;
+  r.leftKnee.rotation.x=dead?0.55*deathFall:rest?1.01:moving?0.16+lLift*(running?0.85:0.61):0.08;
+  r.rightKnee.rotation.x=dead?0.40*deathFall:rest?1.01:moving?0.16+rLift*(running?0.85:0.61):0.08;
   r.leftFoot.rotation.x=dead?0.19:rest?-0.12:moving?
     -r.leftLeg.rotation.x*0.44-r.leftKnee.rotation.x*0.56:0;
   r.rightFoot.rotation.x=dead?0.19:rest?-0.12:moving?
@@ -527,15 +532,15 @@ export function animateRocantraz(root:T.Group,time:number,walking:boolean,action
     defend?-0.15:0.23;
   r.leftHand.rotation.x=swipe?-strike*0.22:0.04;
   r.rightHand.rotation.x=swipe?-(1-strike)*0.22:0.04;
-  r.neck.rotation.x=roaring?-0.25:bite?0.14+0.24*strike:
+  r.neck.rotation.x=roaring?-0.25*roarOpen:bite?0.14+0.24*strike:
     feeding?0.29:stalking?0.03:dead?0.27:
     -Math.sin(time*1.1)*0.018;
-  r.head.rotation.x=roaring?-0.23:bite?0.10+strike*0.26:
+  r.head.rotation.x=roaring?-0.23*roarOpen:bite?0.10+strike*0.26:
     feeding?0.35:dead?0.18:rest?0.13:
     moving?-0.04*Math.sin(theta):0.01*Math.sin(time*1.3);
   r.head.position.z=0.40+(bite?0.32*strike:roaring?0.045:0);
   r.head.rotation.y=dead?0.14:0.035*Math.sin(time*0.65);
-  r.jaw.rotation.x=roaring?0.87:bite?0.65*(1-strike):
+  r.jaw.rotation.x=roaring?0.87*roarOpen:bite?0.65*(1-strike):
     feeding?0.24*(0.5+0.5*Math.sin(time*11)):
     dead?0.13:0.02;
   // Seven downstream segments delay the root movement like a heavy whip.
@@ -543,7 +548,7 @@ export function animateRocantraz(root:T.Group,time:number,walking:boolean,action
     const wave=time*(running?3.4:1.1)-i*0.34;
     b.rotation.y=dead?0.08*Math.sin(i):moving?
       Math.sin(wave)*(running?0.14:0.09):Math.sin(wave)*0.045;
-    b.rotation.x=dead?0.13:rest?-0.03:
+    b.rotation.x=dead?0.13*deathFall:rest?-0.03:
       0.015+Math.sin(time*1.3-i*0.30)*0.026;
     b.rotation.z=moving?Math.sin(theta-i*0.4)*0.025:0;
   });
@@ -551,8 +556,12 @@ export function animateRocantraz(root:T.Group,time:number,walking:boolean,action
   for(const eye of r.eyes)
     eye.scale.y=0.07*(rest?0.26:stalking?0.72:dead?0.14:1);
   // Head/chest expansion for the roar, restrained breathing at idle.
-  r.neck.scale.setScalar(roaring?1.025+0.013*Math.sin(time*9):1);
-  if(defend)r.body.rotation.x=-0.10;
+  r.neck.scale.setScalar(roaring?1+roarOpen*(0.025+0.013*Math.sin(time*9)):1);
+  if(defend){
+    r.body.rotation.x=-0.10+defensivePulse*0.045;
+    r.leftFoot.rotation.x=-0.08*defensivePulse;
+    r.rightFoot.rotation.x=0.08*defensivePulse;
+  }
 }
 export function rocantrazBones(r:RocantrazRig):Bone[]{
   return [r.body,r.neck,r.head,r.jaw,
