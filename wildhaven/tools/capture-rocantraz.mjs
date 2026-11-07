@@ -55,6 +55,12 @@ try {
   const canvas = page.locator("#preview");
   const png = path.join(output, "rocantraz-forest-desert-real-3d.png");
   await canvas.screenshot({ path: png, animations: "disabled" });
+  const detail = path.join(output, "rocantraz-forest-desert-real-3d-detail.png");
+  await page.screenshot({
+    path: detail,
+    clip: { x: 372, y: 280, width: 930, height: 465 },
+    animations: "disabled",
+  });
   const report = await page.evaluate(() => ({
     width: document.querySelector("canvas")?.width,
     height: document.querySelector("canvas")?.height,
