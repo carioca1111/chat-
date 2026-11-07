@@ -35,6 +35,7 @@ jobs:
       - run: npm test
       - name: Install browser for true 3D screenshot
         run: npx playwright install --with-deps chromium
+      # Capture validates browser runtime before GLB publishing.
       - name: Render two real models using Three.js/WebGL
         run: node tools/capture-rocantraz.mjs
       - name: Export GLBs with 12 baked animation clips each
