@@ -3,6 +3,7 @@ import * as T from "three";
 import type { Species } from "../core/types";
 import { SPECIES } from "../creatures/species";
 import { createDetritivore, isDetritivore } from "./detritivores";
+import { createRocantraz, type RocantrazVariant } from "./rocantraz";
 const materials = new Map<number, T.MeshStandardMaterial>();
 export const mat = (color: number) => {
   if (!materials.has(color))
@@ -33,7 +34,8 @@ export function part(
   g.add(m);
   return m;
 }
-export function animal(species: Species) {
+export function animal(species: Species, variant: RocantrazVariant = "forest") {
+  if (species === "rocantraz") return createRocantraz(variant);
   if (isDetritivore(species)) return createDetritivore(species);
   const g = new T.Group(),
     s = SPECIES[species];
