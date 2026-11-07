@@ -22,7 +22,10 @@ for (const variant of ROCANTRAZ_VARIANTS) {
     assert.ok(vertices > 5000);
     const rig = model.userData.rig;
     assert.equal(rig.variant, variant);
-    assert.equal(rig.tail.length, 6);
+    assert.equal(rig.tail.length, 8);
+    assert.notEqual(rig.leftKnee, rig.leftLeg);
+    assert.notEqual(rig.rightFoot, rig.rightKnee);
+    assert.notEqual(rig.leftElbow, rig.leftArm);
     assert.equal(rig.eyes.length, 2);
     assert.notEqual(rig.leftLeg, rig.rightLeg);
     assert.notEqual(rig.leftArm, rig.rightArm);
