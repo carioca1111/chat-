@@ -33,6 +33,7 @@ function decide(w: World, c: Creature) {
     (o) =>
       o.hp > 0 &&
       o.species !== c.species &&
+      SPECIES[o.species].diet === "carnivore" &&
       SPECIES[o.species].damage > spec.damage &&
       distance(o, c) < 11,
   );
@@ -59,13 +60,13 @@ function decide(w: World, c: Creature) {
     c.state = "descansar";
     return;
   }
-  if (c.thirst > 65) {
+  if (spec.diet !== "detritivore" && c.thirst > 65) {
     c.state = "beber";
     const rx = riverX(c.z);
     c.goal = { x: rx + (c.x < rx ? -10 : 10), z: c.z };
     return;
   }
-  if (c.species !== "cervalho" && c.hunger > 28) {
+  if (spec.diet === "carnivore" && c.hunger > 28) {
     const prey = w.creatures
       .filter(
         (o) =>
@@ -80,7 +81,7 @@ function decide(w: World, c: Creature) {
       return;
     }
   }
-  if (c.species === "cervalho" && c.hunger > 28) {
+  if (spec.diet !== "carnivore" && c.hunger > 28) {
     c.state = "pastar";
     return;
   }
@@ -106,7 +107,7 @@ export function step(w: World) {
     const old = chunkKey(c.x, c.z);
     c.cooldown = Math.max(0, c.cooldown - STEP);
     c.hunger = clamp(c.hunger + STEP * 0.11, 0, 100);
-    c.thirst = clamp(c.thirst + STEP * 0.16, 0, 100);
+    c.thirst = clamp(c.thirst + STEP * (SPECIES[c.species].diet === "detritivore" ? 0.03 : 0.16), 0, 100);
     c.energy = Math.max(0, c.energy - STEP * 0.025);
     // Logical LOD is based on actors, never camera. This keeps replay deterministic.
     const near =
