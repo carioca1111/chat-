@@ -9,6 +9,7 @@ on:
       - 'wildhaven/src/rocantraz-preview.ts'
       - 'wildhaven/rocantraz.html'
       - 'wildhaven/tools/export-rocantraz.ts'
+      - 'wildhaven/tools/capture-rocantraz.mjs'
       - 'wildhaven/tests/rocantraz.test.ts'
       - '.github/workflows/wildhaven-rocantraz-assets.yml'
   workflow_dispatch:
@@ -32,6 +33,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - name: Install browser for true 3D screenshot
+        run: npx playwright install --with-deps chromium
+      - name: Render two real models using Three.js/WebGL
+        run: node tools/capture-rocantraz.mjs
       - name: Export GLBs with 12 baked animation clips each
         run: node --import tsx tools/export-rocantraz.ts
       - name: Copy GLBs into versioned fauna assets
@@ -42,14 +47,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wildhaven-rocantraz-3d-animated-glb
-          path: wildhaven/dist-creatures/*.glb
+          path: |
+            wildhaven/dist-creatures/*.glb
+            wildhaven/assets/fauna/rocantraz/*.png
           if-no-files-found: error
-      - name: Commit actual GLB models to this asset branch
+      - name: Commit actual GLB models and real WebGL screenshot to this asset branch
         if: github.ref_name == 'wildhaven-apex-ravakhor-3d' && github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/fauna/rocantraz/*.glb
+          git add assets/fauna/rocantraz/*.glb assets/fauna/rocantraz/*.png
           if ! git diff --cached --quiet; then
             git commit -m "assets(wildhaven): store Rocantraz 3D model and 12 animations per variant [skip ci]"
             git push origin HEAD:wildhaven-apex-ravakhor-3d
