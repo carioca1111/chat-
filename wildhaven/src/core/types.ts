@@ -1,5 +1,5 @@
 export type Vec = { x: number; z: number };
-export type Species = "cervalho" | "rasteiro" | "coroador" | "cascarrumo" | "dunebrio" | "nivelio";
+export type Species = "cervalho" | "rasteiro" | "coroador" | "cascarrumo" | "dunebrio" | "nivelio" | "rocantraz";
 export type Action =
   | "explorar"
   | "pastar"
@@ -9,10 +9,14 @@ export type Action =
   | "atacar"
   | "fugir"
   | "migrar"
+  | "espreitar"
+  | "investir"
+  | "rugir"
   | "morto";
 export interface Creature extends Vec {
   id: string;
   species: Species;
+  variant?: "forest" | "desert";
   hp: number;
   hunger: number;
   thirst: number;
