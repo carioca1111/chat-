@@ -50,7 +50,7 @@ test("the temperate alpha world spawns forest detritivores only", () => {
   assert.ok(species.has("cascarrumo"));
   assert.ok(!species.has("dunebrio"));
   assert.ok(!species.has("nivelio"));
-  assert.equal(world.creatures.length, 39);
+  assert.equal(world.creatures.length, 40);
 });
 
 test("migration preserves existing save identity and RNG", () => {
