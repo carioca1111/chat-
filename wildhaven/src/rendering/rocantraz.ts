@@ -302,9 +302,6 @@ export function createRocantraz(variant: RocantrazVariant): T.Group {
 }
 function animationForState(action: Action, walking: boolean): RocantrazAnimation {
   if (action === "morto") return "die";
-  if (action === "rugir") return "roar";
-  if (action === "espreitar") return "stalk";
-  if (action === "investir") return "charge";
   if (action === "atacar") return "bite";
   if (action === "perseguir") return "run";
   if (action === "pastar") return "feed";
