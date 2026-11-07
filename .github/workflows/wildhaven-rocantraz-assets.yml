@@ -1,0 +1,64 @@
+name: Wildhaven - Rocantraz 3D Assets
+on:
+  push:
+    branches: [wildhaven-apex-ravakhor-3d]
+    paths:
+      - 'wildhaven/src/rendering/rocantraz.ts'
+      - 'wildhaven/src/rendering/export-rocantraz.ts'
+      - 'wildhaven/src/creatures/rocantraz.ts'
+      - 'wildhaven/src/rocantraz-preview.ts'
+      - 'wildhaven/rocantraz.html'
+      - 'wildhaven/tools/export-rocantraz.ts'
+      - 'wildhaven/tools/capture-rocantraz.mjs'
+      - 'wildhaven/tests/rocantraz.test.ts'
+      - '.github/workflows/wildhaven-rocantraz-assets.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: wildhaven
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wildhaven/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Install browser for true 3D screenshot
+        run: npx playwright install --with-deps chromium
+      # Capture validates browser runtime before GLB publishing.
+      - name: Render two real models using Three.js/WebGL
+        run: node tools/capture-rocantraz.mjs
+      - name: Export GLBs with 12 baked animation clips each
+        run: node --import tsx tools/export-rocantraz.ts
+      - name: Copy GLBs into versioned fauna assets
+        run: |
+          mkdir -p assets/fauna/rocantraz
+          cp dist-creatures/rocantraz-forest-animated.glb assets/fauna/rocantraz/
+          cp dist-creatures/rocantraz-desert-animated.glb assets/fauna/rocantraz/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wildhaven-rocantraz-3d-animated-glb
+          path: |
+            wildhaven/dist-creatures/*.glb
+            wildhaven/assets/fauna/rocantraz/*.png
+          if-no-files-found: error
+      - name: Commit actual GLB models and real WebGL screenshot to this asset branch
+        if: github.ref_name == 'wildhaven-apex-ravakhor-3d' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/fauna/rocantraz/*.glb assets/fauna/rocantraz/*.png
+          if ! git diff --cached --quiet; then
+            git commit -m "assets(wildhaven): store Rocantraz 3D model and 12 animations per variant [skip ci]"
+            git push origin HEAD:wildhaven-apex-ravakhor-3d
+          fi
