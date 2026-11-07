@@ -28,3 +28,6 @@ O deserto e a neve ainda não existem na Alpha 0.1; por isso os dois modelos
 não são introduzidos artificialmente na floresta. A simulação usa um estado
 básico de alimentação, ainda não um balanço detalhado de nutrientes/cadáveres.
 Nenhum dos hexágonos do workshop foi alterado.
+
+Compatibilidade: saves Alpha 0.1 existentes recebem oito Cascarrumos
+florestais na primeira carga, sem reiniciar hunters, posições ou RNG.
