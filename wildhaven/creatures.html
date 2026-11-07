@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wildhaven — Oficina 3D de Detritívoros</title>
+  <style>
+    html,body{margin:0;width:100%;height:100%;background:#131e1d;color:#e5ebe4;font-family:system-ui,sans-serif;overflow:hidden}
+    canvas{width:100%;height:100%;display:block}
+    header{position:absolute;top:18px;left:24px;z-index:2;background:#162421e8;padding:17px 22px;border-radius:12px;box-shadow:0 8px 24px #09121160}
+    h1{margin:0 0 4px;font-size:19px}
+    p{margin:0;color:#becbc3;font-size:13px;line-height:1.6}
+    .actions{position:absolute;bottom:21px;left:50%;transform:translateX(-50%);z-index:2;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;width:min(95%,740px)}
+    button{border:1px solid #718c7f;background:#263d38;color:#f5f7f3;border-radius:9px;padding:10px 14px;cursor:pointer}
+    button[aria-pressed=true]{background:#97b98c;color:#0b261e;border-color:#97b98c}
+    .labels{position:absolute;bottom:85px;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;text-align:center;pointer-events:none;font-weight:600;text-shadow:0 3px 8px #000}
+    .labels small{display:block;font-weight:400}
+    @media(max-width:650px){header{left:10px;top:10px;padding:10px}.labels{bottom:145px;font-size:12px}.actions{bottom:9px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Wildhaven · Fauna 3D</h1>
+    <p>Malhas poligonais reais + animações articulares. Arraste para girar, use o scroll para aproximar.</p>
+    <p><a href="./index.html" style="color:#b9d7ad">Voltar ao jogo</a></p>
+  </header>
+  <canvas id="preview"></canvas>
+  <div class="labels">
+    <div>Cascarrumo<small>Floresta</small></div>
+    <div>Dunébrio<small>Deserto</small></div>
+    <div>Nivélio<small>Neve</small></div>
+  </div>
+  <nav class="actions" aria-label="Animações">
+    <button type="button" data-animation="idle" aria-pressed="true">Parado</button>
+    <button type="button" data-animation="walk" aria-pressed="false">Andar</button>
+    <button type="button" data-animation="feed" aria-pressed="false">Alimentar</button>
+    <button type="button" data-animation="flee" aria-pressed="false">Fugir / saltar</button>
+    <button type="button" data-animation="defend" aria-pressed="false">Defender</button>
+    <button type="button" data-animation="rest" aria-pressed="false">Descansar</button>
+    <button type="button" data-animation="die" aria-pressed="false">Morrer</button>
+  </nav>
+  <script type="module" src="/src/creature-preview.ts"></script>
+</body>
+</html>
