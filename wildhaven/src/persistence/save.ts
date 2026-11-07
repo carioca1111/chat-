@@ -1,5 +1,5 @@
 import type { World } from "../core/types";
-import { createWorld } from "../world/create";
+import { createWorld, ensureForestDetritivores } from "../world/create";
 import { advance, event } from "../simulation/engine";
 const KEY = "wildhaven.alpha01.save";
 export function serialize(w: World) {
@@ -40,6 +40,7 @@ export function load() {
   const raw = localStorage.getItem(KEY);
   if (!raw) return createWorld();
   const w = deserialize(raw);
+  ensureForestDetritivores(w);
   const elapsed = Math.min(
     1800,
     Math.max(0, (Date.now() - w.lastSaved) / 1000),

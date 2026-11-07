@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { World } from "../core/types";
 import { ChunkRenderer } from "../chunks/renderer";
 import { animal, human } from "./models";
+import { animateDetritivore, isDetritivore } from "./detritivores";
 import { village, workers } from "../village/render";
 import { height, MIN, MAX } from "../terrain/fields";
 export class View {
@@ -202,6 +203,8 @@ export class View {
             : 0;
         if (m.name === "weapon" && "equipment" in e) m.visible = !!e.equipment;
       });
+      if ("species" in e && isDetritivore(e.species))
+        animateDetritivore(mesh, this.w.time, !!walking, e.state);
       if (e.cooldown > 0.9 && e.hp > 0)
         mesh.rotation.x = Math.sin(e.cooldown * 9) * 0.12;
       else mesh.rotation.x = 0;

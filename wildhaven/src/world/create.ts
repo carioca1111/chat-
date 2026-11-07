@@ -1,5 +1,5 @@
 import type { World, Hunter } from "../core/types";
-import { random } from "../core/random";
+import { random, hash } from "../core/random";
 import { SPECIES } from "../creatures/species";
 import { height } from "../terrain/fields";
 export function visitor(w: World): Hunter {
@@ -67,8 +67,8 @@ export function createWorld(seed = 46219): World {
     audit: [],
     nextHunter: 180,
   };
-  for (let i = 0; i < 31; i++) {
-    const species = i < 22 ? "cervalho" : i < 29 ? "rasteiro" : "coroador";
+  for (let i = 0; i < 39; i++) {
+    const species = i < 22 ? "cervalho" : i < 29 ? "rasteiro" : i < 31 ? "coroador" : "cascarrumo";
     let x = 20 + random(w) * 140,
       z = -85 + random(w) * 155;
     while (height(x, z, seed) < 0.3) {
@@ -100,4 +100,25 @@ export function createWorld(seed = 46219): World {
   w.hunters.push(visitor(w));
   w.events.push({ time: 0, text: "Uma viajante se aproxima de Valeverde." });
   return w;
+}
+
+/** Adds the forest species to older Alpha 0.1 saves without resetting RNG or hunters. */
+export function ensureForestDetritivores(w: World) {
+  if (w.creatures.some((c) => c.species === "cascarrumo")) return 0;
+  for (let i = 0; i < 8; i++) {
+    let x = 20, z = 20;
+    for (let attempt = 0; attempt < 48; attempt++) {
+      x = 20 + hash(i * 19 + attempt, 77, w.seed) * 140;
+      z = -85 + hash(i * 23 + attempt, 99, w.seed) * 155;
+      if (height(x, z, w.seed) >= 0.3) break;
+    }
+    w.creatures.push({
+      id: "detritivore-forest-" + String(i + 1).padStart(3, "0"),
+      species: "cascarrumo", x, z, hp: SPECIES.cascarrumo.hp,
+      hunger: hash(i, 17, w.seed) * 40, thirst: 8, energy: 80,
+      state: "explorar", goal: { x: x + 3, z: z + 2 },
+      cooldown: 0, crossed: 0,
+    });
+  }
+  return 8;
 }

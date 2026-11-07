@@ -1,5 +1,5 @@
 export type Vec = { x: number; z: number };
-export type Species = "cervalho" | "rasteiro" | "coroador";
+export type Species = "cervalho" | "rasteiro" | "coroador" | "cascarrumo" | "dunebrio" | "nivelio";
 export type Action =
   | "explorar"
   | "pastar"
