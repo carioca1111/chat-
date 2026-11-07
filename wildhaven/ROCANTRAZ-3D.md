@@ -35,7 +35,7 @@ As medidas são referências do ecossistema fictício, sujeitas a balanceamento 
 ## Modelo 3D real
 - Código de geometria: `src/rendering/rocantraz.ts`.
 - Corpo 3D poligonal, placas blindadas, membros com garras, focinho dentado, crânio chifrudo, cauda de 6 segmentos articulados e pigmentação específica por bioma.
-- Rigs criados com `THREE.Group` hierárquicos nomeados, sem esqueleto skinned; úteis para animação procedural e glTF via tracks.
+- Rigs criados com `THREE.Group` hierárquicos nomeados, sem esqueleto skinned; exportados ao glTF com trilhas de transformação por junta.
 - Não é imagem/sprite, nem modelo IA gerado a partir do conceito.
 - Originais com topologia por peças geométricas; não usar como escultura orgânica high-poly.
 
@@ -66,3 +66,15 @@ Para exportar localmente:
 ```sh
 node --import tsx tools/export-rocantraz.ts
 ```
+
+## Revisão anatômica v2 — mais próxima da arte conceitual
+
+- A silhueta foi reconstruída: tronco cônico com tórax largo e cintura mais estreita; abdômen não é mais uma esfera única.
+- Músculos e focinho usam malhas próprias construídas por secções transversais (lofts) com normais 3D.
+- Cabeça mais longa, supercílios salientes, mandíbula independente, presas e chifres direcionais.
+- Armadura osteodérmica sobreposta, crista serrilhada contínua nas costas e cauda mais longa com oito segmentos.
+- Patas traseiras articulam quadril, joelho e tornozelo separadamente; braços articulam ombro, cotovelo e punho.
+- Esquema de movimento pesado inclui deslocamento do centro de massa, flexão do joelho no passo, compensação do tornozelo, movimentos secundários do pescoço e ondulação retardada na cauda.
+- Florestal tem líquens como pequenos elementos geométricos reais. Desértico usa placas arenosas e chifres mais projetados.
+- Permanecem **modelos mid-poly estilizados**; não são esculturas fotorrealistas nem copiam todos os microdetalhes da pintura conceitual.
+- Nenhuma alteração no runtime do jogo foi feita; todos os arquivos novos ficam isolados nesta branch de fauna.
