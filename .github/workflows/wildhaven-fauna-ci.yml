@@ -1,0 +1,24 @@
+name: Wildhaven Fauna 3D CI
+on:
+  push:
+    branches: [wildhaven-fauna-detritivores-3d]
+    paths:
+      - 'wildhaven/**'
+      - '.github/workflows/wildhaven-fauna-ci.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wildhaven
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wildhaven/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
