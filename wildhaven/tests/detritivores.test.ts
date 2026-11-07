@@ -56,6 +56,7 @@ test("the temperate alpha world spawns forest detritivores only", () => {
 test("migration preserves existing save identity and RNG", () => {
   const w = createWorld(46219);
   const original = w.creatures.filter((c) => c.species !== "cascarrumo");
+  const originalCount = original.length;
   w.creatures = original;
   const originalRng = w.rng;
   const hunterId = w.hunters[0].id;
@@ -63,5 +64,5 @@ test("migration preserves existing save identity and RNG", () => {
   assert.equal(ensureForestDetritivores(w), 0);
   assert.equal(w.rng, originalRng);
   assert.equal(w.hunters[0].id, hunterId);
-  assert.equal(w.creatures.length, original.length + 8);
+  assert.equal(w.creatures.length, originalCount + 8);
 });
