@@ -1,9 +1,15 @@
 import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-/** Merge static geometry per material. Keep animated limbs and equipment separate. */
+
+/**
+ * Merge static geometry per material, preserving all animated joints.
+ * Both indexed and non-indexed primitives exist in our mid-poly models.
+ * Normalizing indices avoids silently losing shells when the merge fails.
+ */
 export function batchStatic(group: T.Group) {
-  const batches = new Map<T.Material, T.BufferGeometry[]>();
-  const remove: T.Mesh[] = [];
+  const batches = new Map<
+    T.Material, { geometries: T.BufferGeometry[]; originals: T.Mesh[] }
+  >();
   group.updateMatrixWorld(true);
   group.traverse((o) => {
     if (
@@ -11,25 +17,29 @@ export function batchStatic(group: T.Group) {
       o.userData.leg ||
       o.name === "weapon" ||
       Array.isArray(o.material)
-    )
-      return;
-    const geo = o.geometry.clone();
+    ) return;
+    const geo = o.geometry.index
+      ? o.geometry.toNonIndexed()
+      : o.geometry.clone();
     geo.applyMatrix4(o.matrixWorld);
-    const list = batches.get(o.material) || [];
-    list.push(geo);
-    batches.set(o.material, list);
-    remove.push(o);
+    let record = batches.get(o.material);
+    if (!record) {
+      record = { geometries: [], originals: [] };
+      batches.set(o.material, record);
+    }
+    record.geometries.push(geo);
+    record.originals.push(o);
   });
-  // Only intended before the model is attached/transformed in the world.
-  for (const m of remove) m.removeFromParent();
-  for (const [material, geometries] of batches) {
-    const geo = mergeGeometries(geometries);
-    geometries.forEach((g) => g.dispose());
-    if (!geo) continue;
-    const m = new T.Mesh(geo, material);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    group.add(m);
+  for (const [material, batch] of batches) {
+    const merged = mergeGeometries(batch.geometries);
+    batch.geometries.forEach((g) => g.dispose());
+    // Keep originals as a safe fallback if geometry attributes conflict.
+    if (!merged) continue;
+    batch.originals.forEach((mesh) => mesh.removeFromParent());
+    const mesh = new T.Mesh(merged, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
   }
   return group;
 }
