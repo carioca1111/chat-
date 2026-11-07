@@ -97,6 +97,7 @@ export function createWorld(seed = 46219): World {
     goal: { x: 55, z: 21 },
   });
   Object.assign(w.creatures[1], { x: 34, z: 8, goal: { x: 40, z: 8 } });
+  ensureForestRocantraz(w);
   w.hunters.push(visitor(w));
   w.events.push({ time: 0, text: "Uma viajante se aproxima de Valeverde." });
   return w;
@@ -121,4 +122,36 @@ export function ensureForestDetritivores(w: World) {
     });
   }
   return 8;
+}
+
+/**
+ * Only ONE adult forest / mountain ecotype can inhabit the Alpha 0.1 map.
+ * Deterministic placement leaves RNG, existing hunter identities and saves intact.
+ * Desert ecotype is reserved for the future arid biomes.
+ */
+export function ensureForestRocantraz(w: World): number {
+  if (w.creatures.some((c) => c.species === "rocantraz")) return 0;
+  let x = 115, z = -68;
+  for (let attempt = 0; attempt < 128; attempt++) {
+    const cx = 72 + hash(attempt + 187, 929, w.seed) * 97;
+    const cz = -99 + hash(attempt + 311, 667, w.seed) * 132;
+    if (height(cx, cz, w.seed) > 0.5 &&
+        Math.hypot(cx + 5, cz - 2) > 75) {
+      x = cx; z = cz;
+      break;
+    }
+  }
+  w.creatures.push({
+    id: "apex-rocantraz-forest-001",
+    species: "rocantraz",
+    variant: "forest",
+    den: { x, z },
+    x, z,
+    hp: SPECIES.rocantraz.hp,
+    hunger: 58, thirst: 20, energy: 95,
+    state: "explorar",
+    goal: { x: x - 7, z: z + 8 },
+    cooldown: 0, crossed: 0,
+  });
+  return 1;
 }
