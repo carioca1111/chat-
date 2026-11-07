@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wildhaven · Rocantraz 3D</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#1c2423;color:#f3f1e9;font-family:system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%}
+header{position:fixed;top:14px;left:18px;z-index:2;padding:15px 20px;background:#141d1bdc;border:1px solid #7f8e7838;border-radius:12px;max-width:480px}
+h1{font-size:20px;margin:0 0 5px}p{font-size:13px;line-height:1.5;margin:0;color:#d3dbd4}
+a{color:#b5d8b6}
+#actions{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:3;display:flex;flex-wrap:wrap;gap:7px;justify-content:center;width:min(96%,960px)}
+button{background:#2f4740;border:1px solid #799587;color:#fff;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:12px}
+button[aria-pressed=true]{background:#bbdbac;color:#122a1e}
+#variants{position:fixed;bottom:112px;left:2%;right:2%;z-index:2;display:grid;grid-template-columns:1fr 1fr;text-align:center;pointer-events:none;text-shadow:0 3px 8px #000}
+#variants strong{font-size:17px}#variants small{display:block;font-size:12px}
+#download{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+#status{margin-top:5px;color:#cce6bb}
+@media(max-width:720px){header{top:7px;left:7px;right:7px;padding:9px 12px}h1{font-size:15px}#variants{bottom:166px}#variants strong{font-size:12px}button{padding:7px;font-size:11px}}
+</style>
+</head>
+<body>
+<header><h1>Rocantraz — duas variantes 3D reais</h1>
+<p>Floresta / montanha e deserto. Arraste a câmera para orbitar; amplie para inspecionar as articulações.</p>
+<p><a href="./creatures.html">Oficina dos detritívoros</a> · <a href="./index.html">Jogo</a></p>
+<div id="download">
+<button type="button" data-export="forest">Exportar floresta GLB</button>
+<button type="button" data-export="desert">Exportar deserto GLB</button>
+</div><p id="status" role="status">Cada GLB inclui o modelo e 12 animações nomeadas.</p>
+</header>
+<canvas id="preview"></canvas>
+<div id="variants"><div><strong>Rocantraz Florestal</strong><small>Florestas e montanhas · verde musgo</small></div><div><strong>Rocantraz do Deserto</strong><small>Deserto e cânions · areia e ferrugem</small></div></div>
+<nav id="actions" aria-label="Animações 3D">
+<button data-animation="idle" aria-pressed="true">Repouso</button>
+<button data-animation="walk" aria-pressed="false">Caminhar</button>
+<button data-animation="stalk" aria-pressed="false">Espreitar</button>
+<button data-animation="run" aria-pressed="false">Correr</button>
+<button data-animation="charge" aria-pressed="false">Investida</button>
+<button data-animation="bite" aria-pressed="false">Morder</button>
+<button data-animation="swipe" aria-pressed="false">Garras</button>
+<button data-animation="roar" aria-pressed="false">Rugir</button>
+<button data-animation="feed" aria-pressed="false">Comer</button>
+<button data-animation="defend" aria-pressed="false">Defender</button>
+<button data-animation="rest" aria-pressed="false">Dormir</button>
+<button data-animation="die" aria-pressed="false">Morte</button>
+</nav>
+<script type="module" src="/src/rocantraz-preview.ts"></script>
+</body>
+</html>
