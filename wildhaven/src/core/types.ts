@@ -17,6 +17,7 @@ export interface Creature extends Vec {
   id: string;
   species: Species;
   variant?: "forest" | "desert";
+  den?: Vec; // stable territorial center for rare apex wildlife
   hp: number;
   hunger: number;
   thirst: number;
