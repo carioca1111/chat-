@@ -36,7 +36,12 @@ function inspectGlb(bytes: ArrayBuffer) {
   const json = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes, 20, jsonLength)));
   if ((json.animations?.length ?? 0) !== 12)
     throw Error("expected 12 animation clips, received " + (json.animations?.length ?? 0));
-  if ((json.meshes?.length ?? 0) < 25) throw Error("missing 3D meshes");
+  // glTF deduplicates repeated geometry/material combinations into few meshes.
+  // Real individual geometry instances are the many nodes referencing those meshes.
+  const modelNodes = (json.nodes ?? []).filter((n: { mesh?: number }) =>
+    Number.isInteger(n.mesh)).length;
+  if ((json.meshes?.length ?? 0) < 1 || modelNodes < 80)
+    throw Error("missing 3D mesh instances: " + modelNodes);
   if (!json.nodes?.some((n: { name?: string }) => n.name === "Rocantraz_Jaw"))
     throw Error("jaw bone missing");
   return { meshes: json.meshes.length, animations: json.animations.length,
