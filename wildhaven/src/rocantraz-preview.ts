@@ -27,7 +27,7 @@ sun.shadow.camera.bottom = -18;
 scene.add(sun, sun.target);
 
 const camera = new T.PerspectiveCamera(46, 1, 0.1, 100);
-camera.position.set(10, 9, 23);
+camera.position.set(8, 7.6, 19.5);
 const orbit = new OrbitControls(camera, canvas);
 orbit.target.set(0, 2.4, -0.6);
 orbit.enableDamping = true;
@@ -53,9 +53,11 @@ const models = variants.map((variant, i) => {
   return model;
 });
 let active: RocantrazAnimation = "idle";
+let actionStartTime = 0;
 document.querySelectorAll<HTMLButtonElement>("button[data-animation]").forEach((button) => {
   button.addEventListener("click", () => {
     active = button.dataset.animation as RocantrazAnimation;
+    actionStartTime = clock.getElapsedTime();
     document.querySelectorAll<HTMLButtonElement>("button[data-animation]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b === button));
     });
@@ -90,7 +92,8 @@ function frame() {
   const t = clock.getElapsedTime();
   for (const model of models) {
     model.userData.previewAnimation = active;
-    animateRocantraz(model, t, active === "walk", "explorar");
+    const animationTime = t - actionStartTime;
+    animateRocantraz(model, animationTime, active === "walk", "explorar");
   }
   orbit.update();
   renderer.render(scene, camera);
