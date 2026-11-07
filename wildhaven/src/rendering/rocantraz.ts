@@ -93,15 +93,15 @@ function loftY(parent: T.Object3D, rings: number[][], color: number, n = 14) {
   for (let i = 0; i < rings.length - 1; i++)
     for (let j = 0; j < n; j++) {
       const a = i*n+j, b = i*n+(j+1)%n, c=(i+1)*n+j, d=(i+1)*n+(j+1)%n;
-      indices.push(a,b,c,b,d,c);
+      indices.push(a,c,b,b,c,d);
     }
   const low = coords.length/3, upper=low+1;
   coords.push(rings[0][1], rings[0][0], rings[0][2]);
   coords.push(rings[rings.length-1][1], rings[rings.length-1][0], rings[rings.length-1][2]);
   for(let j=0;j<n;j++){
-    indices.push(low,(j+1)%n,j);
+    indices.push(low,j,(j+1)%n);
     const k=(rings.length-1)*n;
-    indices.push(upper,k+j,k+(j+1)%n);
+    indices.push(upper,k+(j+1)%n,k+j);
   }
   const g = new T.BufferGeometry();
   g.setAttribute("position", new T.Float32BufferAttribute(coords,3));
@@ -118,16 +118,16 @@ function loftZ(parent: T.Object3D, rings: number[][], color: number, n=12) {
     }
   for(let i=0;i<rings.length-1;i++)for(let j=0;j<n;j++){
     const a=i*n+j,b=i*n+(j+1)%n,c=(i+1)*n+j,d=(i+1)*n+(j+1)%n;
-    ids.push(a,c,b,b,c,d);
+    ids.push(a,b,c,b,d,c);
   }
   const lo=coords.length/3,hi=lo+1;
   coords.push(rings[0][1],rings[0][2],rings[0][0]);
   const end=rings[rings.length-1];
   coords.push(end[1],end[2],end[0]);
   for(let j=0;j<n;j++){
-    ids.push(lo,j,(j+1)%n);
+    ids.push(lo,(j+1)%n,j);
     const q=(rings.length-1)*n;
-    ids.push(hi,q+(j+1)%n,q+j);
+    ids.push(hi,q+j,q+(j+1)%n);
   }
   const g=new T.BufferGeometry();
   g.setAttribute("position",new T.Float32BufferAttribute(coords,3));
