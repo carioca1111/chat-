@@ -76,7 +76,10 @@ try {
     height: document.querySelector("canvas")?.height,
     webgl2: !!document.createElement("canvas").getContext("webgl2"),
   }));
-  if (bytes < 45000) throw new Error("screenshot unexpectedly tiny: " + bytes);
+  if (bytes < 45000) {
+    fs.unlinkSync(png); // Do not accidentally commit a blank frame.
+    throw new Error("screenshot unexpectedly tiny after retries: " + bytes);
+  }
   console.log(JSON.stringify({ screenshot: png, bytes, ...report }, null, 2));
 } finally {
   await browser?.close();
