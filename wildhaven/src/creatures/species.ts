@@ -65,9 +65,4 @@ export const SPECIES: Record<
     food: 1, color: 0x577c8c, scale: 0.67,
     diet: "detritivore", habitat: "snow",
   },
-  rocantraz: {
-    name: "Rocantraz", hp: 560, speed: 3.9, damage: 56, range: 3.8,
-    food: 90, color: 0x69745a, scale: 1.12,
-    diet: "carnivore", habitat: "forest",
-  },
 };
