@@ -37,6 +37,18 @@ for (const variant of ROCANTRAZ_VARIANTS) {
     const firstAngle = rig.leftLeg.rotation.x;
     animateRocantraz(model, 0.36, true, "explorar");
     assert.notEqual(firstAngle, rig.leftLeg.rotation.x);
+    model.userData.previewAnimation = "die";
+    animateRocantraz(model, 0, false, "explorar");
+    const standing = rig.body.position.y;
+    animateRocantraz(model, 1.45, false, "explorar");
+    assert.ok(rig.body.position.y < standing - 0.5,
+      "death clip must transition from standing to collapsed");
+    model.userData.previewAnimation = "roar";
+    animateRocantraz(model, 0, false, "explorar");
+    const closedJaw = rig.jaw.rotation.x;
+    animateRocantraz(model, 0.8, false, "explorar");
+    assert.ok(rig.jaw.rotation.x > closedJaw + 0.6,
+      "roar must open jaw progressively");
     const clips = rocantrazClips(model);
     assert.equal(clips.length, ROCANTRAZ_ANIMATIONS.length);
     assert.ok(clips.every((clip) => clip.tracks.length >= 20));
