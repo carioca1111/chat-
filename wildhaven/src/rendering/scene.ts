@@ -4,7 +4,6 @@ import type { World } from "../core/types";
 import { ChunkRenderer } from "../chunks/renderer";
 import { animal, human } from "./models";
 import { animateDetritivore, isDetritivore } from "./detritivores";
-import { animateRocantraz } from "./rocantraz";
 import { village, workers } from "../village/render";
 import { height, MIN, MAX } from "../terrain/fields";
 export class View {
@@ -177,7 +176,7 @@ export class View {
         continue;
       }
       if (!mesh) {
-        mesh = "species" in e ? animal(e.species, e.variant) : human();
+        mesh = "species" in e ? animal(e.species) : human();
         mesh.traverse((m) => (m.userData.id = e.id));
         this.actors.set(e.id, mesh);
         this.scene.add(mesh);
@@ -206,9 +205,6 @@ export class View {
       });
       if ("species" in e && isDetritivore(e.species))
         animateDetritivore(mesh, this.w.time, !!walking, e.state);
-      if ("species" in e && e.species === "rocantraz")
-        animateRocantraz(mesh, this.w.time, !!walking,
-          e.hp <= 0 ? "morto" : e.state);
       if (e.cooldown > 0.9 && e.hp > 0)
         mesh.rotation.x = Math.sin(e.cooldown * 9) * 0.12;
       else mesh.rotation.x = 0;
