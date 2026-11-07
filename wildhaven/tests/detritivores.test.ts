@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as T from "three";
 import { SPECIES } from "../src/creatures/species";
-import { createWorld } from "../src/world/create";
+import { createWorld, ensureForestDetritivores } from "../src/world/create";
 import {
   animateDetritivore, createDetritivore, DETRITIVORE_ANIMATIONS,
   DETRITIVORE_SPECIES,
@@ -51,4 +51,17 @@ test("the temperate alpha world spawns forest detritivores only", () => {
   assert.ok(!species.has("dunebrio"));
   assert.ok(!species.has("nivelio"));
   assert.equal(world.creatures.length, 39);
+});
+
+test("migration preserves existing save identity and RNG", () => {
+  const w = createWorld(46219);
+  const original = w.creatures.filter((c) => c.species !== "cascarrumo");
+  w.creatures = original;
+  const originalRng = w.rng;
+  const hunterId = w.hunters[0].id;
+  assert.equal(ensureForestDetritivores(w), 8);
+  assert.equal(ensureForestDetritivores(w), 0);
+  assert.equal(w.rng, originalRng);
+  assert.equal(w.hunters[0].id, hunterId);
+  assert.equal(w.creatures.length, original.length + 8);
 });
