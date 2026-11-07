@@ -34,6 +34,7 @@ try {
     headless: true,
     args: [
       "--use-gl=angle", "--use-angle=swiftshader", "--enable-webgl",
+      "--enable-unsafe-swiftshader",
       "--disable-dev-shm-usage", "--no-sandbox"
     ],
   });
@@ -44,30 +45,37 @@ try {
   });
   const errors = [];
   page.on("pageerror", (err) => errors.push(String(err)));
-  await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
-  await page.waitForTimeout(1800);
-  await page.evaluate(() => {
-    document.querySelector("header")?.remove();
-    document.querySelector("#variants")?.remove();
-    document.querySelector("#actions")?.remove();
-  });
-  await page.waitForTimeout(650);
   const canvas = page.locator("#preview");
   const png = path.join(output, "rocantraz-forest-desert-real-3d.png");
-  await canvas.screenshot({ path: png, animations: "disabled" });
   const detail = path.join(output, "rocantraz-forest-desert-real-3d-detail.png");
-  await page.screenshot({
-    path: detail,
-    clip: { x: 372, y: 280, width: 930, height: 465 },
-    animations: "disabled",
-  });
+  let bytes = 0;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
+    await page.waitForTimeout(2000 + attempt * 650);
+    await page.evaluate(() => {
+      document.querySelector("header")?.remove();
+      document.querySelector("#variants")?.remove();
+      document.querySelector("#actions")?.remove();
+    });
+    await page.waitForTimeout(500);
+    await canvas.screenshot({ path: png, animations: "disabled" });
+    bytes = fs.statSync(png).size;
+    if (errors.length) throw new Error("preview errors: " + errors.join("; "));
+    if (bytes > 45000) {
+      await page.screenshot({
+        path: detail,
+        clip: { x: 372, y: 280, width: 930, height: 465 },
+        animations: "disabled",
+      });
+      break;
+    }
+    console.warn("blank WebGL frame: retry " + (attempt + 1) + ", bytes=" + bytes);
+  }
   const report = await page.evaluate(() => ({
     width: document.querySelector("canvas")?.width,
     height: document.querySelector("canvas")?.height,
     webgl2: !!document.createElement("canvas").getContext("webgl2"),
   }));
-  const bytes = fs.statSync(png).size;
-  if (errors.length) throw new Error("preview errors: " + errors.join("; "));
   if (bytes < 45000) throw new Error("screenshot unexpectedly tiny: " + bytes);
   console.log(JSON.stringify({ screenshot: png, bytes, ...report }, null, 2));
 } finally {
