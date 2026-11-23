@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#151b1a"><title>Wildhaven · Tela de carregamento</title><link rel="stylesheet" href="style.css"></head>
+<body><main><section class="panel" aria-label="Tela de carregamento de Wildhaven">
+<header><img src="assets/wordmark.png" alt="Wildhaven" width="232" height="52"></header>
+<div class="landscape"><canvas width="640" height="144" aria-label="Hunter em fuga do Varrisco pelas montanhas de Auralis"></canvas></div>
+<div class="load"><div class="readout"><span id="stage">Preparando a cena</span><output id="percent">0%</output></div><div id="meter" role="progressbar" aria-label="Carregamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div></div>
+</section>
+<section class="console" aria-label="Controles do simulador"><span class="caption"><b></b> SIMULADOR</span><div class="buttons"><button id="pause">Pausar carga</button><button id="restart">Reiniciar</button></div><div class="speeds" aria-label="Velocidade do simulador"><button aria-pressed="true" data-speed="1">1×</button><button aria-pressed="false" data-speed="2">2×</button><button aria-pressed="false" data-speed="4">4×</button></div></section>
+<p id="error" role="alert"></p></main><script src="motion.js"></script><script src="scene.js?v=gravarto-1"></script></body></html>
